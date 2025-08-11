@@ -3,16 +3,31 @@ import json
 import requests
 from neo4j import GraphDatabase
 from PyPDF2 import PdfReader
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
+from owlready2 import get_ontology
 
 class KGLoader:
     def __init__(self):
         self.neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         self.neo4j_user = os.getenv("NEO4J_USER", "neo4j")
         self.neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
+        
+    def _load_ontology(self, ontology_path: str) -> Dict:
+        """Load ontology from JSON or OWL file"""
+        if ontology_path.endswith('.json'):
+            with open(ontology_path, 'r') as f:
+                return json.load(f)
+        elif ontology_path.endswith('.owl'):
+            onto = get_ontology(ontology_path).load()
+            return {
+                "node_labels": [cls.name for cls in onto.classes()],
+                "relationship_types": [prop.name for prop in onto.object_properties()]
+            }
+        else:
+            raise ValueError(f"Unsupported ontology format: {ontology_path}")
 
-    def load_from_pdf(self, file_path: str) -> Dict:
-        """Extract text from PDF and structure as knowledge graph"""
+    def load_from_pdf(self, file_path: str, ontology_path: str = None) -> Dict:
+        """Extract text from PDF and structure as knowledge graph using optional ontology"""
         try:
             print(f"Loading PDF: {file_path}")
             reader = PdfReader(file_path)
@@ -20,26 +35,36 @@ class KGLoader:
             for page in reader.pages:
                 text += page.extract_text() + "\n"
             
-            # Simple text processing to create nodes and relationships
-            entities = self._extract_entities(text)
-            relationships = self._create_relationships(entities)
+            # Load ontology if provided
+            ontology = {}
+            if ontology_path:
+                try:
+                    ontology = self._load_ontology(ontology_path)
+                    print(f"Loaded ontology: {ontology_path}")
+                except Exception as e:
+                    print(f"Error loading ontology: {str(e)}")
+            
+            # Create knowledge graph with ontology and supernodes
+            nodes, supernodes, relationships = self._create_graph_with_ontology(text, ontology)
             
             return {
                 "status": "success",
-                "nodes": entities,
+                "nodes": nodes,
+                "supernodes": supernodes,
                 "relationships": relationships,
                 "source": "pdf",
-                "filename": os.path.basename(file_path)
+                "filename": os.path.basename(file_path),
+                "ontology": os.path.basename(ontology_path) if ontology_path else None
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def load_from_neo4j(self, query: str = "MATCH (n) RETURN n LIMIT 100") -> Dict:
+    def load_from_neo4j(self, uri: str, user: str, password: str, query: str = "MATCH (n) RETURN n LIMIT 100") -> Dict:
         """Fetch data from Neo4j database"""
         try:
             driver = GraphDatabase.driver(
-                self.neo4j_uri, 
-                auth=(self.neo4j_user, self.neo4j_password)
+                uri, 
+                auth=(user, password)
             )
             
             with driver.session() as session:
@@ -49,22 +74,38 @@ class KGLoader:
                 
                 for record in result:
                     node = record["n"]
+                    # Convert properties to JSON-serializable format
+                    properties = {}
+                    for key, value in dict(node).items():
+                        if isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                            properties[key] = value
+                        else:
+                            properties[key] = str(value)
+                    
                     nodes.append({
                         "id": node.id,
                         "labels": list(node.labels),
-                        "properties": dict(node)
+                        "label": list(node.labels)[0] if node.labels else "Node",
+                        "properties": properties
                     })
                 
                 # Get relationships
-                rel_result = session.run("MATCH ()-[r]->() RETURN r LIMIT 100")
+                rel_result = session.run("MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end LIMIT 100")
                 for record in rel_result:
                     rel = record["r"]
+                    properties = {}
+                    for key, value in dict(rel).items():
+                        if isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                            properties[key] = value
+                        else:
+                            properties[key] = str(value)
+                    
                     relationships.append({
                         "id": rel.id,
                         "type": rel.type,
-                        "start": rel.start_node.id,
-                        "end": rel.end_node.id,
-                        "properties": dict(rel)
+                        "from": record["start"].id,
+                        "to": record["end"].id,
+                        "properties": properties
                     })
                 
                 return {
@@ -77,32 +118,150 @@ class KGLoader:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def _extract_entities(self, text: str) -> List[Dict]:
-        """Simple entity extraction from text (placeholder implementation)"""
-        # In a real implementation, this would use NLP/NER techniques
+    def _create_graph_with_ontology(self, text: str, ontology: Dict) -> Tuple[List, List, List]:
+        """Create knowledge graph with ontology harmonization and supernodes"""
+        # Extract entities using ontology if available
         entities = []
-        words = set(text.split())
-        for i, word in enumerate(words):
-            if len(word) > 3:  # Filter out short words
-                entities.append({
-                    "id": i,
-                    "label": word.capitalize(),
-                    "properties": {"text": word, "frequency": text.count(word)}
-                })
-        return entities
-
-    def _create_relationships(self, entities: List[Dict]) -> List[Dict]:
-        """Create simple relationships between entities (placeholder)"""
+        supernodes = []
         relationships = []
+        
+        # Create supernodes from ontology categories
+        supernode_map = {}
+        if "categories" in ontology:
+            for i, category in enumerate(ontology["categories"]):
+                supernode = {
+                    "id": f"supernode_{i}",
+                    "label": category["name"],
+                    "properties": {
+                        "description": category.get("description", ""),
+                        "type": "supernode"
+                    }
+                }
+                supernodes.append(supernode)
+                supernode_map[category["name"]] = supernode["id"]
+        
+        # Extract entities and map to ontology
+        words = set(text.split())
+        entity_counter = 0
+        for word in words:
+            if len(word) < 4:  # Skip short words
+                continue
+                
+            # Find matching ontology category
+            supernode_id = None
+            if "mappings" in ontology:
+                for mapping in ontology["mappings"]:
+                    if word.lower() in mapping.get("terms", []):
+                        supernode_id = supernode_map.get(mapping["category"])
+                        break
+            
+            # Create entity node
+            entity = {
+                "id": f"entity_{entity_counter}",
+                "label": word.capitalize(),
+                "properties": {
+                    "text": word,
+                    "frequency": text.count(word),
+                    "type": "entity"
+                }
+            }
+            entities.append(entity)
+            
+            # Link to supernode if found
+            if supernode_id:
+                relationships.append({
+                    "id": f"rel_{entity_counter}",
+                    "type": "MEMBER_OF",
+                    "start": entity["id"],
+                    "end": supernode_id,
+                    "properties": {"source": "ontology"}
+                })
+            
+            entity_counter += 1
+        
+        # Create relationships between entities
         for i in range(min(10, len(entities) - 1)):
             relationships.append({
-                "id": i,
+                "id": f"rel_entity_{i}",
                 "type": "RELATED_TO",
                 "start": entities[i]["id"],
                 "end": entities[i+1]["id"],
                 "properties": {"strength": 0.5}
             })
-        return relationships
+        
+        return entities, supernodes, relationships
+        
+    def save_to_neo4j(self, uri: str, user: str, password: str, graph_data: Dict, clear_database: bool = False) -> Dict:
+        """Save knowledge graph to Neo4j database with supernode support
+        
+        Args:
+            uri: Neo4j connection URI
+            user: Neo4j username
+            password: Neo4j password
+            graph_data: Knowledge graph data to save
+            clear_database: If True, clears the database before saving (default: False)
+        """
+        try:
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            
+            with driver.session() as session:
+                # Clear existing data only if requested
+                if clear_database:
+                    session.run("MATCH (n) DETACH DELETE n")
+                    print("Cleared existing database data")
+                
+                node_map = {}
+                
+                # Create all nodes (entities and supernodes)
+                all_nodes = graph_data.get("nodes", []) + graph_data.get("supernodes", [])
+                for node in all_nodes:
+                    labels = node.get("label", "Node")
+                    properties = {k: v for k, v in node.get("properties", {}).items()}
+                    result = session.run(
+                        f"CREATE (n:{labels} $properties) RETURN id(n)",
+                        properties=properties
+                    )
+                    node_id = result.single()[0]
+                    node_map[node["id"]] = node_id
+                
+                # Create relationships using the node_map to reference nodes
+                for rel in graph_data.get("relationships", []):
+                    start_node_id = rel["from"]  # This is the original node id (e.g., "entity_0")
+                    end_node_id = rel["to"]      # This is the original node id
+                    
+                    # Get the Neo4j internal IDs from node_map
+                    start_neo4j_id = node_map.get(start_node_id)
+                    end_neo4j_id = node_map.get(end_node_id)
+                    
+                    if start_neo4j_id is not None and end_neo4j_id is not None:
+                        session.run(
+                            "MATCH (a), (b) WHERE id(a) = $start_neo4j_id AND id(b) = $end_neo4j_id "
+                            "CREATE (a)-[r:%s $properties]->(b)" % rel['type'],
+                            start_neo4j_id=start_neo4j_id,
+                            end_neo4j_id=end_neo4j_id,
+                            properties=rel.get("properties", {})
+                        )
+                    else:
+                        print(f"Warning: Could not find nodes for relationship {rel['id']} "
+                              f"({start_node_id} -> {end_node_id})")
+                
+                return {
+                    "status": "success", 
+                    "message": "Knowledge graph saved to Neo4j",
+                    "clear_database": clear_database,
+                    "nodes_created": len(all_nodes),
+                    "relationships_created": len(graph_data.get("relationships", []))
+                }
+                
+        except Exception as e:
+            # Capture full error details for debugging
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "error_args": e.args
+            }
+            print(f"Error saving to Neo4j: {error_details}")
+            return {"status": "error", "message": "Failed to save knowledge graph to Neo4j", "details": error_details}
 
 # Example usage
 if __name__ == "__main__":

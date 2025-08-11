@@ -7,6 +7,7 @@ import re
 import uuid
 from io import BytesIO
 from typing import Dict, Any, Optional
+import owlready2  # Add owlready2 for OWL parsing
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -51,17 +52,17 @@ MODEL_PROVIDERS = {
             model="deepseek/deepseek-r1-0528:free",
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        ),
+        ) if os.getenv("OPENROUTER_API_KEY") else None,
         "openai/gpt-4": ChatOpenAI(
             model="gpt-4",
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        ),
+        ) if os.getenv("OPENROUTER_API_KEY") else None,
         "anthropic/claude-3-opus": ChatOpenAI(
             model="anthropic/claude-3-opus",
             openai_api_base="https://openrouter.ai/api/v1",
             openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        )
+        ) if os.getenv("OPENROUTER_API_KEY") else None
     },
     "ollama": {
         "deepseek-r1-0528": Ollama(model="deepseek-r1-0528"),
@@ -69,30 +70,38 @@ MODEL_PROVIDERS = {
         "mistral": Ollama(model="mistral")
     },
     "openai": {
-        "gpt-4": ChatOpenAI(model="gpt-4", openai_api_key=os.getenv("OPENAI_API_KEY")),
-        "gpt-3.5-turbo": ChatOpenAI(model="gpt-3.5-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")),
-        "gpt-4-turbo": ChatOpenAI(model="gpt-4-turbo", openai_api_key=os.getenv("OPENAI_API_KEY"))
+        "gpt-4": ChatOpenAI(model="gpt-4", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
+        "gpt-3.5-turbo": ChatOpenAI(model="gpt-3.5-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
+        "gpt-4-turbo": ChatOpenAI(model="gpt-4-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
     },
     "anthropic": {
         "claude-3-opus": ChatOpenAI(
             model="claude-3-opus",
             openai_api_base="https://api.anthropic.com",
             openai_api_key=os.getenv("ANTHROPIC_API_KEY")
-        ),
+        ) if os.getenv("ANTHROPIC_API_KEY") else None,
         "claude-3-sonnet": ChatOpenAI(
             model="claude-3-sonnet",
             openai_api_base="https://api.anthropic.com",
             openai_api_key=os.getenv("ANTHROPIC_API_KEY")
-        )
+        ) if os.getenv("ANTHROPIC_API_KEY") else None
     },
     "google": {
         "gemini-pro": ChatOpenAI(
             model="gemini-pro",
             openai_api_base="https://generativelanguage.googleapis.com/v1beta/models",
             openai_api_key=os.getenv("GOOGLE_API_KEY")
-        )
+        ) if os.getenv("GOOGLE_API_KEY") else None
     }
 }
+
+# Remove any providers that have no valid models
+for provider, models in list(MODEL_PROVIDERS.items()):
+    # Remove None values from models
+    MODEL_PROVIDERS[provider] = {k: v for k, v in models.items() if v is not None}
+    # Remove provider if no models left
+    if not MODEL_PROVIDERS[provider]:
+        del MODEL_PROVIDERS[provider]
 
 # Endpoint to get available models
 @app.get("/models/{vendor}")
@@ -156,7 +165,8 @@ async def generate_kg(file: bytes = File(...), provider_kg: str = Form("openrout
 async def load_kg_from_file(
     file: UploadFile = File(...),
     provider: str = Form("openrouter"),
-    model: str = Form("deepseek/deepseek-r1-0528:free")
+    model: str = Form("deepseek/deepseek-r1-0528:free"),
+    ontology: UploadFile = File(None)
 ):
     try:
         # Read file contents
@@ -171,8 +181,27 @@ async def load_kg_from_file(
         if not text:
             raise ValueError("Failed to extract text from file")
             
+        # Read and parse ontology if provided
+        ontology_content = None
+        if ontology:
+            ontology_bytes = await ontology.read()
+            if ontology_bytes:
+                filename = ontology.filename.lower()
+                if filename.endswith('.json'):
+                    try:
+                        ontology_content = json.loads(ontology_bytes.decode('utf-8'))
+                    except json.JSONDecodeError:
+                        raise ValueError("Invalid JSON ontology file format.")
+                elif filename.endswith('.owl'):
+                    try:
+                        ontology_content = parse_owl_ontology(ontology_bytes)
+                    except Exception as e:
+                        raise ValueError(f"Failed to parse OWL ontology: {str(e)}")
+                else:
+                    raise ValueError("Unsupported ontology file format. Only JSON and OWL are supported.")
+        
         # Generate the knowledge graph
-        kg = generate_knowledge_graph(text, provider, model)
+        kg = generate_knowledge_graph(text, provider, model, ontology=ontology_content)
         
         # Create a unique ID for this KG
         kg_id = f"kg_{str(uuid.uuid4())[:12]}"
@@ -198,6 +227,41 @@ async def load_kg_from_file(
             status_code=400,
             detail=f"KG creation failed: {str(e)} - Full traceback: {error_traceback}"
         )
+        
+def parse_owl_ontology(owl_bytes: bytes) -> dict:
+    """Parse OWL ontology file into our format"""
+    # Create a BytesIO object from the bytes
+    file_obj = BytesIO(owl_bytes)
+    
+    # Load the ontology directly from bytes
+    onto = owlready2.get_ontology("")
+    onto.load(fileobj=file_obj)
+    
+    # Extract classes as node labels
+    node_labels = [cls.name for cls in onto.classes()]
+    
+    # Extract object properties as relationship types
+    relationship_types = [prop.name for prop in onto.object_properties()]
+    
+    return {
+        "node_labels": node_labels,
+        "relationship_types": relationship_types
+    }
+
+@app.post("/test_owl_parser")
+async def test_owl_parser(file: UploadFile = File(...)):
+    """
+    Test endpoint for OWL parser functionality
+    Accepts an OWL file and returns the parsed node labels and relationship types
+    """
+    try:
+        contents = await file.read()
+        result = parse_owl_ontology(contents)
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=f"OWL parsing failed: {str(e)}")
 
 @app.post("/load_kg_from_neo4j")
 async def load_kg_from_neo4j(
@@ -247,7 +311,7 @@ def extract_text(file_bytes: bytes) -> str:
         except UnicodeDecodeError:
             return file_bytes.decode('latin-1')
 
-def generate_knowledge_graph(text: str, provider: str, model: str) -> Dict[str, Any]:
+def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Optional[Dict] = None) -> Dict[str, Any]:
     # Default to OpenRouter with deepseek model
     if provider == "openrouter":
         model_mapping = {
@@ -272,8 +336,19 @@ def generate_knowledge_graph(text: str, provider: str, model: str) -> Dict[str, 
     
     llm = MODEL_PROVIDERS[provider][model]
     
+    ontology_instructions = ""
+    if ontology:
+        ontology_instructions = f"""
+        Use the following ontology to guide your extraction:
+        {json.dumps(ontology, indent=2)}
+        
+        Only use node labels and relationship types defined in the ontology.
+        """
+    
     prompt = ChatPromptTemplate.from_template("""
-    You are an expert knowledge graph extraction system. Analyze the following text and extract a detailed knowledge graph with entities and relationships. Follow these guidelines:
+    You are an expert knowledge graph extraction system. Analyze the following text and extract a detailed knowledge graph with entities and relationships. 
+    {ontology_instructions}
+    Follow these guidelines:
 
     1. Identify all important entities (people, organizations, concepts, locations, etc.)
     2. Extract relationships between entities
@@ -307,7 +382,10 @@ def generate_knowledge_graph(text: str, provider: str, model: str) -> Dict[str, 
     """)
     
     chain = prompt | llm | StrOutputParser()
-    result = chain.invoke({"text": text[:3000]})
+    result = chain.invoke({
+        "text": text[:3000],
+        "ontology_instructions": ontology_instructions
+    })
     
     try:
         return json.loads(result)
@@ -419,6 +497,42 @@ async def chat(message: Message):
             detail=f"Error processing request: {str(e)}"
         )
 
+@app.post("/save_kg_to_neo4j")
+async def save_kg_to_neo4j(
+    kg_id: str = Form(...),
+    uri: str = Form(...),
+    user: str = Form(...),
+    password: str = Form(...)
+):
+    try:
+        if kg_id not in knowledge_graphs:
+            raise HTTPException(status_code=404, detail="Knowledge graph not found")
+            
+        graph_data = knowledge_graphs[kg_id]["graph"]
+        result = kg_loader.save_to_neo4j(uri, user, password, graph_data)
+        
+        if result['status'] == 'error':
+            # Convert error details to JSON string for proper serialization
+            error_details = json.dumps(result.get('details', result))
+            raise ValueError(error_details)
+            
+        return {"message": result['message']}
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Neo4j saving error: {error_traceback}")
+        # Include the full error details in the response
+        try:
+            error_details = json.loads(str(e))
+            detail_msg = f"Neo4j saving failed: {error_details.get('error_message', str(e))}"
+        except json.JSONDecodeError:
+            detail_msg = f"Neo4j saving failed: {str(e)}"
+            
+        raise HTTPException(
+            status_code=400,
+            detail=detail_msg
+        )
+        
 @app.get("/graph/{kg_id}")
 async def get_graph(kg_id: str):
     try:
