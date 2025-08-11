@@ -52,3 +52,8 @@ Open http://localhost:8000 in your browser.
 - If you get "model not found" for Ollama, run `ollama pull <model_name>`
 - For local Ollama models, make sure to run `ollama serve` in a separate terminal
 - Ensure all API keys in `.env` are valid
+
+## Author
+**Sahib Julka**  
+Email: sahib.julka@med.lmu.de  
+GitLab: [@sahibjulka](https://gitlab.lrz.de/sahibjulka)
