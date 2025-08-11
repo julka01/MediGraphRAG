@@ -1,0 +1,46 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Graph RAG",
+      "properties": {
+        "description": "Knowledge graph-enhanced Retrieval Augmented Generation",
+        "type": "AI Technique"
+      }
+    },
+    {
+      "id": 2,
+      "label": "Knowledge Graph",
+      "properties": {
+        "description": "Structured knowledge representation",
+        "type": "Data Structure"
+      }
+    },
+    {
+      "id": 3,
+      "label": "RAG",
+      "properties": {
+        "description": "Retrieval Augmented Generation",
+        "type": "AI Technique"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 1,
+      "to": 2,
+      "type": "USES",
+      "properties": {
+        "purpose": "Context enhancement"
+      }
+    },
+    {
+      "from": 1,
+      "to": 3,
+      "type": "EXTENDS",
+      "properties": {
+        "improvement": "Structured knowledge integration"
+      }
+    }
+  ]
+}

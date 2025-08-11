@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph RAG - Professional KG Analysis</title>
+    <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.1);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 60px;
+            background-color: #2c3e50;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        .sidebar-icon {
+            width: 40px;
+            height: 40px;
+            background-color: #34495e;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+            font-size: 20px;
+        }
+
+        .sidebar-icon.active {
+            background-color: #3498db;
+        }
+
+        .sidebar-icon:hover {
+            background-color: #2980b9;
+            transform: scale(1.1);
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* View Container */
+        .view-container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            height: 100%;
+        }
+
+        /* KG View */
+        #kg-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            overflow: hidden;
+        }
+
+        #graph-container {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .graph-controls {
+            display: flex;
+            justify-content: flex-end;
+            padding: 10px 0;
+            gap: 10px;
+        }
+
+        .zoom-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: #3498db;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        /* Chat View */
+        #chat-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            overflow: hidden;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+        }
+
+        #chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-box {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            overflow-y: auto;
+            background: #f9f9f9;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        #question {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: none;
+        }
+
+        #send-btn {
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        /* Model Selection - Reduced padding and margin */
+        .model-card {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            color: #333;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+        }
+        
+        .model-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 18px;
+            border-bottom: 2px solid rgba(52, 152, 219, 0.3);
+            padding-bottom: 8px;
+            color: #2c3e50;
+        }
+        
+        .model-group {
+            margin-bottom: 8px;
+        }
+        
+        .model-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            color: #2c3e50;
+        }
+        
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        
+        .kg-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .kg-options button {
+            padding: 8px 15px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .kg-options button:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        #neo4j-form {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+            border: 1px solid #ddd;
+        }
+        
+        #neo4j-form input {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        #neo4j-form button {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        #temperature {
+            width: 100%;
+        }
+        
+        #temp-value {
+            display: inline-block;
+            width: 30px;
+            text-align: right;
+        }
+
+        /* Message Styling */
+        .ai-message {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #3498db;
+        }
+
+        .user-message {
+            background: #f1f8e9;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #7cb342;
+        }
+        
+        .thinking-message {
+            background: #fffde7;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ffd600;
+            display: flex;
+            align-items: center;
+        }
+        
+        #file-selection {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        #create-kg-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-icon active" id="kg-icon">KG</div>
+        <div class="sidebar-icon" id="chat-icon">💬</div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- View Container -->
+        <div class="view-container">
+            <!-- KG View with integrated model card -->
+            <div id="kg-view">
+                <div class="model-card">
+                    <h3>Knowledge Graph</h3>
+                    <div class="model-group">
+                        <label for="kg-provider">LLM Provider:</label>
+                        <select id="kg-provider">
+                            <option value="openai">OpenAI</option>
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="google">Google</option>
+                        </select>
+                    </div>
+                    
+                    <div class="model-group">
+                        <label for="kg-model">LLM Model:</label>
+                        <select id="kg-model">
+                            <option value="gpt-4">GPT-4</option>
+                        </select>
+                    </div>
+                    
+                    <div class="kg-options">
+                        <button id="load-file">Select File</button>
+                        <button id="load-neo4j">From Neo4j</button>
+                    </div>
+                    <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
+                    
+                    <div id="file-selection">
+                        <div id="selected-file" style="font-size: 12px; margin-bottom: 10px;"></div>
+                        <button id="create-kg-btn">Create KG</button>
+                    </div>
+                    
+                    <div id="neo4j-form">
+                        <input type="text" id="neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)">
+                        <input type="text" id="neo4j-user" placeholder="Username">
+                        <input type="password" id="neo4j-password" placeholder="Password">
+                        <button id="connect-neo4j">Connect</button>
+                    </div>
+                </div>
+                
+                <div id="graph-container"></div>
+                <div class="graph-controls">
+                    <button class="zoom-btn" id="zoom-in">+</button>
+                    <button class="zoom-btn" id="zoom-out">-</button>
+                    <button class="zoom-btn" id="reset-zoom">↺</button>
+                </div>
+            </div>
+
+            <!-- Chat View with integrated model card -->
+            <div id="chat-view">
+                <div class="chat-container">
+                    <div id="chat-section">
+                        <div class="model-card">
+                            <h3>RAG Model</h3>
+                            <div class="model-group">
+                                <label for="rag-vendor">Vendor:</label>
+                                <select id="rag-vendor">
+                                    <option value="openrouter">OpenRouter</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="anthropic">Anthropic</option>
+                                    <option value="google">Google</option>
+                                </select>
+                            </div>
+                            <div class="model-group">
+                                <label for="rag-model">Model:</label>
+                                <select id="rag-model">
+                                    <option value="gpt-4">GPT-4</option>
+                                </select>
+                            </div>
+                            <div class="model-group">
+                                <label for="temperature">Temperature:</label>
+                                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.1">
+                                <span id="temp-value">0.1</span>
+                            </div>
+                        </div>
+                        
+            <div id="chat-box"></div>
+            <div class="chat-input-container">
+                <textarea id="question" placeholder="Ask a question..." onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuestion(); }"></textarea>
+                <button id="send-btn" onclick="sendQuestion()">Send</button>
+            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.js"></script>
+    <script>
+        let network = null;
+        let currentKGId = null;
+        
+        function initializeGraph(graphData) {
+            const container = document.getElementById('graph-container');
+            if (network) {
+                network.destroy();
+            }
+            
+            const nodes = new vis.DataSet(graphData.nodes || []);
+            const edges = new vis.DataSet(graphData.relationships || []);
+            
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 30,
+                    font: {
+                        size: 14,
+                        face: 'Tahoma'
+                    },
+                    borderWidth: 2
+                },
+                edges: {
+                    width: 2,
+                    arrows: {
+                        to: { enabled: true, scaleFactor: 0.5 }
+                    },
+                    font: {
+                        size: 12,
+                        align: 'middle'
+                    },
+                    smooth: {
+                        type: 'cubicBezier'
+                    },
+                    label: {
+                        enabled: true,
+                        min: 8,
+                        max: 30,
+                        maxVisible: 50
+                    }
+                },
+                physics: {
+                    stabilization: true,
+                    barnesHut: {
+                        gravitationalConstant: -8000,
+                        springConstant: 0.04,
+                        springLength: 200
+                    }
+                },
+                interaction: {
+                    hover: true,
+                    tooltipDelay: 200,
+                    zoomView: true,
+                    dragView: true
+                }
+            };
+            
+            network = new vis.Network(container, { nodes, edges }, options);
+            
+            // Zoom functionality
+            document.getElementById('zoom-in').addEventListener('click', function() {
+                network.moveTo({
+                    scale: network.getScale() * 1.2,
+                    animation: true
+                });
+            });
+            
+            document.getElementById('zoom-out').addEventListener('click', function() {
+                network.moveTo({
+                    scale: network.getScale() * 0.8,
+                    animation: true
+                });
+            });
+            
+            document.getElementById('reset-zoom').addEventListener('click', function() {
+                network.fit({
+                    animation: true
+                });
+            });
+        }
+        
+        function showError(message) {
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML += `<div class="ai-message">Error: ${message}</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        
+        function addToChat(message, type, id = null) {
+            const chatBox = document.getElementById('chat-box');
+            let messageClass = 'ai-message';
+            if (type === 'user') messageClass = 'user-message';
+            if (type === 'error') messageClass = 'ai-message error';
+            if (type === 'thinking') messageClass = 'thinking-message';
+            
+            const messageEl = document.createElement('div');
+            messageEl.className = messageClass;
+            messageEl.innerHTML = message;
+            
+            if (id) {
+                messageEl.id = id;
+            }
+            
+            chatBox.appendChild(messageEl);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return messageEl;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize empty graph
+            initializeGraph({
+                nodes: [
+                    { id: 1, label: 'Load a KG', color: '#3498db', shape: 'diamond' }
+                ],
+                relationships: []
+            });
+            
+        // Set up model dropdowns
+        function setupModelDropdowns() {
+            updateModelDropdown('kg-provider', 'kg-model');
+            updateModelDropdown('rag-vendor', 'rag-model');
+        }
+        setupModelDropdowns();
+        
+        async function updateModelDropdown(vendorSelectId, modelSelectId) {
+            const vendorSelect = document.getElementById(vendorSelectId);
+            const modelSelect = document.getElementById(modelSelectId);
+            const vendor = vendorSelect.value;
+            
+            try {
+                const response = await fetch(`/models/${vendor}`);
+                if (!response.ok) throw new Error('Failed to fetch models');
+                
+                const data = await response.json();
+                modelSelect.innerHTML = '';
+                
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+                
+                // Preselect first model
+                if (data.models.length > 0) {
+                    modelSelect.value = data.models[0];
+                }
+            } catch (error) {
+                console.error('Error fetching models:', error);
+                modelSelect.innerHTML = '<option value="">Error loading models</option>';
+            }
+        }
+        
+        // Temperature control
+        document.getElementById('temperature').addEventListener('input', function() {
+            document.getElementById('temp-value').textContent = this.value;
+        });
+            
+            // View toggling functionality
+            const kgView = document.getElementById('kg-view');
+            const chatView = document.getElementById('chat-view');
+            const kgIcon = document.getElementById('kg-icon');
+            const chatIcon = document.getElementById('chat-icon');
+            
+            // Set default view to both
+            let currentView = 'both';
+            
+            kgIcon.addEventListener('click', function() {
+                if (currentView === 'kg') {
+                    // Already in KG view, switch back to both view
+                    kgView.style.display = 'flex';
+                    chatView.style.display = 'flex';
+                    currentView = 'both';
+                    kgIcon.classList.remove('active');
+                } else {
+                    // Show only KG in full width
+                    kgView.style.display = 'flex';
+                    chatView.style.display = 'none';
+                    currentView = 'kg';
+                    kgIcon.classList.add('active');
+                    chatIcon.classList.remove('active');
+                }
+            });
+            
+            chatIcon.addEventListener('click', function() {
+                if (currentView === 'chat') {
+                    // Already in chat view, switch back to both view
+                    kgView.style.display = 'flex';
+                    chatView.style.display = 'flex';
+                    currentView = 'both';
+                    chatIcon.classList.remove('active');
+                } else {
+                    // Show only chat in full width
+                    kgView.style.display = 'none';
+                    chatView.style.display = 'flex';
+                    currentView = 'chat';
+                    chatIcon.classList.add('active');
+                    kgIcon.classList.remove('active');
+                }
+            });
+            
+            // KG Loading functionality
+            document.getElementById('load-file').addEventListener('click', function() {
+                document.getElementById('file-upload').click();
+            });
+            
+            // File selection functionality
+            document.getElementById('file-upload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // Show selected file and create button
+                document.getElementById('selected-file').textContent = `Selected: ${file.name}`;
+                document.getElementById('file-selection').style.display = 'block';
+            });
+            
+            // Create KG button functionality
+            function attachCreateKGHandler() {
+                // We'll attach the handler once during initial load
+                const button = document.getElementById('create-kg-btn');
+                // Remove any existing listener to prevent duplicates
+                button.removeEventListener('click', handleCreateKG); 
+                button.addEventListener('click', handleCreateKG);
+            }
+
+            async function handleCreateKG() {
+                const createButton = document.getElementById('create-kg-btn');
+                const originalText = createButton.textContent;
+                
+                try {
+                    // Show loading spinner
+                    createButton.innerHTML = '<div class="spinner"></div> Creating KG...';
+                    createButton.disabled = true;
+                    
+                    const fileInput = document.getElementById('file-upload');
+                    const file = fileInput.files[0];
+                    if (!file) return;
+                    
+                    const provider = document.getElementById('kg-provider').value;
+                    const model = document.getElementById('kg-model').value;
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('provider', provider);
+                    formData.append('model', model);
+                    
+                    const response = await fetch('/load_kg_from_file', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to process file');
+                    }
+                    
+                    const result = await response.json();
+                    currentKGId = result.kg_id;
+                    initializeGraph(result.graph_data);
+                    addToChat(`Knowledge graph created with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`);
+                    
+                    // Reset file selection
+                    fileInput.value = '';
+                    document.getElementById('file-selection').style.display = 'none';
+                } catch (error) {
+                    showError(`KG creation failed: ${error.message}`);
+                } finally {
+                    // Restore button state
+                    createButton.innerHTML = originalText;
+                    createButton.disabled = false;
+                }
+            }
+            
+            // Neo4j connection handler
+            async function handleConnectNeo4j() {
+                const connectButton = document.getElementById('connect-neo4j');
+                const originalText = connectButton.textContent;
+                
+                try {
+                    // Show loading spinner
+                    connectButton.innerHTML = '<div class="spinner"></div> Connecting...';
+                    connectButton.disabled = true;
+                    
+                    const uri = document.getElementById('neo4j-uri').value;
+                    const user = document.getElementById('neo4j-user').value;
+                    const password = document.getElementById('neo4j-password').value;
+                    
+                    if (!uri || !user || !password) {
+                        showError('Please fill in all fields');
+                        return;
+                    }
+                    
+                    const response = await fetch('/load_kg_from_neo4j', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            uri, 
+                            user, 
+                            password,
+                            query: 'MATCH (n) RETURN n LIMIT 100'
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to load from Neo4j');
+                    }
+                    
+                    const result = await response.json();
+                    currentKGId = result.kg_id;
+                    initializeGraph(result.graph_data);
+                    showError(`Loaded KG from Neo4j with ${result.graph_data.nodes.length} nodes`);
+                    
+                    // Hide form after successful connection
+                    document.getElementById('neo4j-form').style.display = 'none';
+                } catch (error) {
+                    showError(`Neo4j loading failed: ${error.message}`);
+                } finally {
+                    // Restore button state
+                    connectButton.innerHTML = originalText;
+                    connectButton.disabled = false;
+                }
+            }
+            
+        // Send question function with loading indicator
+        window.sendQuestion = async function() {
+            const input = document.getElementById('question');
+            const sendButton = document.getElementById('send-btn');
+            const chatBox = document.getElementById('chat-box');
+            const question = input.value.trim();
+            if (!question) return;
+            
+            const vendor = document.getElementById('rag-vendor').value;
+            const model = document.getElementById('rag-model').value;
+            
+            addToChat(`You: ${question}`, 'user');
+            input.value = '';
+            
+            // Create thinking message inside chatbox
+            const thinkingId = 'thinking-' + Date.now();
+            const thinkingEl = addToChat(
+                `<div class="spinner"></div> Thinking...`,
+                'thinking',
+                thinkingId
+            );
+            
+            const originalButtonText = sendButton.textContent;
+            try {
+                // Show loading state on button
+                sendButton.innerHTML = '<div class="spinner"></div> Thinking...';
+                sendButton.disabled = true;
+                
+                const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            question: question,
+                            provider_rag: vendor,
+                            model_rag: model,
+                            kg_id: currentKGId
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Error getting response');
+                    }
+                    
+                    const result = await response.json();
+                    
+                    // Format structured responses
+                    const formattedResponse = result.response
+                        .replace(/1\. Summary:\s*(.*?)\s*2\. Key Points:\s*((?:   - .*\s*)*)3\. Source:\s*(.*)/s, 
+                            '<div class="ai-summary">$1</div><div class="ai-keypoints">$2</div><div class="ai-source">Source: $3</div>')
+                        .replace(/   - /g, '• ');
+                        
+                    // Remove thinking message before adding response
+                    if (thinkingEl && thinkingEl.parentNode) {
+                        thinkingEl.parentNode.removeChild(thinkingEl);
+                    }
+                    
+                    addToChat(`Assistant: ${formattedResponse}`, 'ai');
+                } catch (error) {
+                    // Remove thinking message before adding error
+                    if (thinkingEl && thinkingEl.parentNode) {
+                        thinkingEl.parentNode.removeChild(thinkingEl);
+                    }
+                    addToChat(`Error: ${error.message}`, 'error');
+                } finally {
+                    // Restore button state
+                    sendButton.innerHTML = originalButtonText;
+                    sendButton.disabled = false;
+                }
+            };
+            
+            // Add event listener for Enter key
+            document.getElementById('question').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault(); // Prevent new line
+                    sendQuestion();
+                }
+            });
+            
+            // Attach handlers
+            document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
+            
+            // Initialize model dropdowns immediately
+            setupModelDropdowns();
+            
+            // Also fetch models when vendor changes
+            document.getElementById('kg-provider').addEventListener('change', function() {
+                updateModelDropdown('kg-provider', 'kg-model');
+            });
+            
+            document.getElementById('rag-vendor').addEventListener('change', function() {
+                updateModelDropdown('rag-vendor', 'rag-model');
+            });
+            
+            // Attach create KG handler
+            attachCreateKGHandler();
+        });
+    </script>
+</body>
+</html>
