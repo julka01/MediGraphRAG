@@ -6,6 +6,41 @@
     <title>Graph RAG - Professional KG Analysis</title>
     <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
     <style>
+        /* Error Popup */
+        .error-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #ff6b6b;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .error-popup.hidden {
+            display: none;
+        }
+        
+        .error-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            max-width: 80%;
+        }
+        
+        #close-error-popup {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 10px;
+        }
+        
         /* Loading spinner */
         .spinner {
             display: inline-block;
@@ -335,6 +370,14 @@
     </style>
 </head>
 <body>
+    <!-- Error Popup -->
+    <div id="error-popup" class="error-popup hidden">
+        <div class="error-content">
+            <span id="error-message"></span>
+            <button id="close-error-popup">×</button>
+        </div>
+    </div>
+    
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="sidebar-icon active" id="kg-icon">KG</div>
@@ -350,7 +393,7 @@
                 <div class="model-card">
                     <h3>Knowledge Graph</h3>
                     <div class="model-group">
-                        <label for="kg-provider">LLM Provider:</label>
+                        <label for="kg-provider">Vendor:</label>
                         <select id="kg-provider">
                             <option value="openai">OpenAI</option>
                             <option value="openrouter">OpenRouter</option>
@@ -360,7 +403,7 @@
                     </div>
                     
                     <div class="model-group">
-                        <label for="kg-model">LLM Model:</label>
+                        <label for="kg-model">Model:</label>
                         <select id="kg-model">
                             <option value="gpt-4">GPT-4</option>
                         </select>
@@ -415,9 +458,8 @@
                                 </select>
                             </div>
                             <div class="model-group">
-                                <label for="temperature">Temperature:</label>
+                                <label for="temperature">Temperature: <span id="temp-value">0.1</span></label>
                                 <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.1">
-                                <span id="temp-value">0.1</span>
                             </div>
                         </div>
                         
@@ -515,11 +557,7 @@
             });
         }
         
-        function showError(message) {
-            const chatBox = document.getElementById('chat-box');
-            chatBox.innerHTML += `<div class="ai-message">Error: ${message}</div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+        // Removed old showError function
         
         function addToChat(message, type, id = null) {
             const chatBox = document.getElementById('chat-box');
@@ -541,7 +579,19 @@
             return messageEl;
         }
         
+        function showError(message) {
+            const errorPopup = document.getElementById('error-popup');
+            const errorMessage = document.getElementById('error-message');
+            errorMessage.textContent = message;
+            errorPopup.classList.remove('hidden');
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
+            // Setup error popup close button
+            document.getElementById('close-error-popup').addEventListener('click', function() {
+                document.getElementById('error-popup').classList.add('hidden');
+            });
+            
             // Initialize empty graph
             initializeGraph({
                 nodes: [
