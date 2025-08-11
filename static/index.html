@@ -157,14 +157,20 @@
         }
 
         .zoom-btn {
-            width: 30px;
+            width: auto;
+            padding: 0 8px;
             height: 30px;
             border: none;
             background: #3498db;
             color: white;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
+        }
+        
+        #save-to-neo4j-btn {
+            width: auto;
+            padding: 0 8px;
         }
 
         /* Chat View */
@@ -420,16 +426,27 @@
                         <button id="create-kg-btn">Create KG</button>
                     </div>
                     
-                    <div id="neo4j-form">
-                        <input type="text" id="neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)">
-                        <input type="text" id="neo4j-user" placeholder="Username">
-                        <input type="password" id="neo4j-password" placeholder="Password">
-                        <button id="connect-neo4j">Connect</button>
-                    </div>
+                <div id="neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
+                    <button id="close-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
+                    <input type="text" id="neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)" style="margin-bottom: 10px;">
+                    <input type="text" id="neo4j-user" placeholder="Username" style="margin-bottom: 10px;">
+                    <input type="password" id="neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
+                    <button id="connect-neo4j">Connect</button>
+                </div>
+                
+                <div id="save-neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
+                    <button id="close-save-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
+                    <h4>Save to Neo4j</h4>
+                    <input type="text" id="save-neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)" style="margin-bottom: 10px;">
+                    <input type="text" id="save-neo4j-user" placeholder="Username" style="margin-bottom: 10px;">
+                    <input type="password" id="save-neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
+                    <button id="save-to-neo4j">Save KG to Neo4j</button>
+                </div>
                 </div>
                 
                 <div id="graph-container"></div>
                 <div class="graph-controls">
+                    <button class="zoom-btn" id="save-to-neo4j-btn">Save to Neo4j</button>
                     <button class="zoom-btn" id="zoom-in">+</button>
                     <button class="zoom-btn" id="zoom-out">-</button>
                     <button class="zoom-btn" id="reset-zoom">↺</button>
@@ -689,6 +706,80 @@
                 document.getElementById('file-upload').click();
             });
             
+            // Neo4j loading functionality
+            document.getElementById('load-neo4j').addEventListener('click', function() {
+                document.getElementById('neo4j-form').style.display = 'block';
+            });
+            
+            // Close Neo4j form
+            document.getElementById('close-neo4j-form').addEventListener('click', function() {
+                document.getElementById('neo4j-form').style.display = 'none';
+            });
+            
+            // Close Save to Neo4j form
+            document.getElementById('close-save-neo4j-form').addEventListener('click', function() {
+                document.getElementById('save-neo4j-form').style.display = 'none';
+            });
+            
+            // Show save to Neo4j form
+            document.getElementById('save-to-neo4j-btn').addEventListener('click', function() {
+                document.getElementById('save-neo4j-form').style.display = 'block';
+            });
+            
+            // Save KG to Neo4j handler
+            document.getElementById('save-to-neo4j').addEventListener('click', async function() {
+                const saveButton = document.getElementById('save-to-neo4j');
+                const originalText = saveButton.textContent;
+                
+                try {
+                    // Show loading spinner
+                    saveButton.innerHTML = '<div class="spinner"></div> Saving...';
+                    saveButton.disabled = true;
+                    
+                    const uri = document.getElementById('save-neo4j-uri').value;
+                    const user = document.getElementById('save-neo4j-user').value;
+                    const password = document.getElementById('save-neo4j-password').value;
+                    
+                    if (!uri || !user || !password) {
+                        showError('Please fill in all fields');
+                        return;
+                    }
+                    
+                    if (!currentKGId) {
+                        showError('No knowledge graph loaded');
+                        return;
+                    }
+                    
+                    const response = await fetch('/save_kg_to_neo4j', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            kg_id: currentKGId,
+                            uri, 
+                            user, 
+                            password
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to save to Neo4j');
+                    }
+                    
+                    const result = await response.json();
+                    showError(result.message);
+                    
+                    // Hide form after successful save
+                    document.getElementById('save-neo4j-form').style.display = 'none';
+                } catch (error) {
+                    showError(`Save to Neo4j failed: ${error.message}`);
+                } finally {
+                    // Restore button state
+                    saveButton.innerHTML = originalText;
+                    saveButton.disabled = false;
+                }
+            });
+            
             // File selection functionality
             document.getElementById('file-upload').addEventListener('change', function(e) {
                 const file = e.target.files[0];
@@ -763,7 +854,7 @@
                 
                 try {
                     // Show loading spinner
-                    connectButton.innerHTML = '<div class="spinner"></div> Connecting...';
+                    connectButton.innerHTML = '<div极="spinner"></div> Connecting...';
                     connectButton.disabled = true;
                     
                     const uri = document.getElementById('neo4j-uri').value;
@@ -775,15 +866,15 @@
                         return;
                     }
                     
+                    const formData = new FormData();
+                    formData.append('uri', uri);
+                    formData.append('user', user);
+                    formData.append('password', password);
+                    formData.append('query', 'MATCH (n) RETURN n LIMIT 100');
+                    
                     const response = await fetch('/load_kg_from_neo4j', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            uri, 
-                            user, 
-                            password,
-                            query: 'MATCH (n) RETURN n LIMIT 100'
-                        })
+                        body: formData
                     });
                     
                     if (!response.ok) {
