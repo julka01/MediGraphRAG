@@ -638,10 +638,22 @@
         }
         setupModelDropdowns();
         
+        // Add event listeners to vendor dropdowns
+        document.getElementById('kg-provider').addEventListener('change', function() {
+            updateModelDropdown('kg-provider', 'kg-model');
+        });
+        
+        document.getElementById('rag-vendor').addEventListener('change', function() {
+            updateModelDropdown('rag-vendor', 'rag-model');
+        });
+        
         async function updateModelDropdown(vendorSelectId, modelSelectId) {
             const vendorSelect = document.getElementById(vendorSelectId);
             const modelSelect = document.getElementById(modelSelectId);
             const vendor = vendorSelect.value;
+            
+            // Show loading indicator
+            modelSelect.innerHTML = '<option value="">Loading models...</option>';
             
             try {
                 const response = await fetch(`/models/${vendor}`);
@@ -650,12 +662,25 @@
                 const data = await response.json();
                 modelSelect.innerHTML = '';
                 
-                data.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model;
-                    option.textContent = model;
-                    modelSelect.appendChild(option);
-                });
+        data.models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            
+            // Map model names to more user-friendly display names
+            let displayName = model;
+            if (vendor === 'openrouter') {
+                // Extract the last part after the last slash
+                const parts = model.split('/');
+                if (parts.length > 1) {
+                    displayName = parts[parts.length - 1];
+                }
+                // Remove any suffixes after colon
+                displayName = displayName.split(':')[0];
+            }
+            
+            option.textContent = displayName;
+            modelSelect.appendChild(option);
+        });
                 
                 // Preselect first model
                 if (data.models.length > 0) {

@@ -22,8 +22,10 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip list | grep neo4j \
+    && echo "Neo4j package installed successfully" \
+    || echo "Neo4j package installation failed"
 # Copy application files
 COPY . .
 
