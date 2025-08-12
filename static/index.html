@@ -491,7 +491,10 @@
                             </div>
                         </div>
                         
-            <div id="chat-box"></div>
+            <div id="chat-box" style="max-height: 300px;"></div>
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <button id="clear-chat-btn" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Chat</button>
+            </div>
             <div class="chat-input-container">
                 <textarea id="question" placeholder="Ask a question..." onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuestion(); }"></textarea>
                 <button id="send-btn" onclick="sendQuestion()">Send</button>
@@ -1038,8 +1041,13 @@
                 }
             });
             
-            // Attach handlers
-            document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
+        // Attach handlers
+        document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
+        
+        // Clear chat button functionality
+        document.getElementById('clear-chat-btn').addEventListener('click', function() {
+            document.getElementById('chat-box').innerHTML = '';
+        });
             
             // Initialize model dropdowns immediately
             setupModelDropdowns();
