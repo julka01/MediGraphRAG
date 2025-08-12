@@ -339,11 +339,13 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
     ontology_instructions = ""
     if ontology:
         ontology_instructions = f"""
-        Use the following ontology to guide your extraction:
-        {json.dumps(ontology, indent=2)}
-        
-        Only use node labels and relationship types defined in the ontology.
-        """
+    Strictly use ONLY the node labels and relationship types from the ontology below. 
+    If no suitable node label exists for an entity, assign it the label "Custom" and provide a descriptive name in properties["name"].
+    If no suitable relationship type exists, omit that relationship.
+    Always prefer the exact label and type string from the ontology — do not rephrase or invent.
+    Ontology:
+    {json.dumps(ontology, indent=2)}
+    """
     
     prompt = ChatPromptTemplate.from_template("""
     You are an expert knowledge graph extraction system. Analyze the following text and extract a detailed knowledge graph with entities and relationships. 

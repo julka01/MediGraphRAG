@@ -420,6 +420,15 @@
                         <button id="load-neo4j">From Neo4j</button>
                     </div>
                     <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
+                    <div style="margin-top: 10px;">
+                        <label for="ontology-upload" style="font-size: 12px;">Optional Ontology File:</label>
+                        <input type="file" id="ontology-upload" accept=".json,.owl" style="display:none">
+                        <button id="select-ontology" style="font-size: 12px; padding: 4px 8px;">Select Ontology</button>
+                        <div style="font-size: 10px; color: #666; margin-top: 5px;">
+                            <strong>Note:</strong> Supported JSON and OWL
+                        </div>
+                    </div>
+                    <div id="selected-ontology" style="font-size: 12px; margin-top: 5px;"></div>
                     
                     <div id="file-selection">
                         <div id="selected-file" style="font-size: 12px; margin-bottom: 10px;"></div>
@@ -428,8 +437,8 @@
                     
                 <div id="neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
                     <button id="close-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
-                    <input type="text" id="neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)" style="margin-bottom: 10px;">
-                    <input type="text" id="neo4j-user" placeholder="Username" style="margin-bottom: 10px;">
+                    <input type="text" id="neo4j-uri" placeholder="Neo4j URI" style="margin-bottom: 10px;" value="bolt://localhost:7687">
+                    <input type="text" id="neo4j-user" placeholder="Username" style="margin-bottom: 10px;" value="neo4j">
                     <input type="password" id="neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
                     <button id="connect-neo4j">Connect</button>
                 </div>
@@ -437,8 +446,8 @@
                 <div id="save-neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
                     <button id="close-save-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
                     <h4>Save to Neo4j</h4>
-                    <input type="text" id="save-neo4j-uri" placeholder="Neo4j URI (e.g. bolt://localhost:7687)" style="margin-bottom: 10px;">
-                    <input type="text" id="save-neo4j-user" placeholder="Username" style="margin-bottom: 10px;">
+                    <input type="text" id="save-neo4j-uri" placeholder="Neo4j URI" style="margin-bottom: 10px;" value="bolt://localhost:7687">
+                    <input type="text" id="save-neo4j-user" placeholder="Username" style="margin-bottom: 10px;" value="neo4j">
                     <input type="password" id="save-neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
                     <button id="save-to-neo4j">Save KG to Neo4j</button>
                 </div>
@@ -772,13 +781,46 @@
                     // Hide form after successful save
                     document.getElementById('save-neo4j-form').style.display = 'none';
                 } catch (error) {
-                    showError(`Save to Neo4j failed: ${error.message}`);
+                    // Handle different error types with length limit
+                    let errorMsg;
+                    if (error instanceof Error) {
+                        errorMsg = error.message;
+                    } else if (typeof error === 'object') {
+                        try {
+                            errorMsg = JSON.stringify(error);
+                        } catch (e) {
+                            errorMsg = 'Unknown error object';
+                        }
+                    } else {
+                        errorMsg = String(error);
+                    }
+                    // Limit error message to 200 characters
+                    errorMsg = errorMsg.length > 200 ? errorMsg.substring(0, 200) + '...' : errorMsg;
+                    showError(`Save to Neo4j failed: ${errorMsg}`);
                 } finally {
                     // Restore button state
                     saveButton.innerHTML = originalText;
                     saveButton.disabled = false;
                 }
             });
+            
+            // Ontology selection functionality
+            document.getElementById('select-ontology').addEventListener('click', function() {
+                document.getElementById('ontology-upload').click();
+            });
+            
+        document.getElementById('ontology-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                if (!file.name.endsWith('.json') && !file.name.endsWith('.owl')) {
+                    showError('Only JSON and OWL ontology files are supported');
+                    e.target.value = '';
+                    document.getElementById('selected-ontology').textContent = '';
+                    return;
+                }
+                document.getElementById('selected-ontology').textContent = `Ontology: ${file.name}`;
+            }
+        });
             
             // File selection functionality
             document.getElementById('file-upload').addEventListener('change', function(e) {
@@ -812,6 +854,9 @@
                     const file = fileInput.files[0];
                     if (!file) return;
                     
+                    const ontologyFileInput = document.getElementById('ontology-upload');
+                    const ontologyFile = ontologyFileInput.files[0];
+                    
                     const provider = document.getElementById('kg-provider').value;
                     const model = document.getElementById('kg-model').value;
                     
@@ -819,6 +864,9 @@
                     formData.append('file', file);
                     formData.append('provider', provider);
                     formData.append('model', model);
+                    if (ontologyFile) {
+                        formData.append('ontology', ontologyFile);
+                    }
                     
                     const response = await fetch('/load_kg_from_file', {
                         method: 'POST',
@@ -854,7 +902,7 @@
                 
                 try {
                     // Show loading spinner
-                    connectButton.innerHTML = '<div极="spinner"></div> Connecting...';
+                    connectButton.innerHTML = '<div class="spinner"></div> Connecting...';
                     connectButton.disabled = true;
                     
                     const uri = document.getElementById('neo4j-uri').value;
@@ -889,7 +937,20 @@
                     // Hide form after successful connection
                     document.getElementById('neo4j-form').style.display = 'none';
                 } catch (error) {
-                    showError(`Neo4j loading failed: ${error.message}`);
+                    // Handle different error types
+                    let errorMsg;
+                    if (error instanceof Error) {
+                        errorMsg = error.message;
+                    } else if (typeof error === 'object') {
+                        try {
+                            errorMsg = JSON.stringify(error);
+                        } catch (e) {
+                            errorMsg = 'Unknown error object';
+                        }
+                    } else {
+                        errorMsg = String(error);
+                    }
+                    showError(`Neo4j loading failed: ${errorMsg}`);
                 } finally {
                     // Restore button state
                     connectButton.innerHTML = originalText;
