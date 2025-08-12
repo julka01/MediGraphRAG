@@ -348,36 +348,42 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
     """
     
     prompt = ChatPromptTemplate.from_template("""
-    You are an expert knowledge graph extraction system. Analyze the following text and extract a detailed knowledge graph with entities and relationships. 
+    You are an expert biomedical knowledge graph extraction system. Analyze the following clinical text and extract a detailed knowledge graph with medically relevant entities. 
     {ontology_instructions}
     Follow these guidelines:
 
-    1. Identify all important entities (people, organizations, concepts, locations, etc.)
-    2. Extract relationships between entities
-    3. For each entity, include:
+    1. Identify all medically relevant entities from the text (diseases, stages, treatments, procedures, biomarkers, clinical guidelines, organisations, and other biomedical concepts)
+    2. For every extracted entity:
+        - Set "label" as the exact ontology label if matched; otherwise "Custom"
+        - If matched, include "ontology_id" from the ontology in properties
+    3. Extract relationships between entities
+    4. For each entity, include:
         - id: unique numerical ID
-        - label: entity type (e.g., Person, Organization, Concept)
-        - properties: key-value pairs of attributes (min. 2 properties per entity)
-    4. For each relationship, include:
+        - properties: key-value pairs of attributes (min. 2 properties per entity). 
+          If available in the text, include:
+            * evidence_level
+            * guideline_section
+            * publication_year
+    5. For each relationship, include:
         - from: source entity ID
         - to: target entity ID
-        - type: relationship type (e.g., WORKS_FOR, LOCATED_IN)
+        - type: relationship type (e.g., TREATS, DIAGNOSES, ASSOCIATED_WITH)
         - properties: relationship attributes if available
     
-    5. Use this JSON structure:
+    6. Use this JSON structure:
         {{
             "nodes": [
-                {{"id": 1, "label": "Person", "properties": {{"name": "John Doe", "title": "CEO"}}}},
-                {{"id": 2, "label": "Company", "properties": {{"name": "Acme Inc", "industry": "Technology"}}}}
+                {{"id": 1, "label": "Disease", "properties": {{"name": "Prostate Cancer", "stage": "T2c", "evidence_level": "1a", "ontology_id": "ONT:0001"}}}},
+                {{"id": 2, "label": "Treatment", "properties": {{"name": "Radical Prostatectomy", "guideline_section": "5.2.1"}}}}
             ],
             "relationships": [
-                {{"from": 1, "to": 2, "type": "WORKS_FOR", "properties": {{"role": "CEO", "since": "2020"}}}}
+                {{"from": 2, "to": 1, "type": "TREATS", "properties": {{"efficacy": "High"}}}}
             ]
         }}
     
-    6. Ensure all IDs are unique and relationships reference existing node IDs.
-    7. Include at least 5 nodes and 3 relationships unless the text is very short.
-    8. Return ONLY valid JSON - no additional text or explanations.
+    7. Ensure all IDs are unique and relationships reference existing node IDs.
+    8. Include at least 5 nodes and 3 relationships unless the text is very short.
+    9. Return ONLY valid JSON - no additional text or explanations.
 
     Text:
     {text}
@@ -392,7 +398,9 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
     try:
         return json.loads(result)
     except json.JSONDecodeError:
-        json_match = re.search(r'\{[\s\S]*\}', result)
+        # First clean trailing commas that might cause parsing issues
+        cleaned = re.sub(r',(\s*[}\]])', r'\1', result)
+        json_match = re.search(r'\{[\s\S]*\}', cleaned)
         if json_match:
             try:
                 return json.loads(json_match.group())

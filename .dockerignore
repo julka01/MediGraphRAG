@@ -1,0 +1,32 @@
+# Ignore git files
+.git
+.gitignore
+
+# Ignore environment files
+.env
+
+# Ignore uploads and test files
+uploads/
+test_*
+*.pdf
+*.json
+*.owl
+*.txt
+!requirements.txt
+
+# Ignore Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.python-version
+venv/
+env/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.iml
+
+# Ignore macOS system files
+.DS_Store
