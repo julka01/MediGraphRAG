@@ -497,41 +497,56 @@ async def chat(message: Message):
             detail=f"Error processing request: {str(e)}"
         )
 
+class SaveToNeo4jRequest(BaseModel):
+    kg_id: str
+    uri: str
+    user: str
+    password: str
+
 @app.post("/save_kg_to_neo4j")
-async def save_kg_to_neo4j(
-    kg_id: str = Form(...),
-    uri: str = Form(...),
-    user: str = Form(...),
-    password: str = Form(...)
-):
+async def save_kg_to_neo4j(request: SaveToNeo4jRequest):
+    kg_id = request.kg_id
+    uri = request.uri
+    user = request.user
+    password = request.password
     try:
+        print(f"Received save request for KG ID: {kg_id}")
+        print(f"Using Neo4j URI: {uri}, User: {user}")
+        
         if kg_id not in knowledge_graphs:
-            raise HTTPException(status_code=404, detail="Knowledge graph not found")
+            print(f"KG ID {kg_id} not found in knowledge_graphs")
+            return {
+                "status": "error",
+                "message": "Knowledge graph not found",
+                "details": None
+            }, 404
             
         graph_data = knowledge_graphs[kg_id]["graph"]
+        print(f"Graph data for {kg_id}: Nodes: {len(graph_data.get('nodes', []))}, Relationships: {len(graph_data.get('relationships', []))}")
+        
         result = kg_loader.save_to_neo4j(uri, user, password, graph_data)
         
-        if result['status'] == 'error':
-            # Convert error details to JSON string for proper serialization
-            error_details = json.dumps(result.get('details', result))
-            raise ValueError(error_details)
+        # Return the result from kg_loader, which includes status, message, and details
+        if result['status'] == 'success':
+            print(f"Successfully saved KG {kg_id} to Neo4j")
+            return result
+        else:
+            print(f"Failed to save KG {kg_id}: {result.get('message')}")
+            return {
+                "status": "error",
+                "message": result.get('message', 'Failed to save knowledge graph to Neo4j'),
+                "details": result.get('details', {})
+            }, 400
             
-        return {"message": result['message']}
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        print(f"Neo4j saving error: {error_traceback}")
-        # Include the full error details in the response
-        try:
-            error_details = json.loads(str(e))
-            detail_msg = f"Neo4j saving failed: {error_details.get('error_message', str(e))}"
-        except json.JSONDecodeError:
-            detail_msg = f"Neo4j saving failed: {str(e)}"
-            
-        raise HTTPException(
-            status_code=400,
-            detail=detail_msg
-        )
+        print(f"Unexpected error saving KG: {error_traceback}")
+        return {
+            "status": "error",
+            "message": "Internal server error",
+            "details": error_traceback
+        }, 500
         
 @app.get("/graph/{kg_id}")
 async def get_graph(kg_id: str):
@@ -551,4 +566,4 @@ async def root():
     return RedirectResponse(url="/static/index.html")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+    uvicorn.run(app, host="0.0.0.0", port=8004)

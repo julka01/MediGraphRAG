@@ -202,6 +202,7 @@ class KGLoader:
             clear_database: If True, clears the database before saving (default: False)
         """
         try:
+            # Use password directly without escaping
             driver = GraphDatabase.driver(uri, auth=(user, password))
             
             with driver.session() as session:
@@ -215,27 +216,25 @@ class KGLoader:
                 # Create all nodes (entities and supernodes)
                 all_nodes = graph_data.get("nodes", []) + graph_data.get("supernodes", [])
                 for node in all_nodes:
-                    labels = node.get("label", "Node")
+                    # Sanitize labels: replace spaces with underscores
+                    labels = node.get("label", "Node").replace(" ", "_")
                     properties = {k: v for k, v in node.get("properties", {}).items()}
                     result = session.run(
-                        f"CREATE (n:{labels} $properties) RETURN id(n)",
+                        f"CREATE (n:{labels} $properties) RETURN elementId(n) as node_id",
                         properties=properties
                     )
-                    node_id = result.single()[0]
+                    node_id = result.single()["node_id"]
                     node_map[node["id"]] = node_id
                 
                 # Create relationships using the node_map to reference nodes
                 for rel in graph_data.get("relationships", []):
-                    start_node_id = rel["from"]  # This is the original node id (e.g., "entity_0")
-                    end_node_id = rel["to"]      # This is the original node id
-                    
-                    # Get the Neo4j internal IDs from node_map
-                    start_neo4j_id = node_map.get(start_node_id)
-                    end_neo4j_id = node_map.get(end_node_id)
+                    # Use the original node IDs to look up Neo4j internal IDs
+                    start_neo4j_id = node_map.get(rel["from"])
+                    end_neo4j_id = node_map.get(rel["to"])
                     
                     if start_neo4j_id is not None and end_neo4j_id is not None:
                         session.run(
-                            "MATCH (a), (b) WHERE id(a) = $start_neo4j_id AND id(b) = $end_neo4j_id "
+                            "MATCH (a), (b) WHERE elementId(a) = $start_neo4j_id AND elementId(b) = $end_neo4j_id "
                             "CREATE (a)-[r:%s $properties]->(b)" % rel['type'],
                             start_neo4j_id=start_neo4j_id,
                             end_neo4j_id=end_neo4j_id,
@@ -243,7 +242,7 @@ class KGLoader:
                         )
                     else:
                         print(f"Warning: Could not find nodes for relationship {rel['id']} "
-                              f"({start_node_id} -> {end_node_id})")
+                              f"({rel['from']} -> {rel['to']})")
                 
                 return {
                     "status": "success", 
