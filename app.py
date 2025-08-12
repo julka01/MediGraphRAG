@@ -45,71 +45,74 @@ vector_stores: Dict[str, Any] = {}
 # Create KGLoader instance
 kg_loader = KGLoader()
 
-# Model providers configuration
-MODEL_PROVIDERS = {
-    "openrouter": {
-        "deepseek/deepseek-r1-0528:free": ChatOpenAI(
-            model="deepseek/deepseek-r1-0528:free",
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        ) if os.getenv("OPENROUTER_API_KEY") else None,
-        "openai/gpt-4": ChatOpenAI(
-            model="gpt-4",
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        ) if os.getenv("OPENROUTER_API_KEY") else None,
-        "anthropic/claude-3-opus": ChatOpenAI(
-            model="anthropic/claude-3-opus",
-            openai_api_base="https://openrouter.ai/api/v1",
-            openai_api_key=os.getenv("OPENROUTER_API_KEY")
-        ) if os.getenv("OPENROUTER_API_KEY") else None
-    },
-    "ollama": {
-        "deepseek-r1-0528": Ollama(model="deepseek-r1-0528"),
-        "llama3": Ollama(model="llama3"),
-        "mistral": Ollama(model="mistral")
-    },
-    "openai": {
-        "gpt-4": ChatOpenAI(model="gpt-4", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
-        "gpt-3.5-turbo": ChatOpenAI(model="gpt-3.5-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
-        "gpt-4-turbo": ChatOpenAI(model="gpt-4-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
-    },
-    "anthropic": {
-        "claude-3-opus": ChatOpenAI(
-            model="claude-3-opus",
-            openai_api_base="https://api.anthropic.com",
-            openai_api_key=os.getenv("ANTHROPIC_API_KEY")
-        ) if os.getenv("ANTHROPIC_API_KEY") else None,
-        "claude-3-sonnet": ChatOpenAI(
-            model="claude-3-sonnet",
-            openai_api_base="https://api.anthropic.com",
-            openai_api_key=os.getenv("ANTHROPIC_API_KEY")
-        ) if os.getenv("ANTHROPIC_API_KEY") else None
-    },
-    "google": {
-        "gemini-pro": ChatOpenAI(
-            model="gemini-pro",
-            openai_api_base="https://generativelanguage.googleapis.com/v1beta/models",
-            openai_api_key=os.getenv("GOOGLE_API_KEY")
-        ) if os.getenv("GOOGLE_API_KEY") else None
+def get_model_providers():
+    """Initialize model providers with dynamic environment variable loading"""
+    providers = {
+        "openrouter": {
+            "deepseek/deepseek-r1-0528:free": ChatOpenAI(
+                model="deepseek/deepseek-r1-0528:free",
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=os.getenv("OPENROUTER_API_KEY")
+            ) if os.getenv("OPENROUTER_API_KEY") else None,
+            "openai/gpt-4": ChatOpenAI(
+                model="gpt-4",
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=os.getenv("OPENROUTER_API_KEY")
+            ) if os.getenv("OPENROUTER_API_KEY") else None,
+            "anthropic/claude-3-opus": ChatOpenAI(
+                model="anthropic/claude-3-opus",
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=os.getenv("OPENROUTER_API_KEY")
+            ) if os.getenv("OPENROUTER_API_KEY") else None
+        },
+        "ollama": {
+            "deepseek-r1-0528": Ollama(model="deepseek-r1-0528"),
+            "llama3": Ollama(model="llama3"),
+            "mistral": Ollama(model="mistral")
+        },
+        "openai": {
+            "gpt-4": ChatOpenAI(model="gpt-4", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
+            "gpt-3.5-turbo": ChatOpenAI(model="gpt-3.5-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
+            "gpt-4-turbo": ChatOpenAI(model="gpt-4-turbo", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+        },
+        "anthropic": {
+            "claude-3-opus": ChatOpenAI(
+                model="claude-3-opus",
+                openai_api_base="https://api.anthropic.com",
+                openai_api_key=os.getenv("ANTHROPIC_API_KEY")
+            ) if os.getenv("ANTHROPIC_API_KEY") else None,
+            "claude-3-sonnet": ChatOpenAI(
+                model="claude-3-sonnet",
+                openai_api_base="https://api.anthropic.com",
+                openai_api_key=os.getenv("ANTHROPIC_API_KEY")
+            ) if os.getenv("ANTHROPIC_API_KEY") else None
+        },
+        "google": {
+            "gemini-pro": ChatOpenAI(
+                model="gemini-pro",
+                openai_api_base="https://generativelanguage.googleapis.com/v1beta/models",
+                openai_api_key=os.getenv("GOOGLE_API_KEY")
+            ) if os.getenv("GOOGLE_API_KEY") else None
+        }
     }
-}
+    
+    # Remove any providers that have no valid models
+    for provider, models in list(providers.items()):
+        providers[provider] = {k: v for k, v in models.items() if v is not None}
+        if not providers[provider]:
+            del providers[provider]
+            
+    print("Loaded MODEL_PROVIDERS:", json.dumps(list(providers.keys()), indent=2))
+    print(f"OpenRouter API key present: {bool(os.getenv('OPENROUTER_API_KEY'))}")
+    return providers
 
-# Remove any providers that have no valid models
-for provider, models in list(MODEL_PROVIDERS.items()):
-    # Remove None values from models
-    MODEL_PROVIDERS[provider] = {k: v for k, v in models.items() if v is not None}
-    # Remove provider if no models left
-    if not MODEL_PROVIDERS[provider]:
-        del MODEL_PROVIDERS[provider]
-
-print("Loaded MODEL_PROVIDERS:", json.dumps(list(MODEL_PROVIDERS.keys()), indent=2))
+MODEL_PROVIDERS = get_model_providers()
 # Endpoint to get available models
 @app.get("/models/{vendor}")
 async def get_models(vendor: str):
     if vendor in MODEL_PROVIDERS:
-        # Normalize model names by replacing problematic characters
-        models = [model.replace(":", "-") for model in MODEL_PROVIDERS[vendor].keys()]
+        # Return original model names without modification
+        models = list(MODEL_PROVIDERS[vendor].keys())
         return {"models": models}
     return {"models": []}
 
@@ -324,7 +327,7 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
             "claude-3-sonnet": "anthropic/claude-3-sonnet",
             "claude-3-haiku": "anthropic/claude-3-haiku",
             "gemini-pro": "google/gemini-pro",
-            "deepseek/deepseek-r1-0528:free": "deepseek/deepseek-r1-0528:free",
+            "deepseek-deepseek-r1-0528-free": "deepseek/deepseek-r1-0528:free",
             "mistral-7b": "mistralai/mistral-7b-instruct",
             "llama-3-70b": "meta-llama/llama-3-70b-instruct"
         }
