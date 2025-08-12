@@ -103,11 +103,14 @@ for provider, models in list(MODEL_PROVIDERS.items()):
     if not MODEL_PROVIDERS[provider]:
         del MODEL_PROVIDERS[provider]
 
+print("Loaded MODEL_PROVIDERS:", json.dumps(list(MODEL_PROVIDERS.keys()), indent=2))
 # Endpoint to get available models
 @app.get("/models/{vendor}")
 async def get_models(vendor: str):
     if vendor in MODEL_PROVIDERS:
-        return {"models": list(MODEL_PROVIDERS[vendor].keys())}
+        # Normalize model names by replacing problematic characters
+        models = [model.replace(":", "-") for model in MODEL_PROVIDERS[vendor].keys()]
+        return {"models": models}
     return {"models": []}
 
 # Embeddings providers
