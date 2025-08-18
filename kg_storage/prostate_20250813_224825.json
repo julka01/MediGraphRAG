@@ -1,0 +1,170 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Disease",
+      "properties": {
+        "name": "Prostate Cancer",
+        "ontology_id": "DOID:10283",
+        "description": "Cancer arising from prostate cells",
+        "prevalence": "Most common cancer in U.S. men after skin cancer"
+      }
+    },
+    {
+      "id": 2,
+      "label": "Stage",
+      "properties": {
+        "name": "Early Stage",
+        "survival_rate": ">99% 5-year survival",
+        "evidence_level": "Population statistics"
+      }
+    },
+    {
+      "id": 3,
+      "label": "Stage",
+      "properties": {
+        "name": "Advanced Stage",
+        "common_symptoms": "Pelvic/back pain, leg weakness, anemia, weight loss"
+      }
+    },
+    {
+      "id": 4,
+      "label": "AnatomicalStructure",
+      "properties": {
+        "name": "Prostate",
+        "ontology_id": "UBERON:0002367",
+        "function": "Produces semen fluid and PSA",
+        "location": "Below bladder, surrounds urethra"
+      }
+    },
+    {
+      "id": 5,
+      "label": "Biomarker",
+      "properties": {
+        "name": "Prostate-Specific Antigen",
+        "abbreviation": "PSA",
+        "ontology_id": "UniProt:P07288",
+        "clinical_use": "Prostate cancer screening marker"
+      }
+    },
+    {
+      "id": 6,
+      "label": "Procedure",
+      "properties": {
+        "name": "Digital Rectal Exam",
+        "abbreviation": "DRE",
+        "ontology_id": "NCIT:C28161",
+        "purpose": "Physical prostate examination"
+      }
+    },
+    {
+      "id": 7,
+      "label": "Procedure",
+      "properties": {
+        "name": "Biopsy",
+        "ontology_id": "NCIT:C15189",
+        "diagnostic_role": "Confirms prostate cancer diagnosis"
+      }
+    },
+    {
+      "id": 8,
+      "label": "RiskFactor",
+      "properties": {
+        "name": "Age >50",
+        "description": "Primary risk factor",
+        "impact": "Almost all cases occur in this group"
+      }
+    },
+    {
+      "id": 9,
+      "label": "RiskFactor",
+      "properties": {
+        "name": "BRCA1 Mutation",
+        "associated_cancers": "Prostate, breast, ovarian, pancreatic"
+      }
+    },
+    {
+      "id": 10,
+      "label": "Symptom",
+      "properties": {
+        "name": "Frequent Urination",
+        "associated_stage": "Early/Advanced",
+        "specificity": "Non-specific (may indicate other disorders)"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 1,
+      "to": 2,
+      "type": "HAS_STAGE",
+      "properties": {
+        "detection_importance": "Critical for treatment success"
+      }
+    },
+    {
+      "from": 1,
+      "to": 3,
+      "type": "HAS_STAGE",
+      "properties": {
+        "progression": "May spread to bones, lymph nodes, lungs"
+      }
+    },
+    {
+      "from": 4,
+      "to": 5,
+      "type": "PRODUCES",
+      "properties": {
+        "biological_role": "Component of semen"
+      }
+    },
+    {
+      "from": 5,
+      "to": 1,
+      "type": "BIOMARKER_FOR",
+      "properties": {
+        "alert_note": "Elevated levels may indicate cancer but also benign conditions"
+      }
+    },
+    {
+      "from": 6,
+      "to": 1,
+      "type": "DETECTS",
+      "properties": {
+        "screening_setting": "Primary care clinical exam"
+      }
+    },
+    {
+      "from": 7,
+      "to": 1,
+      "type": "DIAGNOSES",
+      "properties": {
+        "gold_standard": "Definitive diagnostic confirmation"
+      }
+    },
+    {
+      "from": 8,
+      "to": 1,
+      "type": "RISK_FACTOR_FOR",
+      "properties": {
+        "population_impact": "Most significant non-genetic risk factor"
+      }
+    },
+    {
+      "from": 9,
+      "to": 1,
+      "type": "GENETIC_RISK_FACTOR",
+      "properties": {
+        "inheritance": "Hereditary cancer syndrome association"
+      }
+    },
+    {
+      "from": 10,
+      "to": 1,
+      "type": "SYMPTOM_OF",
+      "properties": {
+        "clinical_note": "Often mistaken for benign prostatic hyperplasia"
+      }
+    }
+  ]
+}

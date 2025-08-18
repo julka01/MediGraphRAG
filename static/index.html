@@ -165,7 +165,7 @@
             color: white;
             border-radius: 5px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
         }
         
         #save-to-neo4j-btn {
@@ -205,6 +205,8 @@
             margin-bottom: 15px;
             overflow-y: auto;
             background: #f9f9f9;
+            min-height: 200px; /* Minimum height */
+            max-height: calc(100vh - 400px); /* Responsive max height */
         }
 
         .chat-input-container {
@@ -281,7 +283,7 @@
             border: none;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: bold;
             transition: all 0.3s ease;
         }
@@ -403,6 +405,7 @@
 <select id="kg-provider">
     <option value="openai">OpenAI</option>
     <option value="openrouter">OpenRouter</option>
+    <option value="lmu_lightllm">LMU Lightllm</option>
     <option value="ollama">Ollama</option>
     <option value="anthropic">Anthropic</option>
     <option value="google">Google</option>
@@ -416,10 +419,11 @@
                         </select>
                     </div>
                     
-                    <div class="kg-options">
-                        <button id="load-file">Select File</button>
-                        <button id="load-neo4j">From Neo4j</button>
-                    </div>
+            <div class="kg-options">
+                <button id="load-file">Select File</button>
+                <button id="load-neo4j">From Neo4j</button>
+                <button id="import-kg">Import KG</button>
+            </div>
                     <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
                     <div style="margin-top: 10px;">
                         <label for="ontology-upload" style="font-size: 12px;">Optional Ontology File:</label>
@@ -457,6 +461,7 @@
                 <div id="graph-container"></div>
                 <div class="graph-controls">
                     <button class="zoom-btn" id="save-to-neo4j-btn">Save to Neo4j</button>
+                    <button class="zoom-btn" id="export-kg">Export KG</button>
                     <button class="zoom-btn" id="zoom-in">+</button>
                     <button class="zoom-btn" id="zoom-out">-</button>
                     <button class="zoom-btn" id="reset-zoom">↺</button>
@@ -473,6 +478,7 @@
                                 <label for="rag-vendor">Vendor:</label>
 <select id="rag-vendor">
     <option value="openrouter">OpenRouter</option>
+    <option value="lmu_lightllm">LMU Lightllm</option>
     <option value="openai">OpenAI</option>
     <option value="ollama">Ollama</option>
     <option value="anthropic">Anthropic</option>
@@ -491,7 +497,7 @@
                             </div>
                         </div>
                         
-            <div id="chat-box" style="max-height: 300px;"></div>
+            <div id="chat-box"></div>
             <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
                 <button id="clear-chat-btn" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Chat</button>
             </div>
@@ -988,6 +994,88 @@
                 }
             }
             
+async function saveKGToFile() {
+    if (!network) {
+        showError('No graph to save');
+        return;
+    }
+    
+    try {
+        if (!currentKGId) {
+            showError('No knowledge graph loaded');
+            return;
+        }
+        
+        // Prompt for folder path
+        const folderPath = prompt('Enter the folder path to save the knowledge graph:', '/Users/sahibjulka/Documents');
+        if (!folderPath) return; // User canceled
+        
+        // Prompt for filename
+        const filename = prompt('Enter filename for the knowledge graph:', 'knowledge_graph.json');
+        if (!filename) return; // User canceled
+        
+        // Ensure .json extension
+        const finalFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
+        
+        // Use backend export endpoint
+        const exportButton = document.getElementById('export-kg');
+        const originalText = exportButton.textContent;
+        exportButton.innerHTML = '<div class="spinner"></div> Exporting...';
+        exportButton.disabled = true;
+        
+        try {
+            const response = await fetch('/export_kg_to_file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kg_id: currentKGId,
+                    folder_path: folderPath,
+                    filename: finalFilename
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to export KG');
+            }
+            
+            const result = await response.json();
+            showError(`Graph saved to ${folderPath}/${finalFilename}`);
+        } finally {
+            exportButton.innerHTML = originalText;
+            exportButton.disabled = false;
+        }
+    } catch (error) {
+        showError(`Failed to save graph: ${error.message}`);
+    }
+}
+            
+            function loadKGFromFile() {
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.json';
+                
+                fileInput.onchange = e => { 
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const graphData = JSON.parse(e.target.result);
+                            currentKGId = null; // Clear server ID
+                            initializeGraph(graphData);
+                            showError('Graph loaded from file');
+                        } catch (error) {
+                            showError(`Failed to load graph: ${error.message}`);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                
+                fileInput.click();
+            }
+            
         // Send question function with loading indicator
         window.sendQuestion = async function() {
             const input = document.getElementById('question');
@@ -1068,6 +1156,8 @@
             
         // Attach handlers
         document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
+        document.getElementById('export-kg').addEventListener('click', saveKGToFile);
+        document.getElementById('import-kg').addEventListener('click', loadKGFromFile);
         
         // Clear chat button functionality
         document.getElementById('clear-chat-btn').addEventListener('click', function() {

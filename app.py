@@ -65,6 +65,63 @@ def get_model_providers():
                 openai_api_key=os.getenv("OPENROUTER_API_KEY")
             ) if os.getenv("OPENROUTER_API_KEY") else None
         },
+        "lmu_lightllm": {
+            "eta/llama-3.3-70b-instruct": ChatOpenAI(
+                model="eta/llama-3.3-70b-instruct",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "meta/llama3.3-instruct:70b": ChatOpenAI(
+                model="meta/llama3.3-instruct:70b",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "meta/llama-3.3-70b-instruct": ChatOpenAI(
+                model="meta/llama-3.3-70b-instruct",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "bge-m3:567m": ChatOpenAI(
+                model="bge-m3:567m",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "deepseek-r1:32b-qwen-distill-q8_0": ChatOpenAI(
+                model="deepseek-r1:32b-qwen-distill-q8_0",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "deepseek-r1:70b": ChatOpenAI(
+                model="deepseek-r1:70b",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "linux6200/bge-reranker-v2-m3:latest": ChatOpenAI(
+                model="linux6200/bge-reranker-v2-m3:latest",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "llama3.2-vision:90b-instruct-q4_K_M": ChatOpenAI(
+                model="llama3.2-vision:90b-instruct-q4_K_M",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "nomic-embed-text:latest": ChatOpenAI(
+                model="nomic-embed-text:latest",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "phi4-mini:3.8b": ChatOpenAI(
+                model="phi4-mini:3.8b",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+            "qwen3:32b": ChatOpenAI(
+                model="qwen3:32b",
+                openai_api_base="https://litellm.info.med.uni-muenchen.de",
+                openai_api_key=os.getenv("LMU_LIGHTLLM_API_KEY")
+            ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
+        },
         "ollama": {
             "deepseek-r1-0528": Ollama(model="deepseek-r1-0528"),
             "llama3": Ollama(model="llama3"),
@@ -131,6 +188,12 @@ class Message(BaseModel):
     provider_rag: str
     model_rag: str
     kg_id: Optional[str] = None
+
+class ExportToFileRequest(BaseModel):
+    kg_id: str
+    folder_path: str
+    filename: str
+    base_path: Optional[str] = None
 
 @app.post("/generate_kg")
 async def generate_kg(file: bytes = File(...), provider_kg: str = Form("openrouter"), model_kg: str = Form("deepseek/deepseek-r1-0528:free")):
@@ -219,6 +282,9 @@ async def load_kg_from_file(
         
         # Create vector store for RAG
         create_vector_store(kg_id, text, provider)
+        
+        # Print confirmation that KG was stored with kg_id
+        print(f"KG stored successfully with ID: {kg_id}")
         
         return {
             "message": "Knowledge graph generated successfully",
@@ -466,15 +532,21 @@ def get_graph_context(kg_id: str) -> str:
 @app.post("/chat")
 async def chat(message: Message):
     try:
+        print(f"Chat request received - Question: '{message.question}', KG ID: '{message.kg_id}'")
+        
         if message.provider_rag not in MODEL_PROVIDERS or message.model_rag not in MODEL_PROVIDERS[message.provider_rag]:
             raise ValueError(f"Model {message.model_rag} not available for provider {message.provider_rag}")
         
         llm = MODEL_PROVIDERS[message.provider_rag][message.model_rag]
         context = ""
         if message.kg_id:
+            print(f"Looking up KG context for ID: {message.kg_id}")
             context = get_graph_context(message.kg_id)
             if not context:
+                print(f"Warning: No KG context found for ID: {message.kg_id}")
                 context = "No knowledge graph context available"
+            else:
+                print(f"Using KG context for ID: {message.kg_id}")
         
         if message.kg_id and context:
             prompt = ChatPromptTemplate.from_template(
@@ -558,6 +630,70 @@ async def save_kg_to_neo4j(request: SaveToNeo4jRequest):
         import traceback
         error_traceback = traceback.format_exc()
         print(f"Unexpected error saving KG: {error_traceback}")
+        return {
+            "status": "error",
+            "message": "Internal server error",
+            "details": error_traceback
+        }, 500
+        
+class DirectoryListRequest(BaseModel):
+    base_path: str = ""
+
+@app.post("/list_directories")
+async def list_directories(request: DirectoryListRequest):
+    try:
+        base_path = request.base_path or os.getcwd()
+        items = os.listdir(base_path)
+        directories = [item for item in items if os.path.isdir(os.path.join(base_path, item))]
+        return {
+            "status": "success",
+            "path": base_path,
+            "directories": directories
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+@app.post("/export_kg_to_file")
+async def export_kg_to_file(request: ExportToFileRequest):
+    kg_id = request.kg_id
+    folder_path = request.folder_path
+    filename = request.filename
+    
+    try:
+        # Validate filename has .json extension
+        if not filename.lower().endswith('.json'):
+            filename += '.json'
+        
+        # Use base_path if provided
+        full_folder_path = request.base_path or folder_path
+        
+        # Create full path
+        file_path = os.path.join(full_folder_path, filename)
+        
+        if kg_id not in knowledge_graphs:
+            return {
+                "status": "error",
+                "message": "Knowledge graph not found",
+                "details": None
+            }, 404
+            
+        graph_data = knowledge_graphs[kg_id]["graph"]
+        result = kg_loader.save_to_file(graph_data, file_path)
+        
+        if result['status'] == 'success':
+            return result
+        else:
+            return {
+                "status": "error",
+                "message": result.get('message', 'Failed to save knowledge graph to file'),
+                "details": result.get('details', {})
+            }, 400
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
         return {
             "status": "error",
             "message": "Internal server error",

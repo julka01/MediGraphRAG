@@ -262,6 +262,28 @@ class KGLoader:
             print(f"Error saving to Neo4j: {error_details}")
             return {"status": "error", "message": "Failed to save knowledge graph to Neo4j", "details": error_details}
 
+    def save_to_file(self, graph_data: Dict, file_path: str) -> Dict:
+        """Save knowledge graph to a JSON file
+        
+        Args:
+            graph_data: Knowledge graph data to save
+            file_path: Full path to output JSON file
+        """
+        try:
+            # Create directories if needed
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            with open(file_path, 'w') as f:
+                json.dump(graph_data, f, indent=2)
+            
+            return {
+                "status": "success", 
+                "message": f"Knowledge graph saved to {file_path}",
+                "file_path": file_path
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
 # Example usage
 if __name__ == "__main__":
     loader = KGLoader()
