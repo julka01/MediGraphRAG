@@ -8,9 +8,21 @@ from owlready2 import get_ontology
 
 class KGLoader:
     def __init__(self):
-        self.neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        # Handle both Docker and local environments
+        default_uri = "bolt://localhost:7687"
+        configured_uri = os.getenv("NEO4J_URI", default_uri)
+        
+        # If running in Docker, use the configured URI, otherwise use localhost
+        if os.getenv("DOCKER_ENV") == "true":
+            self.neo4j_uri = configured_uri
+        else:
+            # Replace docker service name with localhost for local development
+            self.neo4j_uri = configured_uri.replace("neo4j:7687", "localhost:7687")
+        
         self.neo4j_user = os.getenv("NEO4J_USER", "neo4j")
         self.neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
+        
+        print(f"KGLoader initialized with Neo4j URI: {self.neo4j_uri}")
         
     def _load_ontology(self, ontology_path: str) -> Dict:
         """Load ontology from JSON or OWL file"""

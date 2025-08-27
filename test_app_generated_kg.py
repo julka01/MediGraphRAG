@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-BASE_URL = "http://localhost:8003"
+BASE_URL = "http://localhost:8004"
 TEST_PDF = "test_document.pdf"
 
 def test_app_generated_kg():
@@ -32,8 +32,8 @@ def test_app_generated_kg():
     
     # Step 2: Save KG to Neo4j
     print("Saving KG to Neo4j...")
-    # Send as form data instead of JSON
-    form_data = {
+    # Send as JSON data
+    json_data = {
         "kg_id": kg_id,
         "uri": os.getenv("NEO4J_URI"),
         "user": os.getenv("NEO4J_USER"),
@@ -41,7 +41,7 @@ def test_app_generated_kg():
     }
     save_response = requests.post(
         f"{BASE_URL}/save_kg_to_neo4j",
-        data=form_data
+        json=json_data
     )
     
     if save_response.status_code != 200:

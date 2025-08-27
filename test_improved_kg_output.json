@@ -1,0 +1,48 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Disease",
+      "properties": {
+        "name": "Prostate",
+        "source": "fallback_extraction"
+      }
+    },
+    {
+      "id": 2,
+      "label": "Disease",
+      "properties": {
+        "name": "Cancer",
+        "source": "fallback_extraction"
+      }
+    },
+    {
+      "id": 5,
+      "label": "Disease",
+      "properties": {
+        "name": "Most",
+        "source": "fallback_extraction"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 1,
+      "to": 2,
+      "type": "ASSOCIATED_WITH",
+      "properties": {
+        "confidence": "low",
+        "source": "fallback_extraction"
+      }
+    },
+    {
+      "from": 2,
+      "to": 5,
+      "type": "ASSOCIATED_WITH",
+      "properties": {
+        "confidence": "low",
+        "source": "fallback_extraction"
+      }
+    }
+  ]
+}

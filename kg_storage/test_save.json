@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    {
+      "id": "test1",
+      "label": "TestNode",
+      "properties": {
+        "name": "TestNode1"
+      }
+    },
+    {
+      "id": "test2",
+      "label": "TestNode",
+      "properties": {
+        "name": "TestNode2"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": "test1",
+      "to": "test2",
+      "type": "CONNECTED_TO",
+      "properties": {
+        "strength": 0.8
+      }
+    }
+  ]
+}

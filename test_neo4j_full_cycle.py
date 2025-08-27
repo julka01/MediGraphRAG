@@ -12,10 +12,10 @@ loader = KGLoader()
 def test_neo4j_full_cycle():
     print("\n=== Starting Neo4j Full Cycle Test ===")
     
-    # Test credentials from environment
-    uri = os.getenv("NEO4J_URI")
-    user = os.getenv("NEO4J_USER")
-    password = os.getenv("NEO4J_PASSWORD")
+    # Use KGLoader's automatically detected URI and credentials
+    uri = loader.neo4j_uri
+    user = loader.neo4j_user
+    password = loader.neo4j_password
     
     print(f"Using Neo4j: {uri} with user: {user}")
     

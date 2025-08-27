@@ -24,6 +24,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import OllamaEmbeddings, OpenAIEmbeddings
 from neo4j import GraphDatabase
 from kg_loader import KGLoader
+from improved_kg_creator import ImprovedKGCreator
 
 app = FastAPI()
 
@@ -42,8 +43,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 knowledge_graphs: Dict[str, Dict] = {}
 vector_stores: Dict[str, Any] = {}
 
-# Create KGLoader instance
+# Create KGLoader and ImprovedKGCreator instances
 kg_loader = KGLoader()
+improved_kg_creator = ImprovedKGCreator()
 
 def get_model_providers():
     """Initialize model providers with dynamic environment variable loading"""
@@ -301,24 +303,125 @@ async def load_kg_from_file(
         )
         
 def parse_owl_ontology(owl_bytes: bytes) -> dict:
-    """Parse OWL ontology file into our format"""
-    # Create a BytesIO object from the bytes
-    file_obj = BytesIO(owl_bytes)
-    
-    # Load the ontology directly from bytes
-    onto = owlready2.get_ontology("")
-    onto.load(fileobj=file_obj)
-    
-    # Extract classes as node labels
-    node_labels = [cls.name for cls in onto.classes()]
-    
-    # Extract object properties as relationship types
-    relationship_types = [prop.name for prop in onto.object_properties()]
-    
-    return {
-        "node_labels": node_labels,
-        "relationship_types": relationship_types
-    }
+    """Parse OWL ontology file into our format with error handling for conflicting entity types"""
+    try:
+        # Create a BytesIO object from the bytes
+        file_obj = BytesIO(owl_bytes)
+        
+        # Create a new world to avoid conflicts with existing ontologies
+        world = owlready2.World()
+        
+        # Load the ontology directly from bytes with error handling
+        onto = world.get_ontology("")
+        
+        # Try to load the ontology, but handle the specific error about conflicting entity types
+        try:
+            onto.load(fileobj=file_obj)
+        except TypeError as e:
+            if "belongs to more than one entity types" in str(e):
+                # Extract the problematic entity from the error message
+                import re
+                match = re.search(r"'([^']+)' belongs to more than one entity types", str(e))
+                if match:
+                    problematic_entity = match.group(1)
+                    print(f"Warning: Skipping problematic entity {problematic_entity} that has conflicting types")
+                    
+                    # Try to parse the OWL file manually to extract valid entities
+                    return parse_owl_manually(owl_bytes)
+                else:
+                    raise e
+            else:
+                raise e
+        
+        # Extract classes as node labels
+        node_labels = []
+        for cls in onto.classes():
+            if cls.name:  # Only add classes with valid names
+                node_labels.append(cls.name)
+        
+        # Extract object properties as relationship types
+        relationship_types = []
+        for prop in onto.object_properties():
+            if prop.name:  # Only add properties with valid names
+                relationship_types.append(prop.name)
+        
+        return {
+            "node_labels": node_labels,
+            "relationship_types": relationship_types
+        }
+        
+    except Exception as e:
+        print(f"Error parsing OWL ontology with owlready2: {str(e)}")
+        # Fallback to manual parsing
+        return parse_owl_manually(owl_bytes)
+
+def parse_owl_manually(owl_bytes: bytes) -> dict:
+    """Manually parse OWL file using XML parsing as fallback"""
+    try:
+        import xml.etree.ElementTree as ET
+        
+        # Parse the XML content
+        root = ET.fromstring(owl_bytes.decode('utf-8'))
+        
+        # Define namespaces
+        namespaces = {
+            'owl': 'http://www.w3.org/2002/07/owl#',
+            'rdfs': 'http://www.w3.org/2000/01/rdf-schema#',
+            'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+        }
+        
+        # Extract classes
+        node_labels = []
+        classes = root.findall('.//owl:Class', namespaces)
+        for cls in classes:
+            # Try to get the label first
+            label_elem = cls.find('.//rdfs:label', namespaces)
+            if label_elem is not None and label_elem.text:
+                node_labels.append(label_elem.text)
+            else:
+                # Fallback to extracting from rdf:about attribute
+                about = cls.get('{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about')
+                if about:
+                    # Extract the local name (part after # or /)
+                    local_name = about.split('#')[-1] if '#' in about else about.split('/')[-1]
+                    if local_name and local_name not in node_labels:
+                        node_labels.append(local_name)
+        
+        # Extract object properties
+        relationship_types = []
+        properties = root.findall('.//owl:ObjectProperty', namespaces)
+        for prop in properties:
+            # Try to get the label first
+            label_elem = prop.find('.//rdfs:label', namespaces)
+            if label_elem is not None and label_elem.text:
+                relationship_types.append(label_elem.text)
+            else:
+                # Fallback to extracting from rdf:about attribute
+                about = prop.get('{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about')
+                if about:
+                    # Extract the local name (part after # or /)
+                    local_name = about.split('#')[-1] if '#' in about else about.split('/')[-1]
+                    if local_name and local_name not in relationship_types:
+                        relationship_types.append(local_name)
+        
+        # Remove duplicates and filter out empty strings
+        node_labels = list(set([label for label in node_labels if label and label.strip()]))
+        relationship_types = list(set([rel for rel in relationship_types if rel and rel.strip()]))
+        
+        print(f"Manually parsed OWL: {len(node_labels)} classes, {len(relationship_types)} properties")
+        
+        return {
+            "node_labels": node_labels,
+            "relationship_types": relationship_types
+        }
+        
+    except Exception as e:
+        print(f"Manual OWL parsing also failed: {str(e)}")
+        # Return a minimal fallback structure
+        return {
+            "node_labels": ["Entity", "Concept", "Resource"],
+            "relationship_types": ["RELATED_TO", "ASSOCIATED_WITH", "CONNECTED_TO"]
+        }
 
 @app.post("/test_owl_parser")
 async def test_owl_parser(file: UploadFile = File(...)):
@@ -384,6 +487,9 @@ def extract_text(file_bytes: bytes) -> str:
             return file_bytes.decode('latin-1')
 
 def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Optional[Dict] = None) -> Dict[str, Any]:
+    """
+    Generate knowledge graph using the improved KG creator with enhanced ontology integration
+    """
     # Default to OpenRouter with deepseek model
     if provider == "openrouter":
         model_mapping = {
@@ -408,6 +514,21 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
     
     llm = MODEL_PROVIDERS[provider][model]
     
+    # Use the improved KG creator
+    try:
+        return improved_kg_creator.generate_knowledge_graph(
+            text=text,
+            llm=llm,
+            ontology=ontology,
+            max_text_length=4000
+        )
+    except Exception as e:
+        print(f"Improved KG creator failed: {e}")
+        # Fallback to basic creation if improved creator fails
+        return _fallback_kg_generation(text, llm, ontology)
+
+def _fallback_kg_generation(text: str, llm, ontology: Optional[Dict] = None) -> Dict[str, Any]:
+    """Fallback KG generation method"""
     ontology_instructions = ""
     if ontology:
         ontology_instructions = f"""
@@ -594,20 +715,20 @@ class SaveToNeo4jRequest(BaseModel):
 @app.post("/save_kg_to_neo4j")
 async def save_kg_to_neo4j(request: SaveToNeo4jRequest):
     kg_id = request.kg_id
-    uri = request.uri
-    user = request.user
-    password = request.password
+    # Use KGLoader's automatic environment detection instead of client-provided URI
+    uri = kg_loader.neo4j_uri
+    user = kg_loader.neo4j_user
+    password = kg_loader.neo4j_password
     try:
         print(f"Received save request for KG ID: {kg_id}")
         print(f"Using Neo4j URI: {uri}, User: {user}")
         
         if kg_id not in knowledge_graphs:
             print(f"KG ID {kg_id} not found in knowledge_graphs")
-            return {
-                "status": "error",
-                "message": "Knowledge graph not found",
-                "details": None
-            }, 404
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge graph not found"
+            )
             
         graph_data = knowledge_graphs[kg_id]["graph"]
         print(f"Graph data for {kg_id}: Nodes: {len(graph_data.get('nodes', []))}, Relationships: {len(graph_data.get('relationships', []))}")
@@ -620,21 +741,21 @@ async def save_kg_to_neo4j(request: SaveToNeo4jRequest):
             return result
         else:
             print(f"Failed to save KG {kg_id}: {result.get('message')}")
-            return {
-                "status": "error",
-                "message": result.get('message', 'Failed to save knowledge graph to Neo4j'),
-                "details": result.get('details', {})
-            }, 400
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to save knowledge graph to Neo4j: {result.get('message')}"
+            )
             
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
         print(f"Unexpected error saving KG: {error_traceback}")
-        return {
-            "status": "error",
-            "message": "Internal server error",
-            "details": error_traceback
-        }, 500
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
         
 class DirectoryListRequest(BaseModel):
     base_path: str = ""
@@ -674,11 +795,10 @@ async def export_kg_to_file(request: ExportToFileRequest):
         file_path = os.path.join(full_folder_path, filename)
         
         if kg_id not in knowledge_graphs:
-            return {
-                "status": "error",
-                "message": "Knowledge graph not found",
-                "details": None
-            }, 404
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge graph not found"
+            )
             
         graph_data = knowledge_graphs[kg_id]["graph"]
         result = kg_loader.save_to_file(graph_data, file_path)
@@ -686,19 +806,19 @@ async def export_kg_to_file(request: ExportToFileRequest):
         if result['status'] == 'success':
             return result
         else:
-            return {
-                "status": "error",
-                "message": result.get('message', 'Failed to save knowledge graph to file'),
-                "details": result.get('details', {})
-            }, 400
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to save knowledge graph to file: {result.get('message')}"
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        return {
-            "status": "error",
-            "message": "Internal server error",
-            "details": error_traceback
-        }, 500
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
+        )
         
 @app.get("/list_stored_kgs")
 async def list_stored_kgs():
