@@ -964,6 +964,78 @@ async def export_kg_to_file(request: ExportToFileRequest):
             status_code=500,
             detail="Internal server error"
         )
+
+class SaveKGWithNameRequest(BaseModel):
+    kg_id: str
+    filename: str
+
+@app.post("/save_kg_with_name")
+async def save_kg_with_name(request: SaveKGWithNameRequest):
+    """Save KG with a custom user-provided name to the kg_storage directory"""
+    kg_id = request.kg_id
+    filename = request.filename.strip()
+    
+    try:
+        if not filename:
+            raise HTTPException(
+                status_code=400,
+                detail="Filename cannot be empty"
+            )
+        
+        # Sanitize filename - remove invalid characters
+        import re
+        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        
+        # Ensure .json extension
+        if not filename.lower().endswith('.json'):
+            filename += '.json'
+        
+        # Always save to kg_storage directory
+        kg_storage_dir = "kg_storage"
+        os.makedirs(kg_storage_dir, exist_ok=True)
+        
+        file_path = os.path.join(kg_storage_dir, filename)
+        
+        # Check if file already exists
+        if os.path.exists(file_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File '{filename}' already exists. Please choose a different name."
+            )
+        
+        if kg_id not in knowledge_graphs:
+            raise HTTPException(
+                status_code=404,
+                detail="Knowledge graph not found"
+            )
+            
+        graph_data = knowledge_graphs[kg_id]["graph"]
+        result = kg_loader.save_to_file(graph_data, file_path)
+        
+        if result['status'] == 'success':
+            return {
+                "status": "success",
+                "message": f"Knowledge graph saved as '{filename}' in kg_storage directory",
+                "filename": filename,
+                "path": file_path,
+                "nodes": len(graph_data.get('nodes', [])),
+                "relationships": len(graph_data.get('relationships', []))
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to save knowledge graph: {result.get('message')}"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error saving KG with name: {error_traceback}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
         
 @app.get("/list_stored_kgs")
 async def list_stored_kgs():

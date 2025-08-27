@@ -1358,55 +1358,36 @@ async function saveKGToFile() {
             return;
         }
         
-        // Use backend export endpoint
+        // Prompt user for filename
+        const userFilename = prompt('Enter a name for your knowledge graph:', 'my_knowledge_graph');
+        
+        if (!userFilename) {
+            return; // User canceled
+        }
+        
+        // Use backend export endpoint with custom name
         const exportButton = document.getElementById('export-kg');
         const originalText = exportButton.textContent;
-        exportButton.innerHTML = '<div class="spinner"></div> Exporting...';
+        exportButton.innerHTML = '<div class="spinner"></div> Saving...';
         exportButton.disabled = true;
         
         try {
-            // First, get the list of existing KG files to determine the next number
-            const listResponse = await fetch('/list_stored_kgs');
-            let nextNumber = 1;
-            
-            if (listResponse.ok) {
-                const data = await listResponse.json();
-                const kgFiles = data.kg_files;
-                
-                // Extract numbers from existing filenames and find the next available number
-                const existingNumbers = kgFiles
-                    .map(kg => {
-                        const match = kg.filename.match(/^kg_(\d+)\.json$/);
-                        return match ? parseInt(match[1]) : 0;
-                    })
-                    .filter(num => num > 0);
-                
-                if (existingNumbers.length > 0) {
-                    nextNumber = Math.max(...existingNumbers) + 1;
-                }
-            }
-            
-            // Generate filename with next available number
-            const filename = `kg_${nextNumber}.json`;
-            
-            // Always save to kg_storage directory (same as import)
-            const response = await fetch('/export_kg_to_file', {
+            const response = await fetch('/save_kg_with_name', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     kg_id: currentKGId,
-                    folder_path: 'kg_storage',
-                    filename: filename
+                    filename: userFilename
                 })
             });
             
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to export KG');
+                throw new Error(errorData.detail || 'Failed to save KG');
             }
             
             const result = await response.json();
-            showError(`Graph saved as ${filename} in kg_storage directory`);
+            showError(`Knowledge graph saved as "${result.filename}" with ${result.nodes} nodes and ${result.relationships} relationships`);
         } finally {
             exportButton.innerHTML = originalText;
             exportButton.disabled = false;
