@@ -30,3 +30,15 @@ uploads/
 
 # Node modules
 node_modules/
+
+# Documentation and summary files
+BUG_FIXES_SUMMARY.md
+IMPROVEMENTS_README.md
+*_SUMMARY.md
+*_README.md
+
+# Temporary and generated files
+chroma_db/
+vector_stores/
+kg_storage/
+*.sqlite3

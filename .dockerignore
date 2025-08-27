@@ -14,6 +14,19 @@ test_*
 *.txt
 !requirements.txt
 
+# Ignore documentation and summary files
+BUG_FIXES_SUMMARY.md
+IMPROVEMENTS_README.md
+*_SUMMARY.md
+*_README.md
+!README.md
+
+# Ignore temporary and generated files
+chroma_db/
+vector_stores/
+kg_storage/
+*.sqlite3
+
 # Ignore Python cache and virtual environments
 __pycache__/
 *.pyc
@@ -30,3 +43,13 @@ env/
 
 # Ignore macOS system files
 .DS_Store
+
+# Ignore log files
+*.log
+
+# Ignore coverage files
+.coverage
+htmlcov/
+
+# Ignore memgraph platform files
+memgraph-platform/

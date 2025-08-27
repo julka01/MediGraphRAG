@@ -15,13 +15,19 @@ import uvicorn
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import PyPDF2
-from langchain_community.llms import Ollama
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import OllamaEmbeddings, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
+# Import from langchain-ollama package to fix deprecation warnings
+try:
+    from langchain_ollama import OllamaLLM, OllamaEmbeddings
+except ImportError:
+    # Fallback to deprecated imports if new package not available
+    from langchain_community.llms import Ollama as OllamaLLM
+    from langchain_community.embeddings import OllamaEmbeddings
 from neo4j import GraphDatabase
 from kg_loader import KGLoader
 from improved_kg_creator import ImprovedKGCreator
@@ -39,9 +45,46 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# In-memory storage for knowledge graphs
+# In-memory storage for knowledge graphs with size limits
 knowledge_graphs: Dict[str, Dict] = {}
 vector_stores: Dict[str, Any] = {}
+
+# Memory management constants
+MAX_STORED_KGS = 50  # Maximum number of KGs to keep in memory
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB max file size
+MAX_TEXT_LENGTH = 50000  # Maximum text length for processing
+
+def cleanup_old_kgs():
+    """Remove oldest KGs if we exceed the limit"""
+    if len(knowledge_graphs) > MAX_STORED_KGS:
+        # Sort by creation time (assuming kg_id contains timestamp info)
+        sorted_kgs = sorted(knowledge_graphs.items())
+        # Remove oldest entries
+        for kg_id, _ in sorted_kgs[:len(knowledge_graphs) - MAX_STORED_KGS]:
+            del knowledge_graphs[kg_id]
+            if kg_id in vector_stores:
+                del vector_stores[kg_id]
+            print(f"Cleaned up old KG: {kg_id}")
+
+def validate_input_text(text: str) -> str:
+    """Validate and sanitize input text"""
+    if not text or not text.strip():
+        raise ValueError("Empty text provided")
+    
+    if len(text) > MAX_TEXT_LENGTH:
+        print(f"Text truncated from {len(text)} to {MAX_TEXT_LENGTH} characters")
+        text = text[:MAX_TEXT_LENGTH]
+    
+    # Basic sanitization - remove potential harmful content
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
+def validate_file_size(file_bytes: bytes) -> None:
+    """Validate file size"""
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise ValueError(f"File size {len(file_bytes)} exceeds maximum allowed size of {MAX_FILE_SIZE} bytes")
 
 # Create KGLoader and ImprovedKGCreator instances
 kg_loader = KGLoader()
@@ -125,9 +168,9 @@ def get_model_providers():
             ) if os.getenv("LMU_LIGHTLLM_API_KEY") else None,
         },
         "ollama": {
-            "deepseek-r1-0528": Ollama(model="deepseek-r1-0528"),
-            "llama3": Ollama(model="llama3"),
-            "mistral": Ollama(model="mistral")
+            "deepseek-r1-0528": OllamaLLM(model="deepseek-r1-0528"),
+            "llama3": OllamaLLM(model="llama3"),
+            "mistral": OllamaLLM(model="mistral")
         },
         "openai": {
             "gpt-4": ChatOpenAI(model="gpt-4", openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
@@ -243,14 +286,16 @@ async def load_kg_from_file(
         # Read file contents
         contents = await file.read()
         
-        # Check file size
-        if len(contents) > 1024 * 1024 * 5:
-            raise ValueError("File size exceeds 5MB limit")
+        # Validate file size
+        validate_file_size(contents)
             
         # Extract text from file
         text = extract_text(contents)
         if not text:
             raise ValueError("Failed to extract text from file")
+            
+        # Validate and sanitize text
+        text = validate_input_text(text)
             
         # Read and parse ontology if provided
         ontology_content = None
@@ -284,6 +329,9 @@ async def load_kg_from_file(
         
         # Create vector store for RAG
         create_vector_store(kg_id, text, provider)
+        
+        # Clean up old KGs if needed
+        cleanup_old_kgs()
         
         # Print confirmation that KG was stored with kg_id
         print(f"KG stored successfully with ID: {kg_id}")
@@ -632,23 +680,117 @@ def get_graph_context(kg_id: str) -> str:
     num_relationships = len(graph.get("relationships", []))
     context_lines.append(f"Knowledge Graph Summary: {num_nodes} nodes, {num_relationships} relationships")
     
-    # Add node information
-    context_lines.append("\nNodes:")
+    # Add node information with enhanced clinical context
+    context_lines.append("\nClinical Entities:")
     for node in graph.get("nodes", []):
-        props = ", ".join([f"{k}: {v}" for k, v in node.get("properties", {}).items()])
-        context_lines.append(f"- {node.get('label', 'Entity')} (ID: {node['id']}): {props}")
+        props = node.get("properties", {})
+        label = node.get('label', 'Entity')
+        name = props.get('name', 'Unknown')
+        
+        # Create structured entity description
+        entity_desc = f"- {label}: {name} (ID: {node['id']})"
+        
+        # Add clinical significance if available
+        if 'clinical_significance' in props:
+            entity_desc += f" [Significance: {props['clinical_significance']}]"
+        if 'evidence_level' in props:
+            entity_desc += f" [Evidence: {props['evidence_level']}]"
+        if 'stage' in props:
+            entity_desc += f" [Stage: {props['stage']}]"
+        if 'severity' in props:
+            entity_desc += f" [Severity: {props['severity']}]"
+        
+        # Add other relevant properties
+        other_props = {k: v for k, v in props.items() 
+                      if k not in ['name', 'clinical_significance', 'evidence_level', 'stage', 'severity']}
+        if other_props:
+            props_str = ", ".join([f"{k}: {v}" for k, v in other_props.items()])
+            entity_desc += f" | {props_str}"
+        
+        context_lines.append(entity_desc)
     
-    # Add relationship information
-    context_lines.append("\nRelationships:")
+    # Add relationship information with clinical context
+    context_lines.append("\nClinical Relationships:")
     for rel in graph.get("relationships", []):
         source_node = next((n for n in graph["nodes"] if n["id"] == rel["from"]), None)
         target_node = next((n for n in graph["nodes"] if n["id"] == rel["to"]), None)
-        source_label = source_node.get("label", "Entity") if source_node else "Unknown"
-        target_label = target_node.get("label", "Entity") if target_node else "Unknown"
-        props = ", ".join([f"{k}: {v}" for k, v in rel.get("properties", {}).items()])
-        context_lines.append(f"- {source_label} ({rel['from']}) --[{rel.get('type', 'related')}]-> {target_label} ({rel['to']}): {props}")
+        
+        if source_node and target_node:
+            source_name = source_node.get("properties", {}).get("name", "Unknown")
+            target_name = target_node.get("properties", {}).get("name", "Unknown")
+            source_label = source_node.get("label", "Entity")
+            target_label = target_node.get("label", "Entity")
+            rel_type = rel.get('type', 'RELATED_TO')
+            
+            rel_desc = f"- {source_label}({source_name}) --[{rel_type}]-> {target_label}({target_name})"
+            
+            # Add relationship properties
+            rel_props = rel.get("properties", {})
+            if rel_props:
+                props_str = ", ".join([f"{k}: {v}" for k, v in rel_props.items()])
+                rel_desc += f" | {props_str}"
+            
+            context_lines.append(rel_desc)
     
     return "\n".join(context_lines)
+
+def get_ontology_context(kg_id: str) -> Dict[str, Any]:
+    """Get ontology information for the knowledge graph"""
+    if kg_id not in knowledge_graphs:
+        return {}
+    
+    graph = knowledge_graphs[kg_id]["graph"]
+    
+    # Extract unique labels and relationship types from the graph
+    node_labels = list(set([node.get('label', 'Entity') for node in graph.get('nodes', [])]))
+    relationship_types = list(set([rel.get('type', 'RELATED_TO') for rel in graph.get('relationships', [])]))
+    
+    return {
+        "node_labels": node_labels,
+        "relationship_types": relationship_types
+    }
+
+def create_enhanced_rag_prompt(context: str, ontology: Dict[str, Any]) -> str:
+    """Create an enhanced RAG prompt with ontology constraints"""
+    
+    ontology_info = ""
+    if ontology:
+        ontology_info = f"""
+ONTOLOGY CONSTRAINTS:
+- Valid Entity Types: {', '.join(ontology.get('node_labels', []))}
+- Valid Relationship Types: {', '.join(ontology.get('relationship_types', []))}
+"""
+    
+    return f"""You are a clinical knowledge assistant specialized in biomedical information analysis. 
+You have access to a structured knowledge graph containing clinical entities and relationships.
+
+{ontology_info}
+
+RESPONSE GUIDELINES:
+1. Base your answer STRICTLY on the provided knowledge graph context
+2. Use only the entity types and relationships present in the ontology
+3. Provide evidence-based, clinically accurate information
+4. Structure your response for clinical relevance
+5. Include confidence levels when appropriate
+6. Reference specific graph elements (IDs) when making claims
+
+KNOWLEDGE GRAPH CONTEXT:
+{context}
+
+RESPONSE FORMAT:
+🔍 **Clinical Summary**: [Brief, evidence-based summary]
+
+📋 **Key Clinical Points**:
+   • [Point 1 with evidence level if available]
+   • [Point 2 with clinical significance]
+   • [Point 3 with relevant relationships]
+
+🔗 **Graph Evidence**: [Reference specific node/relationship IDs]
+
+⚠️ **Clinical Notes**: [Any limitations, contraindications, or important considerations]
+
+📊 **Confidence Level**: [High/Medium/Low based on evidence quality]
+"""
 
 @app.post("/chat")
 async def chat(message: Message):
@@ -659,40 +801,43 @@ async def chat(message: Message):
             raise ValueError(f"Model {message.model_rag} not available for provider {message.provider_rag}")
         
         llm = MODEL_PROVIDERS[message.provider_rag][message.model_rag]
-        context = ""
+        
         if message.kg_id:
             print(f"Looking up KG context for ID: {message.kg_id}")
             context = get_graph_context(message.kg_id)
+            ontology = get_ontology_context(message.kg_id)
+            
             if not context:
                 print(f"Warning: No KG context found for ID: {message.kg_id}")
                 context = "No knowledge graph context available"
+                ontology = {}
             else:
                 print(f"Using KG context for ID: {message.kg_id}")
-        
-        if message.kg_id and context:
+            
+            # Create enhanced prompt with ontology constraints
+            enhanced_prompt_template = create_enhanced_rag_prompt(context, ontology)
+            
             prompt = ChatPromptTemplate.from_template(
-                "You are a helpful assistant answering questions based on a knowledge graph. "
-                "Use the following graph context to provide a concise, structured response.\n\n"
-                "Graph Context:\n{context}\n\n"
-                "Question: {question}\n\n"
-                "Provide your answer in this structured format:\n"
-                "1. Summary: [concise summary of answer]\n"
-                "2. Key Points:\n"
-                "   - [point 1]\n"
-                "   - [point 2]\n"
-                "   ...\n"
-                "3. Source: [graph element IDs if applicable]"
+                enhanced_prompt_template + "\n\nUSER QUESTION: {question}\n\nCLINICAL RESPONSE:"
             )
+            
             chain = prompt | llm | StrOutputParser()
             response = chain.invoke({
-                "context": context[:10000],
                 "question": message.question
             })
         else:
+            # Fallback for questions without KG context
             prompt = ChatPromptTemplate.from_template(
-                "You are a helpful assistant. Answer the question concisely.\n\n"
-                "Question: {question}\n\n"
-                "Answer:"
+                """You are a clinical knowledge assistant. Provide a structured, evidence-based response.
+
+RESPONSE FORMAT:
+🔍 **Summary**: [Brief summary]
+📋 **Key Points**: [Bullet points]
+⚠️ **Note**: This response is not based on a specific knowledge graph.
+
+Question: {question}
+
+Response:"""
             )
             chain = prompt | llm | StrOutputParser()
             response = chain.invoke({"question": message.question})

@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Graph RAG - Professional KG Analysis</title>
     <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+    <!-- Add Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet" />
+    <!-- Add Font Awesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
     <style>
         /* Error Popup */
         .error-popup {
@@ -330,31 +334,379 @@
             text-align: right;
         }
 
-        /* Message Styling */
+        /* Enhanced Message Styling with Heavy Markdown Support */
         .ai-message {
-            background: #e3f2fd;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 4px solid #3498db;
+            background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fa 100%);
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border-left: 6px solid #3498db;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.7;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .ai-message::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #3498db, #2980b9, #1abc9c);
         }
 
         .user-message {
-            background: #f1f8e9;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 4px solid #7cb342;
+            background: linear-gradient(135deg, #f1f8e9 0%, #f8f9fa 100%);
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border-left: 6px solid #7cb342;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.7;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .user-message::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #7cb342, #689f38, #558b2f);
         }
         
         .thinking-message {
-            background: #fffde7;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            border-left: 4px solid #ffd600;
+            background: linear-gradient(135deg, #fffde7 0%, #f8f9fa 100%);
+            padding: 16px 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border-left: 6px solid #ffd600;
             display: flex;
             align-items: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        /* Enhanced Typography with Markdown Support */
+        .ai-message h1, .user-message h1 {
+            color: #1976d2;
+            font-size: 2em;
+            font-weight: 700;
+            margin: 0 0 16px 0;
+            padding-bottom: 8px;
+            border-bottom: 3px solid #e3f2fd;
+        }
+
+        .ai-message h2, .user-message h2 {
+            color: #1976d2;
+            font-size: 1.6em;
+            font-weight: 600;
+            margin: 20px 0 12px 0;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #e3f2fd;
+        }
+
+        .ai-message h3, .user-message h3 {
+            color: #1976d2;
+            font-size: 1.3em;
+            font-weight: 600;
+            margin: 16px 0 10px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #e3f2fd;
+        }
+
+        .ai-message h4, .user-message h4 {
+            color: #1976d2;
+            font-size: 1.1em;
+            font-weight: 600;
+            margin: 12px 0 8px 0;
+        }
+
+        .ai-message h5, .user-message h5 {
+            color: #1976d2;
+            font-size: 1em;
+            font-weight: 600;
+            margin: 10px 0 6px 0;
+        }
+
+        .ai-message h6, .user-message h6 {
+            color: #1976d2;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin: 8px 0 4px 0;
+        }
+
+        /* Enhanced Lists */
+        .ai-message ul, .user-message ul {
+            margin: 12px 0;
+            padding-left: 0;
+            list-style: none;
+        }
+
+        .ai-message ul li, .user-message ul li {
+            position: relative;
+            margin: 8px 0;
+            padding-left: 24px;
+            line-height: 1.6;
+        }
+
+        .ai-message ul li::before, .user-message ul li::before {
+            content: '▶';
+            position: absolute;
+            left: 0;
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .ai-message ol, .user-message ol {
+            margin: 12px 0;
+            padding-left: 24px;
+            counter-reset: item;
+        }
+
+        .ai-message ol li, .user-message ol li {
+            margin: 8px 0;
+            line-height: 1.6;
+            counter-increment: item;
+            position: relative;
+        }
+
+        .ai-message ol li::marker, .user-message ol li::marker {
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        /* Enhanced Code Blocks */
+        .ai-message pre, .user-message pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            overflow-x: auto;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .ai-message code, .user-message code {
+            background: #f7fafc;
+            color: #e53e3e;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 0.9em;
+            font-weight: 500;
+            border: 1px solid #e2e8f0;
+        }
+
+        .ai-message pre code, .user-message pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+        }
+
+        /* Enhanced Blockquotes */
+        .ai-message blockquote, .user-message blockquote {
+            background: #f8f9fa;
+            border-left: 6px solid #3498db;
+            margin: 16px 0;
+            padding: 16px 20px;
+            border-radius: 0 12px 12px 0;
+            font-style: italic;
+            color: #4a5568;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        /* Enhanced Text Formatting */
+        .ai-message strong, .user-message strong {
+            color: #1565c0;
+            font-weight: 700;
+        }
+
+        .ai-message em, .user-message em {
+            color: #7b1fa2;
+            font-style: italic;
+        }
+
+        .ai-message mark, .user-message mark {
+            background: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: #856404;
+        }
+
+        /* Enhanced Links */
+        .ai-message a, .user-message a {
+            color: #3498db;
+            text-decoration: none;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .ai-message a:hover, .user-message a:hover {
+            color: #2980b9;
+            border-bottom-color: #3498db;
+        }
+
+        /* Enhanced Tables */
+        .ai-message table, .user-message table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .ai-message th, .user-message th {
+            background: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .ai-message td, .user-message td {
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .ai-message tr:nth-child(even) td, .user-message tr:nth-child(even) td {
+            background: #f8f9fa;
+        }
+
+        /* Clinical Response Styling - Enhanced */
+        .clinical-summary {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            border-left: 6px solid #4caf50;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.1);
+        }
+
+        .clinical-points {
+            background: linear-gradient(135deg, #f3f4f6 0%, #f8f9fa 100%);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            border-left: 6px solid #2196f3;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+        }
+
+        .clinical-points ul {
+            margin: 12px 0;
+            padding-left: 0;
+            list-style: none;
+        }
+
+        .clinical-points li {
+            position: relative;
+            margin: 10px 0;
+            padding-left: 28px;
+            line-height: 1.6;
+        }
+
+        .clinical-points li::before {
+            content: '🔹';
+            position: absolute;
+            left: 0;
+            font-size: 1.2em;
+        }
+
+        .graph-evidence {
+            background: linear-gradient(135deg, #fff3e0 0%, #fef7e0 100%);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            border-left: 6px solid #ff9800;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 0.9em;
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+        }
+
+        .clinical-notes {
+            background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+            border-left: 6px solid #f44336;
+            font-style: italic;
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.1);
+        }
+
+        .confidence-level {
+            background: #e1f5fe;
+            padding: 10px 16px;
+            border-radius: 25px;
+            margin: 12px 0;
+            display: inline-block;
+            font-size: 0.9em;
+            font-weight: 700;
+            border: 2px solid #0288d1;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .confidence-high { 
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9); 
+            border-color: #4caf50; 
+            color: #2e7d32; 
+        }
+        .confidence-medium { 
+            background: linear-gradient(135deg, #fff3e0, #ffe0b2); 
+            border-color: #ff9800; 
+            color: #f57c00; 
+        }
+        .confidence-low { 
+            background: linear-gradient(135deg, #ffebee, #ffcdd2); 
+            border-color: #f44336; 
+            color: #c62828; 
+        }
+
+        /* Enhanced Icons */
+        .clinical-icon {
+            font-size: 1.4em;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        /* Horizontal Rules */
+        .ai-message hr, .user-message hr {
+            border: none;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3498db, transparent);
+            margin: 20px 0;
+        }
+
+        /* Enhanced Paragraphs */
+        .ai-message p, .user-message p {
+            margin: 12px 0;
+            line-height: 1.7;
+        }
+
+        .ai-message p:first-child, .user-message p:first-child {
+            margin-top: 0;
+        }
+
+        .ai-message p:last-child, .user-message p:last-child {
+            margin-bottom: 0;
         }
         
         #file-selection {
@@ -1006,17 +1358,6 @@ async function saveKGToFile() {
             return;
         }
         
-        // Prompt for folder path
-        const folderPath = prompt('Enter the folder path to save the knowledge graph:', '/Users/sahibjulka/Documents');
-        if (!folderPath) return; // User canceled
-        
-        // Prompt for filename
-        const filename = prompt('Enter filename for the knowledge graph:', 'knowledge_graph.json');
-        if (!filename) return; // User canceled
-        
-        // Ensure .json extension
-        const finalFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
-        
         // Use backend export endpoint
         const exportButton = document.getElementById('export-kg');
         const originalText = exportButton.textContent;
@@ -1024,13 +1365,38 @@ async function saveKGToFile() {
         exportButton.disabled = true;
         
         try {
+            // First, get the list of existing KG files to determine the next number
+            const listResponse = await fetch('/list_stored_kgs');
+            let nextNumber = 1;
+            
+            if (listResponse.ok) {
+                const data = await listResponse.json();
+                const kgFiles = data.kg_files;
+                
+                // Extract numbers from existing filenames and find the next available number
+                const existingNumbers = kgFiles
+                    .map(kg => {
+                        const match = kg.filename.match(/^kg_(\d+)\.json$/);
+                        return match ? parseInt(match[1]) : 0;
+                    })
+                    .filter(num => num > 0);
+                
+                if (existingNumbers.length > 0) {
+                    nextNumber = Math.max(...existingNumbers) + 1;
+                }
+            }
+            
+            // Generate filename with next available number
+            const filename = `kg_${nextNumber}.json`;
+            
+            // Always save to kg_storage directory (same as import)
             const response = await fetch('/export_kg_to_file', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     kg_id: currentKGId,
-                    folder_path: folderPath,
-                    filename: finalFilename
+                    folder_path: 'kg_storage',
+                    filename: filename
                 })
             });
             
@@ -1040,7 +1406,7 @@ async function saveKGToFile() {
             }
             
             const result = await response.json();
-            showError(`Graph saved to ${folderPath}/${finalFilename}`);
+            showError(`Graph saved as ${filename} in kg_storage directory`);
         } finally {
             exportButton.innerHTML = originalText;
             exportButton.disabled = false;
@@ -1165,18 +1531,64 @@ async function saveKGToFile() {
                     
                     const result = await response.json();
                     
-                    // Format structured responses
-                    const formattedResponse = result.response
-                        .replace(/1\. Summary:\s*(.*?)\s*2\. Key Points:\s*((?:   - .*\s*)*)3\. Source:\s*(.*)/s, 
-                            '<div class="ai-summary">$1</div><div class="ai-keypoints">$2</div><div class="ai-source">Source: $3</div>')
-                        .replace(/   - /g, '• ');
+                    // Enhanced formatting for clinical responses
+                    let formattedResponse = result.response;
+                    
+                    // Format clinical summary sections
+                    formattedResponse = formattedResponse
+                        .replace(/🔍\s*\*\*Clinical Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
+                            '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Clinical Summary:</strong> $1</div>')
+                        .replace(/📋\s*\*\*Key Clinical Points\*\*:\s*(.*?)(?=🔗|⚠️|📊|$)/gs, 
+                            '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Clinical Points:</strong>$1</div>')
+                        .replace(/🔗\s*\*\*Graph Evidence\*\*:\s*(.*?)(?=⚠️|📊|$)/gs, 
+                            '<div class="graph-evidence"><span class="clinical-icon">🔗</span><strong>Graph Evidence:</strong> $1</div>')
+                        .replace(/⚠️\s*\*\*Clinical Notes\*\*:\s*(.*?)(?=📊|$)/gs, 
+                            '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Clinical Notes:</strong> $1</div>')
+                        .replace(/📊\s*\*\*Confidence Level\*\*:\s*(High|Medium|Low)/gi, function(match, level) {
+                            const levelClass = `confidence-${level.toLowerCase()}`;
+                            return `<div class="confidence-level ${levelClass}"><span class="clinical-icon">📊</span><strong>Confidence:</strong> ${level}</div>`;
+                        });
+                    
+                    // Format bullet points
+                    formattedResponse = formattedResponse
+                        .replace(/•\s*/g, '<li>')
+                        .replace(/\n\s*<li>/g, '</li>\n<li>')
+                        .replace(/(<li>.*?)((?=<\/div>|$))/gs, '$1</li>$2');
+                    
+                    // Wrap bullet points in ul tags
+                    formattedResponse = formattedResponse.replace(
+                        /(<div class="clinical-points">.*?<strong>Key Clinical Points:<\/strong>)(.*?)(<\/div>)/gs,
+                        function(match, start, content, end) {
+                            if (content.includes('<li>')) {
+                                return start + '<ul>' + content + '</ul>' + end;
+                            }
+                            return match;
+                        }
+                    );
+                    
+                    // Format fallback structured responses (old format)
+                    if (!formattedResponse.includes('clinical-summary')) {
+                        formattedResponse = formattedResponse
+                            .replace(/🔍\s*\*\*Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
+                                '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Summary:</strong> $1</div>')
+                            .replace(/📋\s*\*\*Key Points\*\*:\s*(.*?)(?=⚠️|$)/gs, 
+                                '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Points:</strong>$1</div>')
+                            .replace(/⚠️\s*\*\*Note\*\*:\s*(.*?)$/gs, 
+                                '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Note:</strong> $1</div>');
+                    }
+                    
+                    // Clean up any remaining markdown formatting
+                    formattedResponse = formattedResponse
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/`(.*?)`/g, '<code>$1</code>');
                         
                     // Remove thinking message before adding response
                     if (thinkingEl && thinkingEl.parentNode) {
                         thinkingEl.parentNode.removeChild(thinkingEl);
                     }
                     
-                    addToChat(`Assistant: ${formattedResponse}`, 'ai');
+                    addToChat(`${formattedResponse}`, 'ai');
                 } catch (error) {
                     // Remove thinking message before adding error
                     if (thinkingEl && thinkingEl.parentNode) {
