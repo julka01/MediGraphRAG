@@ -1050,30 +1050,74 @@ async function saveKGToFile() {
     }
 }
             
-            function loadKGFromFile() {
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = '.json';
-                
-                fileInput.onchange = e => { 
-                    const file = e.target.files[0];
-                    if (!file) return;
+            async function loadKGFromFile() {
+                try {
+                    // First, get list of available stored KGs
+                    const response = await fetch('/list_stored_kgs');
+                    if (!response.ok) {
+                        throw new Error('Failed to fetch stored KGs');
+                    }
                     
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        try {
-                            const graphData = JSON.parse(e.target.result);
-                            currentKGId = null; // Clear server ID
-                            initializeGraph(graphData);
-                            showError('Graph loaded from file');
-                        } catch (error) {
-                            showError(`Failed to load graph: ${error.message}`);
+                    const data = await response.json();
+                    const kgFiles = data.kg_files;
+                    
+                    if (kgFiles.length === 0) {
+                        showError('No stored knowledge graphs found in kg_storage directory');
+                        return;
+                    }
+                    
+                    // Create a selection dialog
+                    let options = kgFiles.map((kg, index) => 
+                        `${index + 1}. ${kg.filename} (${kg.nodes} nodes, ${kg.relationships} relationships)`
+                    ).join('\n');
+                    
+                    const selection = prompt(`Select a knowledge graph to load:\n\n${options}\n\nEnter the number (1-${kgFiles.length}):`);
+                    
+                    if (!selection) return; // User canceled
+                    
+                    const selectedIndex = parseInt(selection) - 1;
+                    if (selectedIndex < 0 || selectedIndex >= kgFiles.length) {
+                        showError('Invalid selection');
+                        return;
+                    }
+                    
+                    const selectedKG = kgFiles[selectedIndex];
+                    
+                    // Load the selected KG
+                    const importButton = document.getElementById('import-kg');
+                    const originalText = importButton.textContent;
+                    importButton.innerHTML = '<div class="spinner"></div> Loading...';
+                    importButton.disabled = true;
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('filename', selectedKG.filename);
+                        
+                        const loadResponse = await fetch('/load_stored_kg', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        if (!loadResponse.ok) {
+                            const errorData = await loadResponse.json();
+                            throw new Error(errorData.detail || 'Failed to load stored KG');
                         }
-                    };
-                    reader.readAsText(file);
-                };
-                
-                fileInput.click();
+                        
+                        const result = await loadResponse.json();
+                        currentKGId = result.kg_id;
+                        initializeGraph(result.graph_data);
+                        
+                        addToChat(`Loaded stored knowledge graph: ${result.filename} with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`, 'ai');
+                        showError(`Successfully loaded ${result.filename}`);
+                        
+                    } finally {
+                        importButton.innerHTML = originalText;
+                        importButton.disabled = false;
+                    }
+                    
+                } catch (error) {
+                    showError(`Failed to load stored KG: ${error.message}`);
+                }
             }
             
         // Send question function with loading indicator

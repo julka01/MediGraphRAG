@@ -700,6 +700,123 @@ async def export_kg_to_file(request: ExportToFileRequest):
             "details": error_traceback
         }, 500
         
+@app.get("/list_stored_kgs")
+async def list_stored_kgs():
+    """List all available KG files in the kg_storage directory"""
+    try:
+        kg_storage_path = "kg_storage"
+        if not os.path.exists(kg_storage_path):
+            return {"kg_files": []}
+        
+        kg_files = []
+        for filename in os.listdir(kg_storage_path):
+            if filename.endswith('.json'):
+                file_path = os.path.join(kg_storage_path, filename)
+                try:
+                    # Get file stats
+                    stat = os.stat(file_path)
+                    file_size = stat.st_size
+                    modified_time = stat.st_mtime
+                    
+                    # Try to read the file to get node/relationship counts
+                    with open(file_path, 'r') as f:
+                        kg_data = json.load(f)
+                        node_count = len(kg_data.get('nodes', []))
+                        rel_count = len(kg_data.get('relationships', []))
+                    
+                    kg_files.append({
+                        "filename": filename,
+                        "file_path": file_path,
+                        "size": file_size,
+                        "modified": modified_time,
+                        "nodes": node_count,
+                        "relationships": rel_count
+                    })
+                except Exception as e:
+                    print(f"Error reading KG file {filename}: {str(e)}")
+                    continue
+        
+        return {"kg_files": kg_files}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing KG files: {str(e)}"
+        )
+
+@app.post("/load_stored_kg")
+async def load_stored_kg(filename: str = Form(...)):
+    """Load a KG file from the kg_storage directory"""
+    try:
+        kg_storage_path = "kg_storage"
+        file_path = os.path.join(kg_storage_path, filename)
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=404,
+                detail=f"KG file {filename} not found"
+            )
+        
+        # Load the KG data
+        with open(file_path, 'r') as f:
+            kg_data = json.load(f)
+        
+        # Create a unique ID for this KG
+        kg_id = f"kg_{str(uuid.uuid4())[:12]}"
+        knowledge_graphs[kg_id] = {
+            "graph": kg_data,
+            "provider": "local_storage",
+            "model": "stored_file",
+            "filename": filename
+        }
+        
+        # Create a simple text representation for vector store
+        # Extract text from node properties for RAG
+        text_content = []
+        for node in kg_data.get('nodes', []):
+            props = node.get('properties', {})
+            if 'name' in props:
+                text_content.append(props['name'])
+            if 'description' in props:
+                text_content.append(props['description'])
+            # Add other text properties
+            for key, value in props.items():
+                if isinstance(value, str) and len(value) > 10:
+                    text_content.append(f"{key}: {value}")
+        
+        # Add relationship information
+        for rel in kg_data.get('relationships', []):
+            rel_props = rel.get('properties', {})
+            for key, value in rel_props.items():
+                if isinstance(value, str) and len(value) > 10:
+                    text_content.append(f"{key}: {value}")
+        
+        combined_text = " ".join(text_content)
+        
+        # Create vector store for RAG (default to ollama embeddings)
+        try:
+            create_vector_store(kg_id, combined_text, "ollama")
+        except Exception as e:
+            print(f"Warning: Could not create vector store: {str(e)}")
+            # Continue without vector store - KG context will still work
+        
+        print(f"Loaded stored KG {filename} with ID: {kg_id}")
+        
+        return {
+            "message": f"Knowledge graph {filename} loaded successfully",
+            "kg_id": kg_id,
+            "graph_data": kg_data,
+            "filename": filename
+        }
+        
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Error loading stored KG: {error_traceback}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to load KG: {str(e)}"
+        )
+
 @app.get("/graph/{kg_id}")
 async def get_graph(kg_id: str):
     try:
