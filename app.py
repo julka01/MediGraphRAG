@@ -990,8 +990,8 @@ async def save_kg_with_name(request: SaveKGWithNameRequest):
         if not filename.lower().endswith('.json'):
             filename += '.json'
         
-        # Always save to kg_storage directory
-        kg_storage_dir = "kg_storage"
+        # Always save to kg_storage directory (use absolute path)
+        kg_storage_dir = os.path.join(os.getcwd(), "kg_storage")
         os.makedirs(kg_storage_dir, exist_ok=True)
         
         file_path = os.path.join(kg_storage_dir, filename)
@@ -1041,7 +1041,7 @@ async def save_kg_with_name(request: SaveKGWithNameRequest):
 async def list_stored_kgs():
     """List all available KG files in the kg_storage directory"""
     try:
-        kg_storage_path = "kg_storage"
+        kg_storage_path = os.path.join(os.getcwd(), "kg_storage")
         if not os.path.exists(kg_storage_path):
             return {"kg_files": []}
         
@@ -1084,7 +1084,7 @@ async def list_stored_kgs():
 async def load_stored_kg(filename: str = Form(...)):
     """Load a KG file from the kg_storage directory"""
     try:
-        kg_storage_path = "kg_storage"
+        kg_storage_path = os.path.join(os.getcwd(), "kg_storage")
         file_path = os.path.join(kg_storage_path, filename)
         
         if not os.path.exists(file_path):
