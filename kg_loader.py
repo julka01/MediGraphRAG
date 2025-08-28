@@ -23,6 +23,7 @@ class KGLoader:
         self.neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
         
         print(f"KGLoader initialized with Neo4j URI: {self.neo4j_uri}")
+        self.last_import_dir = None
         
     def _load_ontology(self, ontology_path: str) -> Dict:
         """Load ontology from JSON or OWL file"""
@@ -42,6 +43,7 @@ class KGLoader:
         """Extract text from PDF and structure as knowledge graph using optional ontology"""
         try:
             print(f"Loading PDF: {file_path}")
+            self.last_import_dir = os.path.dirname(file_path)
             reader = PdfReader(file_path)
             text = ""
             for page in reader.pages:
@@ -74,6 +76,11 @@ class KGLoader:
     def load_from_neo4j(self, uri: str, user: str, password: str, query: str = "MATCH (n) RETURN n LIMIT 100") -> Dict:
         """Fetch data from Neo4j database"""
         try:
+            # Set last_import_dir to kg_storage directory for consistent export behavior
+            kg_storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "kg_storage"))
+            os.makedirs(kg_storage_dir, exist_ok=True)
+            self.last_import_dir = kg_storage_dir
+            
             driver = GraphDatabase.driver(
                 uri, 
                 auth=(user, password)
@@ -279,11 +286,25 @@ class KGLoader:
         
         Args:
             graph_data: Knowledge graph data to save
-            file_path: Full path to output JSON file
+            file_path: Path or filename for the output JSON file
         """
         try:
-            # Create directories if needed
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            # If file_path is just a filename (no directory separators), save to kg_storage
+            if os.path.dirname(file_path) == "":
+                # Just a filename provided - save to kg_storage directory
+                kg_storage_dir = os.path.join(os.getcwd(), "kg_storage")
+                os.makedirs(kg_storage_dir, exist_ok=True)
+                file_path = os.path.join(kg_storage_dir, file_path)
+            else:
+                # Full path provided - use it as is, but ensure directory exists
+                dir_path = os.path.dirname(file_path)
+                os.makedirs(dir_path, exist_ok=True)
+            
+            # Ensure .json extension
+            if not file_path.endswith('.json'):
+                file_path += '.json'
+            
+            print(f"Saving KG to: {os.path.abspath(file_path)}")  # Debug logging
             
             with open(file_path, 'w') as f:
                 json.dump(graph_data, f, indent=2)

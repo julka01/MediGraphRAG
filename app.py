@@ -927,26 +927,77 @@ async def export_kg_to_file(request: ExportToFileRequest):
     kg_id = request.kg_id
     folder_path = request.folder_path
     filename = request.filename
-    
+
     try:
+        print(f"Export request - KG ID: '{kg_id}', Folder: '{folder_path}', Filename: '{filename}'")
+        print(f"Available KG IDs in memory: {list(knowledge_graphs.keys())}")
+        
         # Validate filename has .json extension
         if not filename.lower().endswith('.json'):
             filename += '.json'
-        
+
         # Use base_path if provided
         full_folder_path = request.base_path or folder_path
+
+        # Ensure the directory exists
+        os.makedirs(full_folder_path, exist_ok=True)
         
         # Create full path
         file_path = os.path.join(full_folder_path, filename)
         
         if kg_id not in knowledge_graphs:
-            raise HTTPException(
-                status_code=404,
-                detail="Knowledge graph not found"
-            )
+            # Try to auto-load a KG if none are in memory
+            if not knowledge_graphs:
+                print("No KGs in memory, attempting to load from storage...")
+                try:
+                    kg_storage_dir = os.path.join(os.getcwd(), "kg_storage")
+                    if os.path.exists(kg_storage_dir):
+                        kg_files = [f for f in os.listdir(kg_storage_dir) if f.endswith('.json')]
+                        if kg_files:
+                            # Load the first available KG
+                            first_kg_file = kg_files[0]
+                            with open(os.path.join(kg_storage_dir, first_kg_file), 'r') as f:
+                                kg_data = json.load(f)
+                            
+                            # Create new KG ID and load it
+                            new_kg_id = f"kg_{str(uuid.uuid4())[:12]}"
+                            knowledge_graphs[new_kg_id] = {
+                                "graph": kg_data,
+                                "provider": "auto_loaded",
+                                "model": "from_storage",
+                                "filename": first_kg_file
+                            }
+                            print(f"Auto-loaded KG from {first_kg_file} with ID: {new_kg_id}")
+                            
+                            # Update kg_id to the newly loaded one
+                            kg_id = new_kg_id
+                        else:
+                            raise HTTPException(
+                                status_code=404,
+                                detail="No knowledge graphs available. Please load or create a KG first."
+                            )
+                    else:
+                        raise HTTPException(
+                            status_code=404,
+                            detail="No kg_storage directory found. Please create a KG first."
+                        )
+                except Exception as e:
+                    print(f"Failed to auto-load KG: {str(e)}")
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Knowledge graph with ID '{kg_id}' not found. Available IDs: {list(knowledge_graphs.keys())}. Auto-load failed: {str(e)}"
+                    )
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Knowledge graph with ID '{kg_id}' not found. Available IDs: {list(knowledge_graphs.keys())}"
+                )
             
         graph_data = knowledge_graphs[kg_id]["graph"]
+        print(f"Found KG data - Nodes: {len(graph_data.get('nodes', []))}, Relationships: {len(graph_data.get('relationships', []))}")
+        
         result = kg_loader.save_to_file(graph_data, file_path)
+        print(f"Export result: {result}")
         
         if result['status'] == 'success':
             return result
@@ -960,9 +1011,10 @@ async def export_kg_to_file(request: ExportToFileRequest):
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
+        print(f"Export error: {error_traceback}")
         raise HTTPException(
             status_code=500,
-            detail="Internal server error"
+            detail=f"Internal server error: {str(e)}"
         )
 
 class SaveKGWithNameRequest(BaseModel):
@@ -976,6 +1028,9 @@ async def save_kg_with_name(request: SaveKGWithNameRequest):
     filename = request.filename.strip()
     
     try:
+        print(f"Save KG request - KG ID: '{kg_id}', Filename: '{filename}'")
+        print(f"Available KG IDs: {list(knowledge_graphs.keys())}")
+        
         if not filename:
             raise HTTPException(
                 status_code=400,
@@ -990,13 +1045,12 @@ async def save_kg_with_name(request: SaveKGWithNameRequest):
         if not filename.lower().endswith('.json'):
             filename += '.json'
         
-        # Always save to kg_storage directory (use absolute path)
+        # kg_loader.save_to_file will handle saving to kg_storage directory
+        # Just check if the file already exists in kg_storage
         kg_storage_dir = os.path.join(os.getcwd(), "kg_storage")
         os.makedirs(kg_storage_dir, exist_ok=True)
-        
         file_path = os.path.join(kg_storage_dir, filename)
         
-        # Check if file already exists
         if os.path.exists(file_path):
             raise HTTPException(
                 status_code=400,
@@ -1004,13 +1058,42 @@ async def save_kg_with_name(request: SaveKGWithNameRequest):
             )
         
         if kg_id not in knowledge_graphs:
-            raise HTTPException(
-                status_code=404,
-                detail="Knowledge graph not found"
-            )
+            print(f"KG ID '{kg_id}' not found in knowledge_graphs")
+            print(f"Available KG IDs: {list(knowledge_graphs.keys())}")
+            # Try to load a default KG if none is found
+            if not knowledge_graphs:
+                # If no KGs are loaded, try to load one from kg_storage
+                try:
+                    kg_files = os.listdir(kg_storage_dir)
+                    json_files = [f for f in kg_files if f.endswith('.json')]
+                    if json_files:
+                        # Load the first JSON file found
+                        with open(os.path.join(kg_storage_dir, json_files[0]), 'r') as f:
+                            default_kg = json.load(f)
+                            # Create a new KG ID
+                            kg_id = f"kg_{str(uuid.uuid4())[:12]}"
+                            knowledge_graphs[kg_id] = {
+                                "graph": default_kg,
+                                "provider": "default",
+                                "model": "loaded_from_storage"
+                            }
+                            print(f"Loaded default KG from {json_files[0]} with ID {kg_id}")
+                except Exception as e:
+                    print(f"Failed to load default KG: {str(e)}")
+            
+            # If still not found, raise exception
+            if kg_id not in knowledge_graphs:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Knowledge graph with ID '{kg_id}' not found. Available IDs: {list(knowledge_graphs.keys())}"
+                )
             
         graph_data = knowledge_graphs[kg_id]["graph"]
-        result = kg_loader.save_to_file(graph_data, file_path)
+        print(f"Graph data found - Nodes: {len(graph_data.get('nodes', []))}, Relationships: {len(graph_data.get('relationships', []))}")
+        
+        # Just pass the filename - kg_loader will handle the path
+        result = kg_loader.save_to_file(graph_data, filename)
+        print(f"Save result: {result}")
         
         if result['status'] == 'success':
             return {
@@ -1087,6 +1170,9 @@ async def load_stored_kg(filename: str = Form(...)):
         kg_storage_path = os.path.join(os.getcwd(), "kg_storage")
         file_path = os.path.join(kg_storage_path, filename)
         
+        # Set the last_import_dir in kg_loader to ensure exports go to the same directory
+        kg_loader.last_import_dir = kg_storage_path
+        
         if not os.path.exists(file_path):
             raise HTTPException(
                 status_code=404,
@@ -1153,6 +1239,25 @@ async def load_stored_kg(filename: str = Form(...)):
             status_code=400,
             detail=f"Failed to load KG: {str(e)}"
         )
+
+@app.get("/debug/kg_status")
+async def debug_kg_status():
+    """Debug endpoint to check KG status"""
+    try:
+        kg_storage_dir = os.path.join(os.getcwd(), "kg_storage")
+        kg_files = []
+        if os.path.exists(kg_storage_dir):
+            kg_files = [f for f in os.listdir(kg_storage_dir) if f.endswith('.json')]
+        
+        return {
+            "memory_kgs": list(knowledge_graphs.keys()),
+            "memory_kg_count": len(knowledge_graphs),
+            "storage_directory": kg_storage_dir,
+            "storage_files": kg_files,
+            "storage_file_count": len(kg_files)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/graph/{kg_id}")
 async def get_graph(kg_id: str):
