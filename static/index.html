@@ -336,51 +336,51 @@
 
         /* Enhanced Message Styling with Heavy Markdown Support */
         .ai-message {
-            background: linear-gradient(135deg, #e3f2fd 0%, #f8f9fa 100%);
-            padding: 20px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            border-left: 6px solid #3498db;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            background: #e3f2fd;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            /* Removed border-left */
+            /* Removed box-shadow */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.7;
+            line-height: 1.4;
             position: relative;
             overflow: hidden;
         }
 
         .ai-message::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #3498db, #2980b9, #1abc9c);
+            display: none;
         }
 
         .user-message {
-            background: linear-gradient(135deg, #f1f8e9 0%, #f8f9fa 100%);
-            padding: 20px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            border-left: 6px solid #7cb342;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            background: #f1f8e9;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            /* Removed border-left */
+            /* Removed box-shadow */
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.7;
+            line-height: 1.4;
             position: relative;
             overflow: hidden;
         }
 
         .user-message::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #7cb342, #689f38, #558b2f);
+            display: none;
         }
         
+        .thinking-message {
+            background: linear-gradient(135deg, #fffde7 0%, #f8f9fa 100%);
+            padding: 16px 20px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border-left: 6px solid #ffd600;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            animation: pulse 2s infinite;
+        }
         .thinking-message {
             background: linear-gradient(135deg, #fffde7 0%, #f8f9fa 100%);
             padding: 16px 20px;
@@ -397,6 +397,16 @@
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.8; }
+        }
+
+        /* Timestamp styling for chat messages */
+        .message-timestamp {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 0.7em;
+            color: #666;
+            margin-top: 0;
         }
 
         /* Enhanced Typography with Markdown Support */
@@ -1113,6 +1123,11 @@
             const messageEl = document.createElement('div');
             messageEl.className = messageClass;
             
+            // Prepend "Agent: " to AI messages for clarity
+            if (type === 'ai' || type === 'thinking') {
+                message = `<strong>Agent:</strong> ${message}`;
+            }
+            
             // Create message content container
             const contentEl = document.createElement('div');
             contentEl.innerHTML = message;
@@ -1684,37 +1699,31 @@ async function saveKGToFile() {
                     // Enhanced formatting for clinical responses
                     let formattedResponse = result.response;
                     
-                    // Format clinical summary sections
+                    // Format clinical summary sections (remove emojis for minimalism)
                     formattedResponse = formattedResponse
                         .replace(/🔍\s*\*\*Clinical Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
-                            '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Clinical Summary:</strong> $1</div>')
+                            '<div class="clinical-summary"><strong>Clinical Summary:</strong> $1</div>')
                         .replace(/📋\s*\*\*Key Clinical Points\*\*:\s*(.*?)(?=🔗|⚠️|📊|$)/gs, 
-                            '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Clinical Points:</strong>$1</div>')
+                            '<div class="clinical-points"><strong>Key Clinical Points:</strong>$1</div>')
                         .replace(/🔗\s*\*\*Graph Evidence\*\*:\s*(.*?)(?=⚠️|📊|$)/gs, 
-                            '<div class="graph-evidence"><span class="clinical-icon">🔗</span><strong>Graph Evidence:</strong> $1</div>')
+                            '<div class="graph-evidence"><strong>Graph Evidence:</strong> $1</div>')
                         .replace(/⚠️\s*\*\*Clinical Notes\*\*:\s*(.*?)(?=📊|$)/gs, 
-                            '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Clinical Notes:</strong> $1</div>')
+                            '<div class="clinical-notes"><strong>Clinical Notes:</strong> $1</div>')
                         .replace(/📊\s*\*\*Confidence Level\*\*:\s*(High|Medium|Low)/gi, function(match, level) {
                             const levelClass = `confidence-${level.toLowerCase()}`;
-                            return `<div class="confidence-level ${levelClass}"><span class="clinical-icon">📊</span><strong>Confidence:</strong> ${level}</div>`;
+                            return `<div class="confidence-level ${levelClass}"><strong>Confidence:</strong> ${level}</div>`;
                         });
                     
-                    // Format bullet points
+                    // Format bullet points: replace "•" or "-" with inline dashes and line breaks
                     formattedResponse = formattedResponse
-                        .replace(/•\s*/g, '<li>')
-                        .replace(/\n\s*<li>/g, '</li>\n<li>')
-                        .replace(/(<li>.*?)((?=<\/div>|$))/gs, '$1</li>$2');
+                        .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash and space
+                        .replace(/\n/g, '<br>');  // replace newlines with <br> for inline display
                     
-                    // Wrap bullet points in ul tags
-                    formattedResponse = formattedResponse.replace(
-                        /(<div class="clinical-points">.*?<strong>Key Clinical Points:<\/strong>)(.*?)(<\/div>)/gs,
-                        function(match, start, content, end) {
-                            if (content.includes('<li>')) {
-                                return start + '<ul>' + content + '</ul>' + end;
-                            }
-                            return match;
-                        }
-                    );
+                    // Remove any existing <li> tags to avoid bullet list styling
+                    formattedResponse = formattedResponse.replace(/<\/?li>/g, '');
+                    
+                    // Remove wrapping <ul> tags in clinical-points if any
+                    formattedResponse = formattedResponse.replace(/<\/?ul>/g, '');
                     
                     // Format fallback structured responses (old format)
                     if (!formattedResponse.includes('clinical-summary')) {
