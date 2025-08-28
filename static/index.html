@@ -868,83 +868,238 @@
         let network = null;
         let currentKGId = null;
         
-        function initializeGraph(graphData) {
-            const container = document.getElementById('graph-container');
-            if (network) {
-                network.destroy();
-            }
-            
-            const nodes = new vis.DataSet(graphData.nodes || []);
-            const edges = new vis.DataSet(graphData.relationships || []);
-            
-            const options = {
-                nodes: {
-                    shape: 'dot',
-                    size: 30,
-                    font: {
-                        size: 14,
-                        face: 'Tahoma'
-                    },
-                    borderWidth: 2
-                },
-                edges: {
-                    width: 2,
-                    arrows: {
-                        to: { enabled: true, scaleFactor: 0.5 }
-                    },
-                    font: {
-                        size: 12,
-                        align: 'middle'
-                    },
-                    smooth: {
-                        type: 'cubicBezier'
-                    },
-                    label: {
-                        enabled: true,
-                        min: 8,
-                        max: 30,
-                        maxVisible: 50
-                    }
-                },
-                physics: {
-                    stabilization: true,
-                    barnesHut: {
-                        gravitationalConstant: -8000,
-                        springConstant: 0.04,
-                        springLength: 200
-                    }
-                },
-                interaction: {
-                    hover: true,
-                    tooltipDelay: 200,
-                    zoomView: true,
-                    dragView: true
+            function initializeGraph(graphData) {
+                const container = document.getElementById('graph-container');
+                if (network) {
+                    network.destroy();
                 }
-            };
-            
-            network = new vis.Network(container, { nodes, edges }, options);
-            
-            // Zoom functionality
-            document.getElementById('zoom-in').addEventListener('click', function() {
-                network.moveTo({
-                    scale: network.getScale() * 1.2,
-                    animation: true
+                
+                // Map relationships to edges with 'from' and 'to' keys and label from 'type'
+                const nodes = new vis.DataSet(graphData.nodes || []);
+                const edges = new vis.DataSet(
+                    (graphData.relationships || []).map(rel => ({
+                        id: rel.id || `${rel.from}-${rel.to}-${rel.type}`,
+                        from: rel.from || rel.start || rel.source,
+                        to: rel.to || rel.end || rel.target,
+                        label: rel.type || '',
+                        arrows: 'to',
+                        font: { 
+                            align: 'middle',
+                            background: 'white',
+                            backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                            strokeWidth: 1,
+                            strokeColor: '#888',
+                            color: '#333333',
+                            size: 14,
+                            vadjust: -10
+                        },
+                        color: {
+                            color: '#cccccc',  // lighter edge line color
+                            highlight: '#ff7f00',
+                            hover: '#ff7f00'
+                        }
+                    }))
+                );
+                
+                const options = {
+                    nodes: {
+                        shape: 'dot',
+                        size: 30,
+                        font: {
+                            size: 16,
+                            face: 'Tahoma',
+                            color: '#222222',
+                            strokeWidth: 2,
+                            strokeColor: '#ffffff'
+                        },
+                        borderWidth: 3,
+                        borderWidthSelected: 5,
+                        color: {
+                            background: '#a6cee3',
+                            border: '#1f78b4',
+                            highlight: {
+                                background: '#1f78b4',
+                                border: '#a6cee3'
+                            },
+                            hover: {
+                                background: '#b2df8a',
+                                border: '#33a02c'
+                            }
+                        },
+                        shadow: {
+                            enabled: true,
+                            color: 'rgba(0,0,0,0.3)',
+                            size: 10,
+                            x: 5,
+                            y: 5
+                        }
+                    },
+                    edges: {
+                        width: 3,
+                        color: {
+                            color: '#444444',  // darker gray edge line color as requested
+                            highlight: '#ff7f00',
+                            hover: '#ff7f00',
+                            inherit: false
+                        },
+                        arrows: {
+                            to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
+                        },
+                        font: {
+                            size: 14,
+                            align: 'middle',  // position label between arrow and edge start
+                            color: '#333333',
+                            strokeWidth: 0,
+                            strokeColor: '#ffffff'
+                        },
+                        smooth: {
+                            enabled: true,
+                            type: 'dynamic',
+                            roundness: 0.3
+                        },
+                        label: {
+                            enabled: true,
+                            min: 10,
+                            max: 40,
+                            maxVisible: 100,
+                            color: '#333333',
+                            font: 'bold 14px Arial',
+                            background: 'white',
+                            backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                            backgroundColor: 'white',
+                            strokeWidth: 1,
+                            strokeColor: '#888',
+                            xOffset: 0,
+                            yOffset: 0,  // reset offset to center label on edge line
+                            drawBackground: true,
+                            labelHighlightBold: true
+                        },
+                        shadow: {
+                            enabled: true,
+                            color: 'rgba(0,0,0,0.2)',
+                            size: 5,
+                            x: 3,
+                            y: 3
+                        }
+                    },
+                    physics: {
+                        stabilization: true,
+                        barnesHut: {
+                            gravitationalConstant: -12000,
+                            springConstant: 0.06,
+                            springLength: 250,
+                            damping: 0.09
+                        },
+                        minVelocity: 0.75
+                    },
+                    interaction: {
+                        hover: true,
+                        tooltipDelay: 150,
+                        zoomView: true,
+                        dragView: true,
+                        dragNodes: true,
+                        multiselect: true,
+                        navigationButtons: true,
+                        keyboard: true
+                    },
+                    layout: {
+                        improvedLayout: true,
+                        hierarchical: false
+                    }
+                };
+                
+                network = new vis.Network(container, { nodes, edges }, options);
+                
+                // Add click event listener for nodes to show info overlay
+                network.on("click", function (params) {
+                    const infoOverlayId = 'node-info-overlay';
+                    // Remove existing overlay if any
+                    const existingOverlay = document.getElementById(infoOverlayId);
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+                    
+                    if (params.nodes.length > 0) {
+                        const nodeId = params.nodes[0];
+                        const node = nodes.get(nodeId);
+                        if (node) {
+                            // Create overlay div
+                            const overlay = document.createElement('div');
+                            overlay.id = infoOverlayId;
+                            overlay.style.position = 'absolute';
+                            overlay.style.background = 'rgba(255, 255, 255, 0.95)';
+                            overlay.style.border = '1px solid #888';
+                            overlay.style.borderRadius = '8px';
+                            overlay.style.padding = '10px';
+                            overlay.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                            overlay.style.maxWidth = '300px';
+                            overlay.style.zIndex = 10000;
+                            overlay.style.fontSize = '14px';
+                            overlay.style.color = '#333';
+                            overlay.style.overflowY = 'auto';
+                            overlay.style.maxHeight = '200px';
+                            
+                            // Position overlay near clicked node
+                            const canvasPos = network.canvasToDOM({x: params.pointer.canvas.x, y: params.pointer.canvas.y});
+                            overlay.style.left = `${canvasPos.x + 10}px`;
+                            overlay.style.top = `${canvasPos.y + 10}px`;
+                            
+                            // Build info content
+                            let infoHtml = `<strong>Node ID:</strong> ${node.id}<br><strong>Label:</strong> ${node.label}<br><strong>Properties:</strong><br><ul>`;
+                            if (node.properties) {
+                                for (const [key, value] of Object.entries(node.properties)) {
+                                    infoHtml += `<li><strong>${key}:</strong> ${value}</li>`;
+                                }
+                            } else {
+                                infoHtml += "<li>No additional properties.</li>";
+                            }
+                            infoHtml += '</ul>';
+                            
+                            // Add close button
+                            const closeBtn = document.createElement('button');
+                            closeBtn.textContent = 'Close';
+                            closeBtn.style.marginTop = '8px';
+                            closeBtn.style.padding = '4px 8px';
+                            closeBtn.style.border = 'none';
+                            closeBtn.style.background = '#3498db';
+                            closeBtn.style.color = 'white';
+                            closeBtn.style.borderRadius = '4px';
+                            closeBtn.style.cursor = 'pointer';
+                            closeBtn.addEventListener('click', () => {
+                                overlay.remove();
+                            });
+                            
+                            overlay.innerHTML = infoHtml;
+                            overlay.appendChild(closeBtn);
+                            
+                            // Append overlay to graph container
+                            const container = document.getElementById('graph-container');
+                            container.appendChild(overlay);
+                        }
+                    }
                 });
-            });
-            
-            document.getElementById('zoom-out').addEventListener('click', function() {
-                network.moveTo({
-                    scale: network.getScale() * 0.8,
-                    animation: true
+                
+                // Zoom functionality
+                document.getElementById('zoom-in').addEventListener('click', function() {
+                    network.moveTo({
+                        scale: network.getScale() * 1.2,
+                        animation: true
+                    });
                 });
-            });
-            
-            document.getElementById('reset-zoom').addEventListener('click', function() {
-                network.fit({
-                    animation: true
+                
+                document.getElementById('zoom-out').addEventListener('click', function() {
+                    network.moveTo({
+                        scale: network.getScale() * 0.8,
+                        animation: true
+                    });
                 });
-            });
-        }
+                
+                document.getElementById('reset-zoom').addEventListener('click', function() {
+                    network.fit({
+                        animation: true
+                    });
+                });
+            }
         
         // Removed old showError function
         
@@ -957,7 +1112,21 @@
             
             const messageEl = document.createElement('div');
             messageEl.className = messageClass;
-            messageEl.innerHTML = message;
+            
+            // Create message content container
+            const contentEl = document.createElement('div');
+            contentEl.innerHTML = message;
+            messageEl.appendChild(contentEl);
+            
+            // Add timestamp
+            const timestampEl = document.createElement('div');
+            timestampEl.className = 'message-timestamp';
+            const now = new Date();
+            timestampEl.textContent = now.toLocaleTimeString();
+            timestampEl.style.fontSize = '0.75em';
+            timestampEl.style.color = '#666';
+            timestampEl.style.marginTop = '4px';
+            messageEl.appendChild(timestampEl);
             
             if (id) {
                 messageEl.id = id;

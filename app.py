@@ -804,8 +804,19 @@ async def chat(message: Message):
         
         if message.kg_id:
             print(f"Looking up KG context for ID: {message.kg_id}")
-            context = get_graph_context(message.kg_id)
             ontology = get_ontology_context(message.kg_id)
+            
+            # Use vector store to retrieve relevant context chunks
+            if message.kg_id in vector_stores:
+                vector_store = vector_stores[message.kg_id]
+                # Perform similarity search with question
+                relevant_docs = vector_store.similarity_search(message.question, k=5)
+                # Combine retrieved chunks as context
+                context = "\n\n".join([doc.page_content for doc in relevant_docs])
+                print(f"Retrieved {len(relevant_docs)} relevant context chunks from vector store")
+            else:
+                print(f"No vector store found for KG ID: {message.kg_id}, falling back to full KG context")
+                context = get_graph_context(message.kg_id)
             
             if not context:
                 print(f"Warning: No KG context found for ID: {message.kg_id}")
