@@ -21,9 +21,12 @@ env/
 # Log files
 *.log
 
-# Test files
+# Test files and generated outputs
 test_*.txt
+test_*.json
+test_*.pdf
 kg_test.txt
+*_output.json
 
 # Uploads directory
 uploads/
