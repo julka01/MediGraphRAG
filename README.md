@@ -34,7 +34,7 @@ All dependencies are specified in `requirements.txt` with pinned versions for re
 
 ## Installation
 
-### Option 1: Local Development Setup
+### Option 1: Local Development Setup (Recommended)
 
 1. **Clone the repository**:
 ```bash
@@ -89,7 +89,7 @@ ollama pull deepseek-coder
 ollama pull llama3.1:8b
 ```
 
-### Option 2: Docker Compose (Recommended)
+### Option 2: Docker Compose 
 
 1. **Clone the repository**:
 ```bash
@@ -180,10 +180,10 @@ The application supports multiple AI providers:
 
 ### Ontology Support
 The system includes biomedical ontology support for enhanced knowledge extraction:
-- 15+ specialized biomedical entity types
+<!-- - 15+ specialized biomedical entity types
 - 19+ medically relevant relationship types
 - Clinical property enrichment
-- Evidence level classification
+- Evidence level classification -->
 
 ## Troubleshooting
 
