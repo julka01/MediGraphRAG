@@ -1,2 +1,0 @@
-This is a test file for upload functionality.
-It contains sample text to verify the upload endpoint.
