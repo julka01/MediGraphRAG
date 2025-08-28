@@ -56,7 +56,7 @@ pip install -r requirements.txt
 
 4. **Create environment configuration**:
 ```bash
-cp .env.example .env  # Create from template or manually create
+cp .env.example .env  # Copy the example configuration file
 ```
 
 5. **Configure your `.env` file**:
@@ -81,7 +81,7 @@ OLLAMA_HOST=http://localhost:11434
    - Install Neo4j Desktop or use Docker
    - Create a database with the credentials from your `.env` file
 
-7. **For Ollama (local models)**, install and download models:
+7. **For Ollama (local models)**, install and download models on your host machine:
 ```bash
 # Install Ollama (visit https://ollama.ai for installation instructions)
 ollama pull llama2
@@ -99,7 +99,7 @@ cd tool-2025-kg-rag
 
 2. **Create environment configuration**:
 ```bash
-cp .env.example .env  # Or create manually
+cp .env.example .env  # Copy the example configuration file
 ```
 
 3. **Configure your `.env` file**:
@@ -213,7 +213,13 @@ The system includes biomedical ontology support for enhanced knowledge extractio
 
 ### Docker Issues
 
-1. **Build failures**:
+1. **Complete system reset**:
+   ```bash
+   # Remove containers, networks, volumes, and images
+   docker-compose down --rmi all --volumes --remove-orphans
+   ```
+
+2. **Build failures**:
    ```bash
    # Clean build
    docker-compose down --volumes
