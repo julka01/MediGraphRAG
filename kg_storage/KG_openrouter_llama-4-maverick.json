@@ -1,0 +1,236 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Prostate cancer",
+      "properties": {
+        "epidemiology": "Second most common cancer in males",
+        "clinical_significance": "High",
+        "guideline_section": "Introduction",
+        "name": "Prostate cancer"
+      }
+    },
+    {
+      "id": 2,
+      "label": "Age",
+      "properties": {
+        "risk_factor_type": "Non-modifiable",
+        "evidence_level": "1a",
+        "relationship": "Established risk factor",
+        "name": "Age"
+      }
+    },
+    {
+      "id": 3,
+      "label": "Race",
+      "properties": {
+        "risk_factor_type": "Non-modifiable",
+        "evidence_level": "1a",
+        "association": "Higher incidence in certain ethnic groups",
+        "name": "Race"
+      }
+    },
+    {
+      "id": 4,
+      "label": "Genetic and epigenetic of prostate cancer",
+      "properties": {
+        "risk_factor_type": "Genetic predisposition",
+        "evidence_level": "1b",
+        "guideline_section": "Epidemiology and Risk Prevention",
+        "name": "Genetic and epigenetic of prostate cancer"
+      }
+    },
+    {
+      "id": 5,
+      "label": "TNM prostate tumor staging",
+      "properties": {
+        "classification_system": "2017 TNM",
+        "clinical_significance": "High",
+        "guideline_section": "Classification and Staging Systems",
+        "name": "TNM prostate tumor staging"
+      }
+    },
+    {
+      "id": 6,
+      "label": "T1c",
+      "properties": {
+        "definition": "Tumour identified by needle biopsy (e.g., due to elevated PSA)",
+        "stage": "Clinically inapparent",
+        "diagnostic_method": "Needle biopsy",
+        "name": "T1c"
+      }
+    },
+    {
+      "id": 7,
+      "label": "T3b",
+      "properties": {
+        "definition": "Tumour invades seminal vesicle(s)",
+        "stage": "Locally advanced",
+        "clinical_feature": "Extracapsular extension",
+        "name": "T3b"
+      }
+    },
+    {
+      "id": 8,
+      "label": "M1b",
+      "properties": {
+        "definition": "Bone metastasis",
+        "stage": "Metastatic",
+        "prognosis": "Advanced disease",
+        "name": "M1b"
+      }
+    },
+    {
+      "id": 9,
+      "label": "Digital rectal examination",
+      "properties": {
+        "purpose": "Clinical T staging basis",
+        "clinical_significance": "High",
+        "methods": "Physical palpation",
+        "name": "Digital rectal examination"
+      }
+    },
+    {
+      "id": 10,
+      "label": "Radical Prostatectomy",
+      "properties": {
+        "treatment_context": "Organ-confined PCa",
+        "pathological_outcome": "pT2 staging",
+        "guideline_reference": "Pathological staging section",
+        "name": "Radical Prostatectomy"
+      }
+    },
+    {
+      "id": 11,
+      "label": "Gleason Score for Prostate Cancer",
+      "properties": {
+        "recent_update": "ISUP 2022 grade groups",
+        "prognostic_value": "Grade groups 1-5",
+        "clinical_utility": "Risk stratification",
+        "name": "Gleason Score for Prostate Cancer"
+      }
+    },
+    {
+      "id": 12,
+      "label": "Prostate-specific antigen",
+      "properties": {
+        "role": "Screening biomarker",
+        "association": "T1c diagnosis",
+        "clinical_application": "Early detection",
+        "name": "Prostate-specific antigen"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 2,
+      "to": 1,
+      "type": "increase",
+      "properties": {
+        "relationship": "Primary risk factor",
+        "evidence_level": "1a",
+        "mechanism": "Age-related accumulation"
+      }
+    },
+    {
+      "from": 3,
+      "to": 1,
+      "type": "increase",
+      "properties": {
+        "relationship": "Established risk factor",
+        "evidence_level": "1a",
+        "context": "Ethnic disparities"
+      }
+    },
+    {
+      "from": 4,
+      "to": 1,
+      "type": "increase",
+      "properties": {
+        "relationship": "Hereditary predisposition",
+        "evidence_level": "1b",
+        "biological_basis": "Genetic mutations"
+      }
+    },
+    {
+      "from": 5,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "system": "TNM classification",
+        "version": "2017",
+        "clinical_usage": "Standard staging framework"
+      }
+    },
+    {
+      "from": 6,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "stage_category": "Clinical T1",
+        "diagnostic_trigger": "Elevated PSA",
+        "prevalence": "Common diagnosis stage"
+      }
+    },
+    {
+      "from": 7,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "stage_category": "Clinical T3",
+        "invasion_site": "Seminal vesicles",
+        "prognosis": "Higher recurrence risk"
+      }
+    },
+    {
+      "from": 8,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "stage_category": "Metastatic (M1)",
+        "common_site": "Bone",
+        "treatment_implication": "Systemic therapy"
+      }
+    },
+    {
+      "from": 9,
+      "to": 1,
+      "type": "diagnose",
+      "properties": {
+        "method": "Physical assessment",
+        "purpose": "Clinical T staging",
+        "guideline_reference": "TNM classification"
+      }
+    },
+    {
+      "from": 10,
+      "to": 1,
+      "type": "treat",
+      "properties": {
+        "treatment_type": "Surgical intervention",
+        "applicability": "Organ-confined disease",
+        "pathological_outcome": "pT2 designation"
+      }
+    },
+    {
+      "from": 11,
+      "to": 1,
+      "type": "judge_by",
+      "properties": {
+        "grading_system": "ISUP 2022 Grade Groups",
+        "prognostic_value": "Tumor aggressiveness",
+        "update_reason": "Distinct prognostic categories"
+      }
+    },
+    {
+      "from": 12,
+      "to": 6,
+      "type": "diagnose",
+      "properties": {
+        "diagnostic_role": "T1c identification",
+        "clinical_utility": "Biopsy indication",
+        "evidence_level": "1a"
+      }
+    }
+  ]
+}

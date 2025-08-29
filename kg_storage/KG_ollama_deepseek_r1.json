@@ -1,0 +1,188 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Prostate cancer",
+      "properties": {
+        "name": "Prostate cancer",
+        "clinical_significance": "High",
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention",
+        "publication_year": 2025
+      }
+    },
+    {
+      "id": 2,
+      "label": "Age",
+      "properties": {
+        "name": "Age",
+        "risk_factor_type": "Non-modifiable",
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "id": 3,
+      "label": "Racial differences",
+      "properties": {
+        "name": "Racial differences",
+        "risk_factor_type": "Non-modifiable",
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "id": 4,
+      "label": "Genetic and epigenetic of prostate cancer",
+      "properties": {
+        "name": "Genetic and epigenetic of prostate cancer",
+        "risk_factor_type": "Non-modifiable",
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "id": 5,
+      "label": "TNM prostate tumor staging",
+      "properties": {
+        "name": "TNM prostate tumor staging",
+        "staging_version": "2017",
+        "evidence_level": "1a",
+        "guideline_section": "Classification and Staging Systems"
+      }
+    },
+    {
+      "id": 6,
+      "label": "Digital rectal examination",
+      "properties": {
+        "name": "Digital rectal examination",
+        "purpose": "Clinical T-stage assessment",
+        "evidence_level": "1a",
+        "guideline_section": "Classification and Staging Systems"
+      }
+    },
+    {
+      "id": 7,
+      "label": "Needle Biopsy of Prostate",
+      "properties": {
+        "name": "Needle Biopsy of Prostate",
+        "indication": "Elevated PSA detection",
+        "evidence_level": "1a",
+        "guideline_section": "Classification and Staging Systems"
+      }
+    },
+    {
+      "id": 8,
+      "label": "T1c",
+      "properties": {
+        "name": "T1c",
+        "definition": "Tumor identified by needle biopsy",
+        "evidence_level": "1a",
+        "staging_system": "TNM 2017"
+      }
+    },
+    {
+      "id": 9,
+      "label": "Radical Prostatectomy",
+      "properties": {
+        "name": "Radical prostatectomy",
+        "purpose": "Pathological staging confirmation",
+        "evidence_level": "1a",
+        "guideline_section": "Classification and Staging Systems"
+      }
+    },
+    {
+      "id": 10,
+      "label": "Gleason Score for Prostate Cancer",
+      "properties": {
+        "name": "Gleason Score for Prostate Cancer",
+        "grading_system": "ISUP/WHO 2022",
+        "evidence_level": "1a",
+        "guideline_section": "Classification and Staging Systems"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 1,
+      "to": 2,
+      "type": "caused_by",
+      "properties": {
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "from": 1,
+      "to": 3,
+      "type": "caused_by",
+      "properties": {
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "from": 1,
+      "to": 4,
+      "type": "caused_by",
+      "properties": {
+        "evidence_level": "1a",
+        "guideline_section": "Epidemiology and Risk Prevention"
+      }
+    },
+    {
+      "from": 6,
+      "to": 5,
+      "type": "participated_in",
+      "properties": {
+        "role": "Clinical T-stage determination",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 7,
+      "to": 8,
+      "type": "judge_by",
+      "properties": {
+        "diagnostic_criteria": "T1c definition",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 9,
+      "to": 5,
+      "type": "participated_in",
+      "properties": {
+        "role": "Pathological staging validation",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 8,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "clinical_significance": "Clinically significant categorization",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 10,
+      "to": 1,
+      "type": "disease_screening",
+      "properties": {
+        "purpose": "Tumor aggressiveness assessment",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 5,
+      "to": 1,
+      "type": "stage_classify",
+      "properties": {
+        "system_applicability": "Standard staging framework",
+        "evidence_level": "1a"
+      }
+    }
+  ]
+}

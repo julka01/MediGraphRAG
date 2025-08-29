@@ -1,0 +1,178 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "label": "Disease",
+      "properties": {
+        "name": "Prostate Cancer",
+        "evidence_level": "1a",
+        "clinical_significance": "High",
+        "ontology_id": "DOID:10283"
+      }
+    },
+    {
+      "id": 2,
+      "label": "RiskFactor",
+      "properties": {
+        "name": "Increasing Age",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "id": 3,
+      "label": "RiskFactor",
+      "properties": {
+        "name": "Ethnic Origin",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "id": 4,
+      "label": "RiskFactor",
+      "properties": {
+        "name": "Genetic Predisposition",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "id": 5,
+      "label": "AnatomicalStructure",
+      "properties": {
+        "name": "Prostate",
+        "ontology_id": "UBERON:0002367"
+      }
+    },
+    {
+      "id": 6,
+      "label": "Stage",
+      "properties": {
+        "name": "TNM Classification 2017",
+        "evidence_level": "1a",
+        "clinical_significance": "High"
+      }
+    },
+    {
+      "id": 7,
+      "label": "Biomarker",
+      "properties": {
+        "name": "PSA (Prostate-Specific Antigen)",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "id": 8,
+      "label": "Procedure",
+      "properties": {
+        "name": "Radical Prostatectomy",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "id": 9,
+      "label": "Guideline",
+      "properties": {
+        "name": "EAU-EANM-ESTRO-ESUR-ISUP-SIOG Guidelines on Prostate Cancer",
+        "publication_year": 2025
+      }
+    },
+    {
+      "id": 10,
+      "label": "Protein",
+      "properties": {
+        "name": "PSA (Prostate-Specific Antigen)",
+        "ontology_id": "PR:000013879"
+      }
+    },
+    {
+      "id": 11,
+      "label": "AnatomicalStructure",
+      "properties": {
+        "name": "Seminal vesicle",
+        "ontology_id": "UBERON:0001919"
+      }
+    },
+    {
+      "id": 12,
+      "label": "Organization",
+      "properties": {
+        "name": "International Society of Urological Pathology"
+      }
+    },
+    {
+      "id": 13,
+      "label": "Gene",
+      "properties": {
+        "name": "Genetic factors linked to Prostate Cancer"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "from": 2,
+      "to": 1,
+      "type": "RISK_FACTOR_FOR",
+      "properties": {
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 3,
+      "to": 1,
+      "type": "RISK_FACTOR_FOR",
+      "properties": {
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 4,
+      "to": 1,
+      "type": "GENETIC_RISK_FACTOR",
+      "properties": {
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 5,
+      "to": 7,
+      "type": "PRODUCES",
+      "properties": {
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 8,
+      "to": 1,
+      "type": "TREATS",
+      "properties": {
+        "efficacy": "High",
+        "evidence_level": "1a"
+      }
+    },
+    {
+      "from": 9,
+      "to": 8,
+      "type": "RECOMMENDS",
+      "properties": {}
+    },
+    {
+      "from": 1,
+      "to": 6,
+      "type": "HAS_STAGE",
+      "properties": {}
+    },
+    {
+      "from": 1,
+      "to": 5,
+      "type": "AFFECTS",
+      "properties": {}
+    },
+    {
+      "from": 13,
+      "to": 1,
+      "type": "GENETIC_RISK_FACTOR",
+      "properties": {
+        "evidence_level": "1a"
+      }
+    }
+  ]
+}
