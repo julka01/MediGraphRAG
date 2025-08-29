@@ -108,7 +108,12 @@ def get_model_providers():
                 model="anthropic/claude-3-opus",
                 openai_api_base="https://openrouter.ai/api/v1",
                 openai_api_key=os.getenv("OPENROUTER_API_KEY")
-            ) if os.getenv("OPENROUTER_API_KEY") else None
+            ) if os.getenv("OPENROUTER_API_KEY") else None,
+            "meta-llama/llama-4-maverick:free": ChatOpenAI(
+                model="meta-llama/llama-4-maverick:free",
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=os.getenv("OPENROUTER_API_KEY")
+            ) if os.getenv("OPENROUTER_API_KEY") else None,
         },
         "lmu_lightllm": {
             "eta/llama-3.3-70b-instruct": ChatOpenAI(
@@ -666,7 +671,10 @@ def create_vector_store(kg_id: str, text: str, provider: str):
         vector_stores[kg_id] = vector_store
     except Exception as e:
         print(f"Chroma vector store creation failed: {str(e)}")
-        vector_stores[kg_id] = {"chunks": chunks, "embeddings": embeddings}
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create vector store: {str(e)}"
+        )
 
 def get_graph_context(kg_id: str) -> str:
     if kg_id not in knowledge_graphs:
