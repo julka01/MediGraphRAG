@@ -33,7 +33,7 @@ safetensors==0.5.3
 tiktoken==0.9.0
 
 # Scientific computing
-numpy==1.26.4
+numpy>=2.1.0
 pandas==2.2.3
 scikit-learn==1.5.0
 

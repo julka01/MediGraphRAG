@@ -1652,114 +1652,121 @@ async function saveKGToFile() {
             }
             
         // Send question function with loading indicator
-        window.sendQuestion = async function() {
-            const input = document.getElementById('question');
-            const sendButton = document.getElementById('send-btn');
-            const chatBox = document.getElementById('chat-box');
-            const question = input.value.trim();
-            if (!question) return;
+window.sendQuestion = async function() {
+    const input = document.getElementById('question');
+    const sendButton = document.getElementById('send-btn');
+    const chatBox = document.getElementById('chat-box');
+    const question = input.value.trim();
+    if (!question) return;
+    
+    const vendor = document.getElementById('rag-vendor').value;
+    const model = document.getElementById('rag-model').value;
+    
+    addToChat(`You: ${question}`, 'user');
+    input.value = '';
+    
+    // Create thinking message inside chatbox
+    const thinkingId = 'thinking-' + Date.now();
+    const thinkingEl = addToChat(
+        `<div class="spinner"></div> Thinking...`,
+        'thinking',
+        thinkingId
+    );
+    
+    const originalButtonText = sendButton.textContent;
+    try {
+        // Show loading state on button
+        sendButton.innerHTML = '<div class="spinner"></div> Thinking...';
+        sendButton.disabled = true;
+        
+        // Create payload with required parameters
+        const payload = {
+            question: question,
+            provider_rag: vendor,
+            model_rag: model
+        };
+        
+        // Add kg_id if available
+        if (currentKGId) {
+            payload.kg_id = currentKGId;
+        }
+        
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
             
-            const vendor = document.getElementById('rag-vendor').value;
-            const model = document.getElementById('rag-model').value;
+        if (!response.ok) {
+            throw new Error('Error getting response');
+        }
             
-            addToChat(`You: ${question}`, 'user');
-            input.value = '';
+        const result = await response.json();
             
-            // Create thinking message inside chatbox
-            const thinkingId = 'thinking-' + Date.now();
-            const thinkingEl = addToChat(
-                `<div class="spinner"></div> Thinking...`,
-                'thinking',
-                thinkingId
-            );
+        // Enhanced formatting for clinical responses
+        let formattedResponse = result.response;
             
-            const originalButtonText = sendButton.textContent;
-            try {
-                // Show loading state on button
-                sendButton.innerHTML = '<div class="spinner"></div> Thinking...';
-                sendButton.disabled = true;
-                
-                const response = await fetch('/chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            question: question,
-                            provider_rag: vendor,
-                            model_rag: model,
-                            kg_id: currentKGId
-                        })
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error('Error getting response');
-                    }
-                    
-                    const result = await response.json();
-                    
-                    // Enhanced formatting for clinical responses
-                    let formattedResponse = result.response;
-                    
-                    // Format clinical summary sections (remove emojis for minimalism)
-                    formattedResponse = formattedResponse
-                        .replace(/🔍\s*\*\*Clinical Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
-                            '<div class="clinical-summary"><strong>Clinical Summary:</strong> $1</div>')
-                        .replace(/📋\s*\*\*Key Clinical Points\*\*:\s*(.*?)(?=🔗|⚠️|📊|$)/gs, 
-                            '<div class="clinical-points"><strong>Key Clinical Points:</strong>$1</div>')
-                        .replace(/🔗\s*\*\*Graph Evidence\*\*:\s*(.*?)(?=⚠️|📊|$)/gs, 
-                            '<div class="graph-evidence"><strong>Graph Evidence:</strong> $1</div>')
-                        .replace(/⚠️\s*\*\*Clinical Notes\*\*:\s*(.*?)(?=📊|$)/gs, 
-                            '<div class="clinical-notes"><strong>Clinical Notes:</strong> $1</div>')
-                        .replace(/📊\s*\*\*Confidence Level\*\*:\s*(High|Medium|Low)/gi, function(match, level) {
-                            const levelClass = `confidence-${level.toLowerCase()}`;
-                            return `<div class="confidence-level ${levelClass}"><strong>Confidence:</strong> ${level}</div>`;
-                        });
-                    
-                    // Format bullet points: replace "•" or "-" with inline dashes and line breaks
-                    formattedResponse = formattedResponse
-                        .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash and space
-                        .replace(/\n/g, '<br>');  // replace newlines with <br> for inline display
-                    
-                    // Remove any existing <li> tags to avoid bullet list styling
-                    formattedResponse = formattedResponse.replace(/<\/?li>/g, '');
-                    
-                    // Remove wrapping <ul> tags in clinical-points if any
-                    formattedResponse = formattedResponse.replace(/<\/?ul>/g, '');
-                    
-                    // Format fallback structured responses (old format)
-                    if (!formattedResponse.includes('clinical-summary')) {
-                        formattedResponse = formattedResponse
-                            .replace(/🔍\s*\*\*Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
-                                '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Summary:</strong> $1</div>')
-                            .replace(/📋\s*\*\*Key Points\*\*:\s*(.*?)(?=⚠️|$)/gs, 
-                                '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Points:</strong>$1</div>')
-                            .replace(/⚠️\s*\*\*Note\*\*:\s*(.*?)$/gs, 
-                                '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Note:</strong> $1</div>');
-                    }
-                    
-                    // Clean up any remaining markdown formatting
-                    formattedResponse = formattedResponse
-                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                        .replace(/`(.*?)`/g, '<code>$1</code>');
-                        
-                    // Remove thinking message before adding response
-                    if (thinkingEl && thinkingEl.parentNode) {
-                        thinkingEl.parentNode.removeChild(thinkingEl);
-                    }
-                    
-                    addToChat(`${formattedResponse}`, 'ai');
-                } catch (error) {
-                    // Remove thinking message before adding error
-                    if (thinkingEl && thinkingEl.parentNode) {
-                        thinkingEl.parentNode.removeChild(thinkingEl);
-                    }
-                    addToChat(`Error: ${error.message}`, 'error');
-                } finally {
-                    // Restore button state
-                    sendButton.innerHTML = originalButtonText;
-                    sendButton.disabled = false;
-                }
-            };
+        // Format clinical summary sections (remove emojis for minimalism)
+        formattedResponse = formattedResponse
+            .replace(/🔍\s*\*\*Clinical Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
+                '<div class="clinical-summary"><strong>Clinical Summary:</strong> $1</div>')
+            .replace(/📋\s*\*\*Key Clinical Points\*\*:\s*(.*?)(?=🔗|⚠️|📊|$)/gs, 
+                '<div class="clinical-points"><strong>Key Clinical Points:</strong>$1</div>')
+            .replace(/🔗\s*\*\*Graph Evidence\*\*:\s*(.*?)(?=⚠️|📊|$)/gs, 
+                '<div class="graph-evidence"><strong>Graph Evidence:</strong> $1</div>')
+            .replace(/⚠️\s*\*\*Clinical Notes\*\*:\s*(.*?)(?=📊|$)/gs, 
+                '<div class="clinical-notes"><strong>Clinical Notes:</strong> $1</div>')
+            .replace(/📊\s*\*\*Confidence Level\*\*:\s*(High|Medium|Low)/gi, function(match, level) {
+                const levelClass = `confidence-${level.toLowerCase()}`;
+                return `<div class="confidence-level ${levelClass}"><strong>Confidence:</strong> ${level}</div>`;
+            });
+        
+        // Format bullet points: replace "•" or "-" with inline dashes and line breaks
+        formattedResponse = formattedResponse
+            .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash and space
+            .replace(/\n/g, '<br>');  // replace newlines with <br> for inline display
+        
+        // Remove any existing <li> tags to avoid bullet list styling
+        formattedResponse = formattedResponse.replace(/<\/?li>/g, '');
+        
+        // Remove wrapping <ul> tags in clinical-points if any
+        formattedResponse = formattedResponse.replace(/<\/?ul>/g, '');
+        
+        // Format fallback structured responses (old format)
+        if (!formattedResponse.includes('clinical-summary')) {
+            formattedResponse = formattedResponse
+                .replace(/🔍\s*\*\*Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
+                    '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Summary:</strong> $1</div>')
+                .replace(/📋\s*\*\*Key Points\*\*:\s*(.*?)(?=⚠️|$)/gs, 
+                    '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Points:</strong>$1</div>')
+                .replace(/⚠️\s*\*\*Note\*\*:\s*(.*?)$/gs, 
+                    '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Note:</strong> $1</div>');
+        }
+        
+        // Clean up any remaining markdown formatting
+        formattedResponse = formattedResponse
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code>$1</code>');
+            
+        // Remove thinking message before adding response
+        if (thinkingEl && thinkingEl.parentNode) {
+            thinkingEl.parentNode.removeChild(thinkingEl);
+        }
+        
+        addToChat(`${formattedResponse}`, 'ai');
+    } catch (error) {
+        // Remove thinking message before adding error
+        if (thinkingEl && thinkingEl.parentNode) {
+            thinkingEl.parentNode.removeChild(thinkingEl);
+        }
+        addToChat(`Error: ${error.message}`, 'error');
+    } finally {
+        // Restore button state
+        sendButton.innerHTML = originalButtonText;
+        sendButton.disabled = false;
+    }
+};
             
             // Add event listener for Enter key
             document.getElementById('question').addEventListener('keydown', function(e) {
