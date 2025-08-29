@@ -145,17 +145,17 @@ docker run -d \
 
 ### Local Development
 ```bash
-uvicorn app:app --reload --host 0.0.0.0 --port 8000
+uvicorn app:app --reload --host 0.0.0.0 --port 8004
 ```
 
 ### Production
 ```bash
-gunicorn app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+gunicorn app:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8004
 ```
 
 ### Access the Application
-- **Web Interface**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+- **Web Interface**: http://localhost:8004
+- **API Documentation**: http://localhost:8004/docs
 - **Neo4j Browser**: http://localhost:7474 (when using Docker Compose)
 
 ## Usage

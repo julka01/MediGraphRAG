@@ -41,11 +41,11 @@ RUN mkdir -p /app/uploads /app/kg_storage /app/vector_stores /app/chroma_db
 RUN chmod -R 755 /app
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8004
 
 # Add health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
-    CMD curl --fail http://localhost:8000/health || exit 1
+    CMD curl --fail http://localhost:8004/health || exit 1
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
@@ -56,7 +56,7 @@ OLLAMA_PID=$!\n\
 echo "Waiting for Ollama to be ready..."\n\
 sleep 5\n\
 echo "Starting FastAPI application..."\n\
-uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1\n\
+uvicorn app:app --host 0.0.0.0 --port 8004 --workers 1\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Command to run the application
