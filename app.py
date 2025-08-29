@@ -6,7 +6,7 @@ import json
 import re
 import uuid
 from io import BytesIO
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import owlready2  # Add owlready2 for OWL parsing
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.staticfiles import StaticFiles
@@ -27,7 +27,8 @@ try:
 except ImportError:
     # Fallback to deprecated imports if new package not available
     from langchain_community.llms import Ollama as OllamaLLM
-    from langchain_community.embeddings import OllamaEmbeddings
+    from langchain_community.embeddings import OllamaEmbeddings as LegacyOllamaEmbeddings
+    OllamaEmbeddings = LegacyOllamaEmbeddings
 from neo4j import GraphDatabase
 from kg_loader import KGLoader
 from improved_kg_creator import ImprovedKGCreator
@@ -223,20 +224,20 @@ async def get_models(vendor: str):
         return {"models": models}
     return {"models": []}
 
+
 # Embeddings providers
+from langchain_openai import OpenAIEmbeddings
+
 EMBEDDINGS_PROVIDERS = {
     "ollama": OllamaEmbeddings(model="nomic-embed-text"),
-    "openai": OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY")),
-    "openrouter": OpenAIEmbeddings(
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-        openai_api_base="https://openrouter.ai/api/v1"
-    )
+    "openai": OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None,
+    "openrouter": OllamaEmbeddings(model="nomic-embed-text")
 }
 
 class Message(BaseModel):
     question: str
     provider_rag: str
-    model_rag: str
+    model_rag: Optional[str] = None
     kg_id: Optional[str] = None
 
 class ExportToFileRequest(BaseModel):
@@ -356,7 +357,7 @@ async def load_kg_from_file(
         )
         
 def parse_owl_ontology(owl_bytes: bytes) -> dict:
-    """Parse OWL ontology file into our format with error handling for conflicting entity types"""
+    """Enhanced OWL ontology parsing with improved error handling and extraction"""
     try:
         # Create a BytesIO object from the bytes
         file_obj = BytesIO(owl_bytes)
@@ -364,48 +365,49 @@ def parse_owl_ontology(owl_bytes: bytes) -> dict:
         # Create a new world to avoid conflicts with existing ontologies
         world = owlready2.World()
         
-        # Load the ontology directly from bytes with error handling
+        # Load the ontology directly from bytes with enhanced error handling
         onto = world.get_ontology("")
         
-        # Try to load the ontology, but handle the specific error about conflicting entity types
         try:
             onto.load(fileobj=file_obj)
-        except TypeError as e:
-            if "belongs to more than one entity types" in str(e):
-                # Extract the problematic entity from the error message
-                import re
-                match = re.search(r"'([^']+)' belongs to more than one entity types", str(e))
-                if match:
-                    problematic_entity = match.group(1)
-                    print(f"Warning: Skipping problematic entity {problematic_entity} that has conflicting types")
-                    
-                    # Try to parse the OWL file manually to extract valid entities
-                    return parse_owl_manually(owl_bytes)
-                else:
-                    raise e
-            else:
-                raise e
+        except Exception as e:
+            print(f"Error loading OWL ontology: {str(e)}")
+            # Fallback to manual parsing if owlready2 fails
+            return parse_owl_manually(owl_bytes)
         
-        # Extract classes as node labels
-        node_labels = []
+        # Extract classes, object properties, and data properties
+        node_labels = set()
+        relationship_types = set()
+        
         for cls in onto.classes():
-            if cls.name:  # Only add classes with valid names
-                node_labels.append(cls.name)
+            if cls.name:
+                node_labels.add(cls.name)
+            # Extract labels and comments for additional context
+            for label in cls.label:
+                node_labels.add(str(label))
+            for comment in cls.comment:
+                node_labels.add(str(comment))
         
-        # Extract object properties as relationship types
-        relationship_types = []
         for prop in onto.object_properties():
-            if prop.name:  # Only add properties with valid names
-                relationship_types.append(prop.name)
+            if prop.name:
+                relationship_types.add(prop.name)
+            for label in prop.label:
+                relationship_types.add(str(label))
+        
+        for prop in onto.data_properties():
+            if prop.name:
+                relationship_types.add(prop.name)
+            for label in prop.label:
+                relationship_types.add(str(label))
         
         return {
-            "node_labels": node_labels,
-            "relationship_types": relationship_types
+            "node_labels": list(node_labels),
+            "relationship_types": list(relationship_types)
         }
         
     except Exception as e:
-        print(f"Error parsing OWL ontology with owlready2: {str(e)}")
-        # Fallback to manual parsing
+        print(f"Error parsing OWL ontology: {str(e)}")
+        # Fallback to manual parsing if owlready2 fails
         return parse_owl_manually(owl_bytes)
 
 def parse_owl_manually(owl_bytes: bytes) -> dict:
@@ -656,24 +658,54 @@ def _fallback_kg_generation(text: str, llm, ontology: Optional[Dict] = None) -> 
         raise ValueError("Failed to parse JSON from model response")
 
 def create_vector_store(kg_id: str, text: str, provider: str):
-    if provider not in EMBEDDINGS_PROVIDERS:
-        raise ValueError(f"Embeddings provider {provider} not available")
-    
-    embeddings = EMBEDDINGS_PROVIDERS[provider]
-    chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
-    
     try:
+        print(f"Creating vector store with provider: {provider}")
+        
+        # Map provider or model string to embeddings provider key
+        provider_key_map = {
+            "openrouter": "ollama",
+            "ollama": "ollama",
+            "openai": "openai",
+            # Add possible model strings mapping to provider keys
+            "deepseek/deepseek-r1-0528:free": "openrouter",
+            "gpt-4": "openai",
+            "gpt-3.5-turbo": "openai",
+            "meta-llama/llama-4-maverick:free": "openrouter",
+            "nomic-embed-text": "ollama"
+        }
+        
+        embeddings_provider_key = provider_key_map.get(provider)
+        if not embeddings_provider_key:
+            raise ValueError(f"Embeddings provider for '{provider}' not found in mapping")
+        
+        if embeddings_provider_key not in EMBEDDINGS_PROVIDERS:
+            raise ValueError(f"Embeddings provider '{embeddings_provider_key}' not available")
+        
+        embeddings = EMBEDDINGS_PROVIDERS[embeddings_provider_key]
+        print(f"Embeddings object type: {type(embeddings)}")
+        
+        chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+        
+        # Use persistent Chroma client
+        chroma_db_path = os.path.join(os.getcwd(), "chroma_db")
+        os.makedirs(chroma_db_path, exist_ok=True)
+        
         vector_store = Chroma.from_texts(
             chunks, 
             embedding=embeddings,
-            collection_name=f"kg_{kg_id}"
+            collection_name=f"kg_{kg_id}",
+            persist_directory=chroma_db_path
         )
+        vector_store.persist()
+        
         vector_stores[kg_id] = vector_store
     except Exception as e:
-        print(f"Chroma vector store creation failed: {str(e)}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"Chroma vector store creation failed: {str(e)}\n{error_traceback}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create vector store: {str(e)}"
+            detail=f"Failed to create vector store: {str(e)} - Full traceback: {error_traceback}"
         )
 
 def get_graph_context(kg_id: str) -> str:
@@ -759,7 +791,7 @@ def get_ontology_context(kg_id: str) -> Dict[str, Any]:
     }
 
 def create_enhanced_rag_prompt(context: str, ontology: Dict[str, Any]) -> str:
-    """Create an enhanced RAG prompt with ontology constraints"""
+    """Create an enhanced RAG prompt with refined ontology constraints and response guidelines"""
     
     ontology_info = ""
     if ontology:
@@ -777,33 +809,37 @@ You have access to a structured knowledge graph containing clinical entities and
 RESPONSE GUIDELINES:
 1. Base your answer STRICTLY on the provided knowledge graph context
 2. Use only the entity types and relationships present in the ontology
-3. Provide evidence-based, clinically accurate information
-4. Structure your response for clinical relevance
-5. Include confidence levels when appropriate
-6. Reference specific graph elements (IDs) when making claims
+3. Provide evidence-based, clinically accurate information with specific examples from the graph
+4. Structure your response for clinical relevance, using clear headings and bullet points
+5. Include confidence levels based on the evidence available in the graph
+6. Reference specific graph elements (node/relationship IDs) when making claims
 
 KNOWLEDGE GRAPH CONTEXT:
 {context}
 
 RESPONSE FORMAT:
-🔍 **Clinical Summary**: [Brief, evidence-based summary]
+🔍 **Clinical Summary**: [Concise summary with key findings]
 
 📋 **Key Clinical Points**:
-   • [Point 1 with evidence level if available]
-   • [Point 2 with clinical significance]
-   • [Point 3 with relevant relationships]
+   - [Point 1 with evidence level and graph ID reference]
+   - [Point 2 with clinical significance and graph ID reference]
+   - [Point 3 with relevant relationships and graph ID reference]
 
-🔗 **Graph Evidence**: [Reference specific node/relationship IDs]
+🔗 **Graph Evidence**: Reference specific node/relationship IDs with quotes from the graph context
 
-⚠️ **Clinical Notes**: [Any limitations, contraindications, or important considerations]
+⚠️ **Clinical Notes**: Any limitations, contraindications, or important considerations based on the graph
 
-📊 **Confidence Level**: [High/Medium/Low based on evidence quality]
+📊 **Confidence Level**: [High/Medium/Low based on evidence quality and graph coverage]
 """
 
 @app.post("/chat")
 async def chat(message: Message):
     try:
         print(f"Chat request received - Question: '{message.question}', KG ID: '{message.kg_id}'")
+        
+        # Default to llama-4-maverick:free for OpenRouter if not specified
+        if message.provider_rag == "openrouter" and not message.model_rag:
+            message.model_rag = "meta-llama/llama-4-maverick:free"
         
         if message.provider_rag not in MODEL_PROVIDERS or message.model_rag not in MODEL_PROVIDERS[message.provider_rag]:
             raise ValueError(f"Model {message.model_rag} not available for provider {message.provider_rag}")
