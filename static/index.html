@@ -192,13 +192,15 @@
         .chat-container {
             flex: 1;
             display: flex;
-            gap: 20px;
+            flex-direction: column; /* Changed to column */
+            gap: 10px; /* Reduced gap */
         }
 
         #chat-section {
             flex: 1;
             display: flex;
             flex-direction: column;
+            overflow: hidden; /* Added to prevent overflow */
         }
 
         #chat-box {
@@ -206,16 +208,17 @@
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 15px;
-            margin-bottom: 15px;
             overflow-y: auto;
             background: #f9f9f9;
-            min-height: 200px; /* Minimum height */
-            max-height: calc(100vh - 400px); /* Responsive max height */
+            min-height: 0; /* Changed from 200px to 0 */
+            flex-basis: 0; /* Added to make it flexible */
         }
 
         .chat-input-container {
             display: flex;
             gap: 10px;
+            padding-top: 10px; /* Added padding to separate from chat box */
+            border-top: 1px solid #ddd; /* Added border to separate from chat box */
         }
 
         #question {
@@ -1204,29 +1207,40 @@
                 const data = await response.json();
                 modelSelect.innerHTML = '';
                 
-        data.models.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model;
-            
-            // Map model names to more user-friendly display names
-            let displayName = model;
-            if (vendor === 'openrouter') {
-                // Extract the last part after the last slash
-                const parts = model.split('/');
-                if (parts.length > 1) {
-                    displayName = parts[parts.length - 1];
-                }
-                // Remove any suffixes after colon
-                displayName = displayName.split(':')[0];
-            }
-            
-            option.textContent = displayName;
-            modelSelect.appendChild(option);
-        });
-                
-                // Preselect first model
-                if (data.models.length > 0) {
-                    modelSelect.value = data.models[0];
+                try {
+                    data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model;
+                        
+                        // Map model names to more user-friendly display names
+                        let displayName = model;
+                        if (vendor === 'openrouter') {
+                            // Extract the last part after the last slash
+                            const parts = model.split('/');
+                            if (parts.length > 1) {
+                                displayName = parts[parts.length - 1];
+                            }
+                            // Remove any suffixes after colon
+                            displayName = displayName.split(':')[0];
+                        }
+                        
+                        option.textContent = displayName;
+                        modelSelect.appendChild(option);
+                    });
+                    
+                    // Preselect first model
+                    if (data.models.length > 0) {
+                        if (vendor === 'openrouter' && data.models.includes('meta-llama/llama-4-maverick:free')) {
+                            modelSelect.value = 'meta-llama/llama-4-maverick:free';
+                        } else {
+                            modelSelect.value = data.models[0];
+                        }
+                    } else {
+                        modelSelect.innerHTML = '<option value="">No models available</option>';
+                    }
+                } catch (error) {
+                    console.error('Error processing models:', error);
+                    modelSelect.innerHTML = '<option value="">Error processing models</option>';
                 }
             } catch (error) {
                 console.error('Error fetching models:', error);
@@ -1665,13 +1679,6 @@ window.sendQuestion = async function() {
     addToChat(`You: ${question}`, 'user');
     input.value = '';
     
-    // Create thinking message inside chatbox
-    const thinkingId = 'thinking-' + Date.now();
-    const thinkingEl = addToChat(
-        `<div class="spinner"></div> Thinking...`,
-        'thinking',
-        thinkingId
-    );
     
     const originalButtonText = sendButton.textContent;
     try {
@@ -1749,17 +1756,9 @@ window.sendQuestion = async function() {
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/`(.*?)`/g, '<code>$1</code>');
             
-        // Remove thinking message before adding response
-        if (thinkingEl && thinkingEl.parentNode) {
-            thinkingEl.parentNode.removeChild(thinkingEl);
-        }
         
         addToChat(`${formattedResponse}`, 'ai');
     } catch (error) {
-        // Remove thinking message before adding error
-        if (thinkingEl && thinkingEl.parentNode) {
-            thinkingEl.parentNode.removeChild(thinkingEl);
-        }
         addToChat(`Error: ${error.message}`, 'error');
     } finally {
         // Restore button state
