@@ -740,6 +740,35 @@
             cursor: pointer;
             font-weight: bold;
         }
+        
+        /* Reasoning Steps Styling */
+        .reasoning-steps-toggle {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+        
+        .reasoning-steps-toggle:hover {
+            background: #2980b9;
+        }
+        
+        .reasoning-steps-content {
+            background: #f4f4f4;
+            border-left: 4px solid #3498db;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            line-height: 1.6;
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -1710,51 +1739,76 @@ window.sendQuestion = async function() {
             
         const result = await response.json();
             
-        // Enhanced formatting for clinical responses
+        // Chain of thought response formatting with expandable reasoning
         let formattedResponse = result.response;
+        
+        // Extract reasoning steps
+        const reasoningStepsMatch = formattedResponse.match(/\*\*Reasoning Steps\*\*:\s*(.*?)(?=\*\*Key Evidence\*\*)/gs);
+        const keyEvidenceMatch = formattedResponse.match(/\*\*Key Evidence\*\*:\s*(.*?)(?=\*\*Conclusion\*\*)/gs);
+        const conclusionMatch = formattedResponse.match(/\*\*Conclusion\*\*:\s*(.*?)(?=\*\*Confidence Level\*\*)/gs);
+        const confidenceLevelMatch = formattedResponse.match(/\*\*Confidence Level\*\*:\s*(High|Medium|Low)\s*with\s*justification:\s*(.*)/i);
+        
+        // Prepare reasoning steps for expandable view
+        let reasoningStepsContent = '';
+        let expandableReasoningButton = '';
+        if (reasoningStepsMatch) {
+            const cleanedSteps = reasoningStepsMatch[0]
+                .replace(/\*\*Reasoning Steps\*\*:\s*/g, '')
+                .replace(/\n/g, '<br>');
             
-        // Format clinical summary sections (remove emojis for minimalism)
-        formattedResponse = formattedResponse
-            .replace(/🔍\s*\*\*Clinical Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
-                '<div class="clinical-summary"><strong>Clinical Summary:</strong> $1</div>')
-            .replace(/📋\s*\*\*Key Clinical Points\*\*:\s*(.*?)(?=🔗|⚠️|📊|$)/gs, 
-                '<div class="clinical-points"><strong>Key Clinical Points:</strong>$1</div>')
-            .replace(/🔗\s*\*\*Graph Evidence\*\*:\s*(.*?)(?=⚠️|📊|$)/gs, 
-                '<div class="graph-evidence"><strong>Graph Evidence:</strong> $1</div>')
-            .replace(/⚠️\s*\*\*Clinical Notes\*\*:\s*(.*?)(?=📊|$)/gs, 
-                '<div class="clinical-notes"><strong>Clinical Notes:</strong> $1</div>')
-            .replace(/📊\s*\*\*Confidence Level\*\*:\s*(High|Medium|Low)/gi, function(match, level) {
-                const levelClass = `confidence-${level.toLowerCase()}`;
-                return `<div class="confidence-level ${levelClass}"><strong>Confidence:</strong> ${level}</div>`;
-            });
-        
-        // Format bullet points: replace "•" or "-" with inline dashes and line breaks
-        formattedResponse = formattedResponse
-            .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash and space
-            .replace(/\n/g, '<br>');  // replace newlines with <br> for inline display
-        
-        // Remove any existing <li> tags to avoid bullet list styling
-        formattedResponse = formattedResponse.replace(/<\/?li>/g, '');
-        
-        // Remove wrapping <ul> tags in clinical-points if any
-        formattedResponse = formattedResponse.replace(/<\/?ul>/g, '');
-        
-        // Format fallback structured responses (old format)
-        if (!formattedResponse.includes('clinical-summary')) {
-            formattedResponse = formattedResponse
-                .replace(/🔍\s*\*\*Summary\*\*:\s*(.*?)(?=📋|$)/gs, 
-                    '<div class="clinical-summary"><span class="clinical-icon">🔍</span><strong>Summary:</strong> $1</div>')
-                .replace(/📋\s*\*\*Key Points\*\*:\s*(.*?)(?=⚠️|$)/gs, 
-                    '<div class="clinical-points"><span class="clinical-icon">📋</span><strong>Key Points:</strong>$1</div>')
-                .replace(/⚠️\s*\*\*Note\*\*:\s*(.*?)$/gs, 
-                    '<div class="clinical-notes"><span class="clinical-icon">⚠️</span><strong>Note:</strong> $1</div>');
+            reasoningStepsContent = `
+                <div id="reasoning-steps-content" class="reasoning-steps-content">
+                    <strong>Detailed Reasoning:</strong><br>
+                    ${cleanedSteps}
+                </div>
+            `;
+            
+            expandableReasoningButton = `
+                <button class="reasoning-steps-toggle" onclick="toggleReasoningSteps(this)">
+                    Show Reasoning Steps
+                </button>
+            `;
         }
         
-        // Clean up any remaining markdown formatting
+        // Process other parts of the response
+        formattedResponse = formattedResponse
+            .replace(/\*\*Reasoning Steps\*\*:.*?(?=\*\*Key Evidence\*\*)/gs, '')
+            .replace(/\*\*Key Evidence\*\*:\s*(.*?)(?=\*\*Conclusion\*\*)/gs, function(match, evidence) {
+                return `<div class="key-evidence"><strong>Key Evidence:</strong><br>${evidence.replace(/\n/g, '<br>')}</div>`;
+            })
+            .replace(/\*\*Conclusion\*\*:\s*(.*?)(?=\*\*Confidence Level\*\*)/gs, function(match, conclusion) {
+                return `<div class="conclusion"><strong>Conclusion:</strong> ${conclusion.replace(/\n/g, '<br>')}</div>`;
+            });
+        
+        // Handle confidence levels
+        if (confidenceLevelMatch) {
+            const [, level, justification] = confidenceLevelMatch;
+            const levelClass = `confidence-${level.toLowerCase()}`;
+            formattedResponse += `
+                <div class="confidence-level ${levelClass}">
+                    <strong>Confidence:</strong> ${level}<br>
+                    <em>Justification:</em> ${justification}
+                </div>
+            `;
+        }
+        
+        // Convert bullet points and line breaks
+        formattedResponse = formattedResponse
+            .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash
+            .replace(/\n/g, '<br>');  // replace newlines with <br>
+        
+        // Basic markdown formatting
         formattedResponse = formattedResponse
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/`(.*?)`/g, '<code>$1</code>');
+        
+        // Combine all parts with expandable reasoning
+        formattedResponse = `
+            ${formattedResponse}
+            ${expandableReasoningButton}
+            ${reasoningStepsContent}
+        `;
             
         
         addToChat(`${formattedResponse}`, 'ai');
@@ -1799,6 +1853,20 @@ window.sendQuestion = async function() {
             
             // Attach create KG handler
             attachCreateKGHandler();
+            
+            // Function to toggle reasoning steps
+            window.toggleReasoningSteps = function() {
+                const reasoningStepsContent = document.getElementById('reasoning-steps-content');
+                const toggleButton = document.querySelector('.reasoning-steps-toggle');
+                
+                if (reasoningStepsContent.style.display === 'none') {
+                    reasoningStepsContent.style.display = 'block';
+                    toggleButton.textContent = 'Hide Reasoning Steps';
+                } else {
+                    reasoningStepsContent.style.display = 'none';
+                    toggleButton.textContent = 'Show Reasoning Steps';
+                }
+            };
         });
     </script>
 </body>

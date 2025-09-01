@@ -218,7 +218,46 @@ MODEL_PROVIDERS = get_model_providers()
 # Endpoint to get available models
 @app.get("/models/{vendor}")
 async def get_models(vendor: str):
-    if vendor in MODEL_PROVIDERS:
+    if vendor == "ollama":
+        # Use Ollama's list command to get local models
+        try:
+            import subprocess
+            result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+            print("Ollama list output:", result.stdout)  # Debug print
+            
+            local_models = []
+            for line in result.stdout.split('\n')[1:]:  # Skip header
+                if line.strip():
+                    parts = line.split()
+                    if parts:
+                        model_name = parts[0]
+                        local_models.append(model_name)
+            
+            print("Local models found:", local_models)  # Debug print
+            print("Available Ollama models in MODEL_PROVIDERS:", list(MODEL_PROVIDERS.get("ollama", {}).keys()))  # Debug print
+            
+            # More flexible matching: check if any part of the local model name matches a provider model
+            available_models = []
+            for local_model in local_models:
+                for provider_model in MODEL_PROVIDERS.get("ollama", {}):
+                    # Case-insensitive partial match
+                    if local_model.lower() in provider_model.lower() or provider_model.lower() in local_model.lower():
+                        available_models.append(provider_model)
+                        break
+            
+            print("Matched models:", available_models)  # Debug print
+            
+            # Fallback to all Ollama models if no matches found
+            if not available_models:
+                available_models = list(MODEL_PROVIDERS.get("ollama", {}).keys())
+            
+            return {"models": available_models}
+        except Exception as e:
+            import traceback
+            print(f"Error fetching Ollama models: {e}")
+            traceback.print_exc()
+            return {"models": list(MODEL_PROVIDERS.get("ollama", {}).keys())}
+    elif vendor in MODEL_PROVIDERS:
         # Return original model names without modification
         models = list(MODEL_PROVIDERS[vendor].keys())
         return {"models": models}
@@ -791,45 +830,36 @@ def get_ontology_context(kg_id: str) -> Dict[str, Any]:
     }
 
 def create_enhanced_rag_prompt(context: str, ontology: Dict[str, Any]) -> str:
-    """Create an enhanced RAG prompt with refined ontology constraints and response guidelines"""
+    """Create a RAG prompt with chain of thought reasoning"""
     
     ontology_info = ""
     if ontology:
         ontology_info = f"""
-ONTOLOGY CONSTRAINTS:
-- Valid Entity Types: {', '.join(ontology.get('node_labels', []))}
-- Valid Relationship Types: {', '.join(ontology.get('relationship_types', []))}
+Available Entity Types: {', '.join(ontology.get('node_labels', []))}
+Available Relations: {', '.join(ontology.get('relationship_types', []))}
 """
     
-    return f"""You are a clinical knowledge assistant specialized in biomedical information analysis. 
-You have access to a structured knowledge graph containing clinical entities and relationships.
+    return f"""You are a clinical knowledge assistant. Provide a detailed, step-by-step reasoning process.
 
 {ontology_info}
-
-RESPONSE GUIDELINES:
-1. Base your answer STRICTLY on the provided knowledge graph context
-2. Use only the entity types and relationships present in the ontology
-3. Provide evidence-based, clinically accurate information with specific examples from the graph
-4. Structure your response for clinical relevance, using clear headings and bullet points
-5. Include confidence levels based on the evidence available in the graph
-6. Reference specific graph elements (node/relationship IDs) when making claims
 
 KNOWLEDGE GRAPH CONTEXT:
 {context}
 
+CHAIN OF THOUGHT REASONING:
+1. Analyze the question and identify key concepts
+2. Scan the knowledge graph context for relevant information
+3. Extract specific nodes and relationships that directly address the question
+4. Develop a logical reasoning path using the graph's evidence
+5. Formulate a clear, concise answer
+6. Highlight the reasoning steps that led to the conclusion
+7. Assess and state the confidence level of the response
+
 RESPONSE FORMAT:
-🔍 **Clinical Summary**: [Concise summary with key findings]
-
-📋 **Key Clinical Points**:
-   - [Point 1 with evidence level and graph ID reference]
-   - [Point 2 with clinical significance and graph ID reference]
-   - [Point 3 with relevant relationships and graph ID reference]
-
-🔗 **Graph Evidence**: Reference specific node/relationship IDs with quotes from the graph context
-
-⚠️ **Clinical Notes**: Any limitations, contraindications, or important considerations based on the graph
-
-📊 **Confidence Level**: [High/Medium/Low based on evidence quality and graph coverage]
+- **Reasoning Steps**: [Detailed breakdown of how you arrived at the answer]
+- **Key Evidence**: [Specific graph nodes/relationships used]
+- **Conclusion**: [Direct answer to the question]
+- **Confidence Level**: [High/Medium/Low with justification]
 """
 
 @app.post("/chat")
