@@ -799,9 +799,11 @@ def get_graph_context(kg_id: str) -> str:
             target_name = target_node.get("properties", {}).get("name", "Unknown")
             source_label = source_node.get("label", "Entity")
             target_label = target_node.get("label", "Entity")
+            source_id = source_node.get("id")
+            target_id = target_node.get("id")
             rel_type = rel.get('type', 'RELATED_TO')
             
-            rel_desc = f"- {source_label}({source_name}) --[{rel_type}]-> {target_label}({target_name})"
+            rel_desc = f"- {source_label}({source_name})[ID:{source_id}] --[{rel_type}]-> {target_label}({target_name})[ID:{target_id}]"
             
             # Add relationship properties
             rel_props = rel.get("properties", {})
@@ -846,6 +848,8 @@ Available Relations: {', '.join(ontology.get('relationship_types', []))}
 KNOWLEDGE GRAPH CONTEXT:
 {context}
 
+CRITICAL: When referencing nodes in your reasoning paths, you MUST use the EXACT node IDs from the knowledge graph context above. Do NOT use placeholder IDs like X, Y, Z. Look at the context and use the actual numeric IDs shown (e.g., ID:1, ID:2, ID:3, etc.).
+
 IMPORTANT: Structure your response EXACTLY as follows:
 
 ## MAIN ANSWER
@@ -854,15 +858,15 @@ IMPORTANT: Structure your response EXACTLY as follows:
 [2-3 sentences directly answering the question - be concise and clear]
 
 ### Key Evidence
-- **Evidence 1**: [Most critical fact with source reference]
-- **Evidence 2**: [Second critical fact with source reference]  
-- **Evidence 3**: [Third critical fact with source reference]
+- **Evidence 1**: [Most critical fact with source reference including actual node ID]
+- **Evidence 2**: [Second critical fact with source reference including actual node ID]  
+- **Evidence 3**: [Third critical fact with source reference including actual node ID]
 
 ### Reasoning Path
 ```
-[Start Entity] --[relationship]--> [Middle Entity] --[relationship]--> [Conclusion Entity]
+[Start Entity (ID:actual_number)] --[relationship]--> [Middle Entity (ID:actual_number)] --[relationship]--> [Conclusion Entity (ID:actual_number)]
 ```
-*Show the main reasoning path through the knowledge graph*
+*Show the main reasoning path through the knowledge graph using the ACTUAL node IDs from the context above*
 
 ### Confidence Assessment
 - **Level**: [High/Medium/Low]
@@ -874,8 +878,8 @@ IMPORTANT: Structure your response EXACTLY as follows:
 <summary>📊 Detailed Multi-Hop Reasoning Analysis</summary>
 
 #### Hop 1: Query Decomposition
-- **Primary Entity**: [Main subject identified]
-- **Secondary Entities**: [Related concepts]
+- **Primary Entity**: [Main subject identified with actual node ID]
+- **Secondary Entities**: [Related concepts with actual node IDs]
 - **Query Intent**: [What user wants to know]
 
 #### Hop 2: Context Retrieval & Scoring
@@ -884,21 +888,21 @@ IMPORTANT: Structure your response EXACTLY as follows:
   - Context B (87% relevance): [Description]
   - Context C (73% relevance): [Description]
 - **Knowledge Graph Traversal**:
-  - Starting Node: [Node name]
-  - Path 1: [Node A] → [Node B] → [Node C]
-  - Path 2: [Node A] → [Node D] → [Node E]
+  - Starting Node: [Node name (ID:actual_number)]
+  - Path 1: [Node A (ID:actual_number)] → [Node B (ID:actual_number)] → [Node C (ID:actual_number)]
+  - Path 2: [Node A (ID:actual_number)] → [Node D (ID:actual_number)] → [Node E (ID:actual_number)]
 
 #### Hop 3: Inference Generation
-- **Hypothesis 1**: [Description with evidence]
-- **Hypothesis 2**: [Alternative interpretation]
+- **Hypothesis 1**: [Description with evidence and actual node IDs]
+- **Hypothesis 2**: [Alternative interpretation with actual node IDs]
 - **Domain Rules Applied**: [Specific rules used]
 
 #### Hop 4: Cross-Validation
 - **Consistency Checks**: 
-  - ✓ Hypothesis 1 aligns with [Evidence]
+  - ✓ Hypothesis 1 aligns with [Evidence from node ID:actual_number]
   - ✓ No contradictions in primary path
   - ⚠️ Minor discrepancy resolved
-- **Alternative Paths**: [Other considered paths]
+- **Alternative Paths**: [Other considered paths with actual node IDs]
 
 #### Hop 5: Confidence Scoring
 - **Evidence Strength**: [Assessment]
@@ -907,7 +911,7 @@ IMPORTANT: Structure your response EXACTLY as follows:
 
 ### Complete Knowledge Graph Traversal
 ```
-[Full graph showing all explored paths]
+[Full graph showing all explored paths with actual node IDs from the context]
 ```
 
 ### Limitations & Recommendations
