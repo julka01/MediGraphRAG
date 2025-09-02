@@ -830,7 +830,7 @@ def get_ontology_context(kg_id: str) -> Dict[str, Any]:
     }
 
 def create_enhanced_rag_prompt(context: str, ontology: Dict[str, Any]) -> str:
-    """Create a RAG prompt with chain of thought reasoning"""
+    """Create a RAG prompt with structured response and multi-hop reasoning"""
     
     ontology_info = ""
     if ontology:
@@ -839,27 +839,83 @@ Available Entity Types: {', '.join(ontology.get('node_labels', []))}
 Available Relations: {', '.join(ontology.get('relationship_types', []))}
 """
     
-    return f"""You are a clinical knowledge assistant. Provide a detailed, step-by-step reasoning process.
+    return f"""You are a clinical knowledge assistant. You must provide a structured response with the main answer first, followed by optional detailed reasoning.
 
 {ontology_info}
 
 KNOWLEDGE GRAPH CONTEXT:
 {context}
 
-CHAIN OF THOUGHT REASONING:
-1. Analyze the question and identify key concepts
-2. Scan the knowledge graph context for relevant information
-3. Extract specific nodes and relationships that directly address the question
-4. Develop a logical reasoning path using the graph's evidence
-5. Formulate a clear, concise answer
-6. Highlight the reasoning steps that led to the conclusion
-7. Assess and state the confidence level of the response
+IMPORTANT: Structure your response EXACTLY as follows:
 
-RESPONSE FORMAT:
-- **Reasoning Steps**: [Detailed breakdown of how you arrived at the answer]
-- **Key Evidence**: [Specific graph nodes/relationships used]
-- **Conclusion**: [Direct answer to the question]
-- **Confidence Level**: [High/Medium/Low with justification]
+## MAIN ANSWER
+
+### Summary
+[2-3 sentences directly answering the question - be concise and clear]
+
+### Key Evidence
+- **Evidence 1**: [Most critical fact with source reference]
+- **Evidence 2**: [Second critical fact with source reference]  
+- **Evidence 3**: [Third critical fact with source reference]
+
+### Reasoning Path
+```
+[Start Entity] --[relationship]--> [Middle Entity] --[relationship]--> [Conclusion Entity]
+```
+*Show the main reasoning path through the knowledge graph*
+
+### Confidence Assessment
+- **Level**: [High/Medium/Low]
+- **Basis**: [One-line explanation]
+
+---
+
+<details>
+<summary>📊 Detailed Multi-Hop Reasoning Analysis</summary>
+
+#### Hop 1: Query Decomposition
+- **Primary Entity**: [Main subject identified]
+- **Secondary Entities**: [Related concepts]
+- **Query Intent**: [What user wants to know]
+
+#### Hop 2: Context Retrieval & Scoring
+- **Retrieved Contexts**: 
+  - Context A (95% relevance): [Description]
+  - Context B (87% relevance): [Description]
+  - Context C (73% relevance): [Description]
+- **Knowledge Graph Traversal**:
+  - Starting Node: [Node name]
+  - Path 1: [Node A] → [Node B] → [Node C]
+  - Path 2: [Node A] → [Node D] → [Node E]
+
+#### Hop 3: Inference Generation
+- **Hypothesis 1**: [Description with evidence]
+- **Hypothesis 2**: [Alternative interpretation]
+- **Domain Rules Applied**: [Specific rules used]
+
+#### Hop 4: Cross-Validation
+- **Consistency Checks**: 
+  - ✓ Hypothesis 1 aligns with [Evidence]
+  - ✓ No contradictions in primary path
+  - ⚠️ Minor discrepancy resolved
+- **Alternative Paths**: [Other considered paths]
+
+#### Hop 5: Confidence Scoring
+- **Evidence Strength**: [Assessment]
+- **Reasoning Reliability**: [Assessment]
+- **Final Calculation**: [How confidence was determined]
+
+### Complete Knowledge Graph Traversal
+```
+[Full graph showing all explored paths]
+```
+
+### Limitations & Recommendations
+- **Data Gaps**: [Missing information]
+- **Next Steps**: [Recommended actions]
+- **Related Queries**: [Other relevant questions]
+
+</details>
 """
 
 @app.post("/chat")

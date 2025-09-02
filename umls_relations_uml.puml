@@ -1,0 +1,57 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+title UMLS Refined Relations Taxonomy
+
+class "Relation Types" as RelationTypes {
+  + Semantic Relationships
+  + Hierarchical Connections
+  + Contextual Mappings
+}
+
+note right of RelationTypes
+  Total Relations: 254
+  Most Frequent Relation: 
+  "isa" (924,325 occurrences)
+end note
+
+enum "Primary Relation Categories" {
+  STRUCTURAL
+  TEMPORAL
+  FUNCTIONAL
+  MORPHOLOGICAL
+  PROCEDURAL
+}
+
+class "Relation Characteristics" {
+  + Frequency
+  + Semantic Depth
+  + Domain Specificity
+}
+
+class "Relation Examples" {
+  + Direct Substance Mapping
+  + Procedure Site Identification
+  + Morphological Associations
+}
+
+class "Relation Complexity" {
+  + Simple Mappings
+  + Complex Contextual Relations
+  + Multi-dimensional Connections
+}
+
+RelationTypes --> "Primary Relation Categories" : categorizes
+RelationTypes --> "Relation Characteristics" : defines
+RelationTypes --> "Relation Examples" : instantiates
+RelationTypes --> "Relation Complexity" : represents
+
+note as N1
+  Key Observations:
+  - 254 unique relation types
+  - Covers medical, biological, 
+    procedural domains
+  - Rich semantic network
+end note
+
+@enduml
