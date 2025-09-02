@@ -106,7 +106,7 @@ class ImprovedKGCreator:
             return self._get_fallback_ontology()
     
     def create_enhanced_biomedical_prompt(self, ontology: Dict[str, Any]) -> str:
-        """Create an enhanced prompt for biomedical knowledge graph extraction"""
+        """Create an enhanced prompt for biomedical knowledge graph extraction with detailed properties"""
         
         node_labels_str = ", ".join(ontology.get("node_labels", []))
         relationship_types_str = ", ".join(ontology.get("relationship_types", []))
@@ -119,7 +119,42 @@ ONTOLOGY CONSTRAINTS:
 - Node Labels (MUST use only these): {node_labels_str}
 - Relationship Types (MUST use only these): {relationship_types_str}
 
-[Rest of the prompt remains the same as in the previous implementation]
+INSTRUCTIONS:
+- For each node, include detailed properties such as synonyms, definitions, external references (e.g., UMLS codes), and provenance information including text spans or sentence identifiers.
+- For each relationship, include properties such as confidence scores, temporal information, causality strength, and provenance metadata.
+- Include hierarchical relationships (e.g., subclass, part-of) and inferred edges based on ontology axioms.
+- Provide the source text snippet or sentence from which each node and relationship was extracted.
+- Ensure all node and relationship properties are medically accurate and consistent with the ontology.
+- Format the output as a JSON object with "nodes" and "relationships" arrays, where each node and relationship includes these detailed properties.
+
+Example node:
+{
+  "id": 1,
+  "label": "Disease",
+  "properties": {
+    "name": "Diabetes Mellitus",
+    "synonyms": ["DM", "Sugar Diabetes"],
+    "definition": "A metabolic disease characterized by high blood sugar levels.",
+    "umls_code": "C0011849",
+    "source_text": "Patient diagnosed with diabetes mellitus.",
+    "sentence_id": 3
+  }
+}
+
+Example relationship:
+{
+  "from": 1,
+  "to": 2,
+  "type": "TREATS",
+  "properties": {
+    "confidence": 0.95,
+    "temporal_relation": "current",
+    "source_text": "Metformin is used to treat diabetes.",
+    "sentence_id": 4
+  }
+}
+
+Return only the JSON object as the final output.
 """
     
     def generate_knowledge_graph(
@@ -130,7 +165,7 @@ ONTOLOGY CONSTRAINTS:
         tracking_enabled: bool = True
     ) -> Dict[str, Any]:
         """
-        Generate knowledge graph with enhanced determinism
+        Generate knowledge graph with enhanced determinism and enrichment
         """
         # Use preprocessing to ensure consistent input
         processed_text = self._preprocess_text(text)
@@ -151,10 +186,13 @@ ONTOLOGY CONSTRAINTS:
             result = chain.invoke({"text": processed_text})
             kg_data = self._parse_and_validate_kg(result, working_ontology)
             
+            # Enrich KG with inferred nodes and relationships
+            enriched_kg = self._enrich_knowledge_graph(kg_data, working_ontology)
+            
             if tracking_enabled:
                 # Create a reproducibility record
                 reproducibility_record = {
-                    "kg_hash": self._compute_kg_hash(kg_data),
+                    "kg_hash": self._compute_kg_hash(enriched_kg),
                     "generation_timestamp": datetime.now().isoformat(),
                     "input_text_hash": hashlib.md5(text.encode()).hexdigest(),
                     "ontology_version": working_ontology.get('version', 'unknown'),
@@ -162,9 +200,9 @@ ONTOLOGY CONSTRAINTS:
                 }
                 
                 # Optional: Log the record (you can implement logging mechanism)
-                self._log_kg_generation(text, kg_data, reproducibility_record)
+                self._log_kg_generation(text, enriched_kg, reproducibility_record)
             
-            return kg_data
+            return enriched_kg
         
         except Exception as e:
             print(f"Error generating KG: {e}")
@@ -294,6 +332,69 @@ ONTOLOGY CONSTRAINTS:
             "nodes": valid_nodes,
             "relationships": valid_relationships_list
         }
+    
+    def _enrich_knowledge_graph(self, kg_data: Dict[str, Any], ontology: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Enrich the knowledge graph by adding inferred nodes and relationships based on ontology axioms.
+        This method can be extended to integrate external biomedical knowledge bases.
+        """
+        nodes = kg_data.get("nodes", [])
+        relationships = kg_data.get("relationships", [])
+        
+        # Build a map from node id to node for quick lookup
+        node_map = {node["id"]: node for node in nodes}
+        
+        # Example: Add inferred subclass relationships if ontology provides subclass info
+        # For demonstration, we simulate adding inferred edges between nodes with related labels
+        
+        inferred_relationships = []
+        next_rel_id = max([rel.get("id", 0) for rel in relationships], default=0) + 1
+        
+        # Simple heuristic: if a node label is a subclass of another label, add a "SUBCLASS_OF" edge
+        # Here, we simulate subclass relationships based on label name containment (this should be replaced with real ontology reasoning)
+        
+        label_hierarchy = self._build_label_hierarchy(ontology)
+        
+        for node in nodes:
+            node_label = node.get("label", "")
+            subclasses = label_hierarchy.get(node_label, [])
+            for subclass_label in subclasses:
+                # Find nodes with subclass_label
+                for target_node in nodes:
+                    if target_node.get("label") == subclass_label:
+                        inferred_relationships.append({
+                            "id": next_rel_id,
+                            "from": target_node["id"],
+                            "to": node["id"],
+                            "type": "SUBCLASS_OF",
+                            "properties": {
+                                "inferred": True,
+                                "source": "ontology_reasoning"
+                            }
+                        })
+                        next_rel_id += 1
+        
+        # Add inferred relationships to existing relationships
+        relationships.extend(inferred_relationships)
+        
+        return {
+            "nodes": nodes,
+            "relationships": relationships
+        }
+    
+    def _build_label_hierarchy(self, ontology: Dict[str, Any]) -> Dict[str, List[str]]:
+        """
+        Build a simple label hierarchy map from ontology.
+        This is a placeholder for real ontology reasoning.
+        Returns a dict mapping label to list of subclass labels.
+        """
+        # Placeholder: simulate some subclass relationships
+        hierarchy = {
+            "Disease": ["Cancer", "InfectiousDisease"],
+            "Treatment": ["Medication", "Procedure"],
+            "Medication": ["Antibiotic", "Analgesic"]
+        }
+        return hierarchy
     
     def _find_closest_label(self, label: str, valid_labels: set) -> str:
         """Find the closest matching label from valid ontology labels"""

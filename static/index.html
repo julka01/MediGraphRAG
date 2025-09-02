@@ -1742,6 +1742,14 @@ window.sendQuestion = async function() {
         // Chain of thought response formatting with expandable reasoning
         let formattedResponse = result.response;
         
+        // Convert headings starting with ### to numbered headings
+        // We'll replace ### Heading with <h3>1. Heading</h3> and increment numbers accordingly
+        let headingCount = 0;
+        formattedResponse = formattedResponse.replace(/^###\s+(.*)$/gm, function(match, p1) {
+            headingCount += 1;
+            return `<h3>${headingCount}. ${p1}</h3>`;
+        });
+        
         // Extract reasoning steps
         const reasoningStepsMatch = formattedResponse.match(/\*\*Reasoning Steps\*\*:\s*(.*?)(?=\*\*Key Evidence\*\*)/gs);
         const keyEvidenceMatch = formattedResponse.match(/\*\*Key Evidence\*\*:\s*(.*?)(?=\*\*Conclusion\*\*)/gs);

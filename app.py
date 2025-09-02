@@ -608,13 +608,16 @@ def generate_knowledge_graph(text: str, provider: str, model: str, ontology: Opt
     
     llm = MODEL_PROVIDERS[provider][model]
     
-    # Use the improved KG creator
+    # Use the improved KG creator with temperature fixed at 0 for deterministic RAG chat
     try:
+        # If the llm supports temperature, set it to 0
+        if hasattr(llm, "temperature"):
+            llm.temperature = 0
+        
         return improved_kg_creator.generate_knowledge_graph(
             text=text,
             llm=llm,
-            ontology=ontology,
-            max_text_length=4000
+            ontology=ontology
         )
     except Exception as e:
         print(f"Improved KG creator failed: {e}")
@@ -849,6 +852,8 @@ KNOWLEDGE GRAPH CONTEXT:
 {context}
 
 CRITICAL: When referencing nodes in your reasoning paths, you MUST use the EXACT node IDs from the knowledge graph context above. Do NOT use placeholder IDs like X, Y, Z. Look at the context and use the actual numeric IDs shown (e.g., ID:1, ID:2, ID:3, etc.).
+
+CRITICAL: You MUST NOT invent or hallucinate any nodes or relationships that are not present in the knowledge graph context above. Your reasoning and responses must be strictly grounded in the provided knowledge graph.
 
 IMPORTANT: Structure your response EXACTLY as follows:
 
