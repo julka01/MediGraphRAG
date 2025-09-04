@@ -1879,85 +1879,54 @@ window.sendQuestion = async function() {
             
         const result = await response.json();
             
-        // Chain of thought response formatting with expandable reasoning
+        // Enhanced response formatting for new LLM COPILOT format
         let formattedResponse = result.response;
         
-        // Convert headings starting with ### to numbered headings
-        // We'll replace ### Heading with <h3>1. Heading</h3> and increment numbers accordingly
-        let headingCount = 0;
-        formattedResponse = formattedResponse.replace(/^###\s+(.*)$/gm, function(match, p1) {
-            headingCount += 1;
-            return `<h3>${headingCount}. ${p1}</h3>`;
+        // Handle the new numbered section format with bold and underline
+        // Convert ## **<u>1. SECTION:</u>** to proper HTML
+        formattedResponse = formattedResponse.replace(/##\s*\*\*<u>(\d+)\.\s*(.*?):<\/u>\*\*/g, function(match, number, title) {
+            return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${number}. ${title.toUpperCase()}:</h2>`;
         });
         
-        // Extract reasoning steps
-        const reasoningStepsMatch = formattedResponse.match(/\*\*Reasoning Steps\*\*:\s*(.*?)(?=\*\*Key Evidence\*\*)/gs);
-        const keyEvidenceMatch = formattedResponse.match(/\*\*Key Evidence\*\*:\s*(.*?)(?=\*\*Conclusion\*\*)/gs);
-        const conclusionMatch = formattedResponse.match(/\*\*Conclusion\*\*:\s*(.*?)(?=\*\*Confidence Level\*\*)/gs);
-        const confidenceLevelMatch = formattedResponse.match(/\*\*Confidence Level\*\*:\s*(High|Medium|Low)\s*with\s*justification:\s*(.*)/i);
+        // Handle regular ## headings as numbered bold underlined titles
+        let sectionCount = 0;
+        formattedResponse = formattedResponse.replace(/^##\s+(.*)$/gm, function(match, title) {
+            sectionCount += 1;
+            return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${sectionCount}. ${title.toUpperCase()}</h2>`;
+        });
         
-        // Prepare reasoning steps for expandable view
-        let reasoningStepsContent = '';
-        let expandableReasoningButton = '';
-        if (reasoningStepsMatch) {
-            const cleanedSteps = reasoningStepsMatch[0]
-                .replace(/\*\*Reasoning Steps\*\*:\s*/g, '')
-                .replace(/\n/g, '<br>');
-            
-            reasoningStepsContent = `
-                <div id="reasoning-steps-content" class="reasoning-steps-content">
-                    <strong>Detailed Reasoning:</strong><br>
-                    ${cleanedSteps}
-                </div>
-            `;
-            
-            expandableReasoningButton = `
-                <button class="reasoning-steps-toggle" onclick="toggleReasoningSteps(this)">
-                    Show Reasoning Steps
-                </button>
-            `;
+        // Extract and format the detailed reasoning dropdown
+        const detailsMatch = formattedResponse.match(/<details>([\s\S]*?)<\/details>/);
+        let detailedReasoning = '';
+        if (detailsMatch) {
+            detailedReasoning = detailsMatch[0];
+            // Remove from main response
+            formattedResponse = formattedResponse.replace(/<details>[\s\S]*?<\/details>/, '');
         }
         
-        // Process other parts of the response
-        formattedResponse = formattedResponse
-            .replace(/\*\*Reasoning Steps\*\*:.*?(?=\*\*Key Evidence\*\*)/gs, '')
-            .replace(/\*\*Key Evidence\*\*:\s*(.*?)(?=\*\*Conclusion\*\*)/gs, function(match, evidence) {
-                return `<div class="key-evidence"><strong>Key Evidence:</strong><br>${evidence.replace(/\n/g, '<br>')}</div>`;
-            })
-            .replace(/\*\*Conclusion\*\*:\s*(.*?)(?=\*\*Confidence Level\*\*)/gs, function(match, conclusion) {
-                return `<div class="conclusion"><strong>Conclusion:</strong> ${conclusion.replace(/\n/g, '<br>')}</div>`;
-            });
+        // Convert bullet points (•) to proper HTML bullets
+        formattedResponse = formattedResponse.replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">');
         
-        // Handle confidence levels
-        if (confidenceLevelMatch) {
-            const [, level, justification] = confidenceLevelMatch;
-            const levelClass = `confidence-${level.toLowerCase()}`;
-            formattedResponse += `
-                <div class="confidence-level ${levelClass}">
-                    <strong>Confidence:</strong> ${level}<br>
-                    <em>Justification:</em> ${justification}
-                </div>
-            `;
+        // Convert line breaks to proper HTML
+        formattedResponse = formattedResponse.replace(/\n/g, '<br>');
+        
+        // Enhanced markdown formatting
+        formattedResponse = formattedResponse
+            .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
+            .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>');
+        
+        // Handle special formatting for clinical sections
+        formattedResponse = formattedResponse
+            .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g, 
+                '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>')
+            .replace(/LET ME KNOW IF YOU'D LIKE ME TO (.*?)\./g, 
+                '<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 16px 0; font-style: italic; color: #1976d2;"><strong>LET ME KNOW IF YOU\'D LIKE ME TO $1.</strong></div>');
+        
+        // Combine main response with detailed reasoning
+        if (detailedReasoning) {
+            formattedResponse += '<br><br>' + detailedReasoning;
         }
-        
-        // Convert bullet points and line breaks
-        formattedResponse = formattedResponse
-            .replace(/^[\s]*[-•]\s*/gm, '– ')  // replace bullet chars at line start with en dash
-            .replace(/\n/g, '<br>');  // replace newlines with <br>
-        
-        // Basic markdown formatting
-        formattedResponse = formattedResponse
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`(.*?)`/g, '<code>$1</code>');
-        
-        // Combine all parts with expandable reasoning
-        formattedResponse = `
-            ${formattedResponse}
-            ${expandableReasoningButton}
-            ${reasoningStepsContent}
-        `;
-            
         
         addToChat(`${formattedResponse}`, 'ai');
     } catch (error) {

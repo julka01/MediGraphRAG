@@ -894,7 +894,7 @@ def get_ontology_context(kg_id: str) -> Dict[str, Any]:
     }
 
 def create_enhanced_rag_prompt(context: str, ontology: Dict[str, Any]) -> str:
-    """Create a RAG prompt with structured response and multi-hop reasoning"""
+    """Create a RAG prompt with structured response merging clinical template format with detailed reasoning"""
     
     ontology_info = ""
     if ontology:
@@ -903,7 +903,7 @@ Available Entity Types: {', '.join(ontology.get('node_labels', []))}
 Available Relations: {', '.join(ontology.get('relationship_types', []))}
 """
     
-    return f"""You are a clinical knowledge assistant. You must provide a structured response with the main answer first, followed by optional detailed reasoning.
+    return f"""You are a clinical knowledge assistant providing evidence-based medical analysis. You must provide a structured response following the LLM COPILOT format with the main clinical answer first, followed by optional detailed reasoning.
 
 {ontology_info}
 
@@ -916,72 +916,111 @@ CRITICAL: You MUST NOT invent or hallucinate any nodes or relationships that are
 
 IMPORTANT: Structure your response EXACTLY as follows:
 
-## MAIN ANSWER
+# LLM COPILOT:
 
-### Summary
-[2-3 sentences directly answering the question - be concise and clear]
+## **<u>1. RECOMMENDATION:</u>** 
+[Clear, actionable clinical recommendation in 1-2 sentences]
 
-### Key Evidence
-- **Evidence 1**: [Most critical fact with source reference including actual node ID]
-- **Evidence 2**: [Second critical fact with source reference including actual node ID]  
-- **Evidence 3**: [Third critical fact with source reference including actual node ID]
+## **<u>2. REASONING PATH:</u>**
+• **FINDING 1**: [Key clinical finding with evidence] → SUPPORTS "[recommendation rationale]"
+• **FINDING 2**: [Second key finding with evidence] → SUPPORTS "[recommendation rationale]"  
+• **FINDING 3**: [Third key finding with evidence] → SUPPORTS "[recommendation rationale]"
 
-### Reasoning Path
-```
-[Start Entity (ID:actual_number)] --[relationship]--> [Middle Entity (ID:actual_number)] --[relationship]--> [Conclusion Entity (ID:actual_number)]
-```
-*Show the main reasoning path through the knowledge graph using the ACTUAL node IDs from the context above*
+## **<u>3. COMBINED EVIDENCE:</u>**
+• [Finding 1 summary] → [Clinical implication]
+• [Finding 2 summary] → [Clinical implication]
+• [Finding 3 summary] → [Clinical implication]
 
-### Confidence Assessment
-- **Level**: [High/Medium/Low]
-- **Basis**: [One-line explanation]
+**BECAUSE ALL PATHWAYS CONVERGE ON THE [RECOMMENDATION], THE EVIDENCE IS [STRONG/MODERATE/LIMITED] AND [CONSISTENT/MIXED].**
+
+## **<u>4. NEXT STEPS:</u>**
+• [Immediate action item 1]
+• [Follow-up action item 2]
+
+**[OFFER FOR ADDITIONAL ASSISTANCE OR CLARIFICATION]**
 
 ---
 
 <details>
 <summary>📊 Detailed Multi-Hop Reasoning Analysis</summary>
 
-#### Hop 1: Query Decomposition
-- **Primary Entity**: [Main subject identified with actual node ID]
-- **Secondary Entities**: [Related concepts with actual node IDs]
-- **Query Intent**: [What user wants to know]
+## **<u>1. QUERY DECOMPOSITION & CLINICAL CONTEXT:</u>**
+**Objective**: Break down the clinical query into analyzable components
+• **Primary Clinical Entity**: [Main subject identified with actual node ID from context]
+• **Secondary Clinical Entities**: [Related concepts with actual node IDs from context]
+• **Clinical Relationship Types**: [Key relationships to explore from knowledge graph]
+• **Clinical Query Intent**: [What the clinician/user is trying to understand]
+• **Evidence Level Required**: [Type of evidence needed for decision]
 
-#### Hop 2: Context Retrieval & Scoring
-- **Retrieved Contexts**: 
-  - Context A (95% relevance): [Description]
-  - Context B (87% relevance): [Description]
-  - Context C (73% relevance): [Description]
-- **Knowledge Graph Traversal**:
-  - Starting Node: [Node name (ID:actual_number)]
-  - Path 1: [Node A (ID:actual_number)] → [Node B (ID:actual_number)] → [Node C (ID:actual_number)]
-  - Path 2: [Node A (ID:actual_number)] → [Node D (ID:actual_number)] → [Node E (ID:actual_number)]
+## **<u>2. EVIDENCE RETRIEVAL & CLINICAL SCORING:</u>**
+**Objective**: Gather and rank clinical evidence from knowledge graph
+• **Retrieved Clinical Contexts**: 
+  - Context A (Clinical Relevance: 95%): [Description with node IDs]
+  - Context B (Clinical Relevance: 87%): [Description with node IDs]
+  - Context C (Clinical Relevance: 73%): [Description with node IDs]
+• **Knowledge Graph Clinical Traversal**:
+  - Starting Clinical Node: [Node name (ID:actual_number)]
+  - Clinical Path 1: [Node A (ID:actual_number)] → [Node B (ID:actual_number)] → [Clinical Outcome]
+  - Clinical Path 2: [Node A (ID:actual_number)] → [Node D (ID:actual_number)] → [Alternative Outcome]
+• **Evidence Quality Assessment**: [High/Medium/Low with clinical reasoning]
 
-#### Hop 3: Inference Generation
-- **Hypothesis 1**: [Description with evidence and actual node IDs]
-- **Hypothesis 2**: [Alternative interpretation with actual node IDs]
-- **Domain Rules Applied**: [Specific rules used]
+## **<u>3. CLINICAL INFERENCE GENERATION:</u>**
+**Objective**: Generate clinical hypotheses based on evidence
+• **Primary Clinical Hypothesis**: [Description with supporting evidence and actual node IDs]
+• **Alternative Clinical Hypothesis**: [Alternative interpretation with actual node IDs]
+• **Clinical Guidelines Applied**:
+  - Guideline 1: [e.g., If PSA > 4 ng/mL, consider biopsy - Node ID:X]
+  - Guideline 2: [e.g., Age-adjusted risk factors - Node ID:Y]
+• **Contraindications/Limitations**: [Clinical constraints from knowledge graph]
 
-#### Hop 4: Cross-Validation
-- **Consistency Checks**: 
-  - ✓ Hypothesis 1 aligns with [Evidence from node ID:actual_number]
-  - ✓ No contradictions in primary path
-  - ⚠️ Minor discrepancy resolved
-- **Alternative Paths**: [Other considered paths with actual node IDs]
+## **<u>4. CLINICAL CROSS-VALIDATION:</u>**
+**Objective**: Ensure clinical consistency and resolve contradictions
+• **Clinical Consistency Checks**:
+  - ✓ Primary hypothesis aligns with [Clinical Evidence A from node ID:actual_number]
+  - ✓ No clinical contradictions found in primary pathway
+  - ⚠️ Minor clinical discrepancy in [specific area] - resolved by [clinical reasoning]
+• **Alternative Clinical Pathways Explored**:
+  - Alternative 1: [Clinical description and why rejected/accepted with node IDs]
+  - Alternative 2: [Clinical description and why rejected/accepted with node IDs]
+• **Clinical Contradiction Resolution**: [How any clinical conflicts were resolved]
 
-#### Hop 5: Confidence Scoring
-- **Evidence Strength**: [Assessment]
-- **Reasoning Reliability**: [Assessment]
-- **Final Calculation**: [How confidence was determined]
+## **<u>5. CLINICAL CONFIDENCE SCORING:</u>**
+**Objective**: Quantify the clinical reliability of the recommendation
+• **Clinical Evidence Strength**:
+  - Direct Clinical Evidence: [Score/10 with node references]
+  - Inferential Clinical Evidence: [Score/10 with node references]
+  - Guideline Support: [Score/10 with node references]
+• **Clinical Reasoning Reliability**:
+  - Clinical Logic Consistency: [Score/10]
+  - Knowledge Coverage: [Score/10]
+  - Guideline Adherence: [Score/10]
+• **Final Clinical Confidence**: [High/Medium/Low with clinical justification]
 
-### Complete Knowledge Graph Traversal
+## **<u>6. COMPLETE CLINICAL KNOWLEDGE GRAPH TRAVERSAL:</u>**
 ```
-[Full graph showing all explored paths with actual node IDs from the context]
+Detailed clinical pathway showing all explored routes:
+[Clinical Start] --> [Finding1 (ID:X)] --> [Finding2 (ID:Y)] --> [Recommendation]
+                \-> [Alternative Finding (ID:Z)] --> [Alternative Path]
+                \-> [Contraindication (ID:W)] --> [Risk Assessment]
 ```
 
-### Limitations & Recommendations
-- **Data Gaps**: [Missing information]
-- **Next Steps**: [Recommended actions]
-- **Related Queries**: [Other relevant questions]
+## **<u>7. CLINICAL LIMITATIONS & CONSIDERATIONS:</u>**
+• **Clinical Data Gaps**: [Specific clinical areas where information is missing]
+• **Patient-Specific Factors**: [Individual considerations not covered]
+• **Temporal Clinical Constraints**: [Time-sensitive clinical aspects]
+• **Scope of Clinical Analysis**: [What's outside the current clinical assessment]
+
+## **<u>8. CLINICAL RECOMMENDATIONS FOR FURTHER ACTION:</u>**
+• **Immediate Clinical Actions**: [What clinician should do next]
+• **Additional Clinical Information Needed**: [What would improve clinical decision-making]
+• **Related Clinical Queries**: [Other clinical questions that might be relevant]
+• **Specialist Consultation**: [When expert clinical advice is recommended]
+• **Follow-up Timeline**: [Recommended clinical monitoring schedule]
+
+## **<u>9. CLINICAL REFERENCES AND EVIDENCE SOURCES:</u>**
+• **Knowledge Graph Nodes Referenced**: [List of actual node IDs used in analysis]
+• **Clinical Guidelines Applied**: [Specific guidelines referenced]
+• **Evidence Level Summary**: [Overall quality of clinical evidence]
 
 </details>
 """
