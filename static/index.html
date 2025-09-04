@@ -834,12 +834,46 @@
                         <button id="create-kg-btn">Create KG</button>
                     </div>
                     
-                <div id="neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
+                <div id="neo4j-form" style="display: none; position: absolute; top: 120px; right: 10px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 320px;">
                     <button id="close-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
+                    <h4 style="margin-bottom: 15px; color: #2c3e50;">Load from Neo4j</h4>
+                    
                     <input type="text" id="neo4j-uri" placeholder="Neo4j URI" style="margin-bottom: 10px;" value="bolt://localhost:7687">
                     <input type="text" id="neo4j-user" placeholder="Username" style="margin-bottom: 10px;" value="neo4j">
-                    <input type="password" id="neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
-                    <button id="connect-neo4j">Connect</button>
+                    <input type="password" id="neo4j-password" placeholder="Password" style="margin-bottom: 15px;">
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Import Options:</label>
+                        <div style="margin-bottom: 8px;">
+                            <input type="radio" id="load-limited" name="load-mode" value="limited" checked>
+                            <label for="load-limited" style="margin-left: 5px;">Limited (1000 nodes max)</label>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <input type="radio" id="load-sample" name="load-mode" value="sample">
+                            <label for="load-sample" style="margin-left: 5px;">Smart Sample (for large graphs)</label>
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <input type="radio" id="load-complete" name="load-mode" value="complete">
+                            <label for="load-complete" style="margin-left: 5px;">Complete Import (all data)</label>
+                        </div>
+                    </div>
+                    
+                    <div id="limit-options" style="margin-bottom: 15px;">
+                        <label for="node-limit" style="display: block; margin-bottom: 5px;">Node Limit:</label>
+                        <input type="number" id="node-limit" value="1000" min="100" max="10000" step="100" style="width: 100%;">
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label for="kg-label-filter" style="display: block; margin-bottom: 5px;">Filter by Label (optional):</label>
+                        <input type="text" id="kg-label-filter" placeholder="e.g., Person, Disease" style="width: 100%;">
+                    </div>
+                    
+                    <button id="connect-neo4j" style="width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Load Knowledge Graph</button>
+                    
+                    <div id="neo4j-stats" style="margin-top: 10px; font-size: 12px; color: #666; display: none;">
+                        <div>Database: <span id="db-node-count">-</span> nodes, <span id="db-rel-count">-</span> relationships</div>
+                        <div>Loaded: <span id="loaded-node-count">-</span> nodes, <span id="loaded-rel-count">-</span> relationships</div>
+                    </div>
                 </div>
                 
                 <div id="save-neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
@@ -916,32 +950,69 @@
                     network.destroy();
                 }
                 
-                // Map relationships to edges with 'from' and 'to' keys and label from 'type'
-                const nodes = new vis.DataSet(graphData.nodes || []);
-                const edges = new vis.DataSet(
-                    (graphData.relationships || []).map(rel => ({
-                        id: rel.id || `${rel.from}-${rel.to}-${rel.type}`,
-                        from: rel.from || rel.start || rel.source,
-                        to: rel.to || rel.end || rel.target,
-                        label: rel.type || '',
-                        arrows: 'to',
-                        font: { 
-                            align: 'middle',
-                            background: 'white',
-                            backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                            strokeWidth: 1,
-                            strokeColor: '#888',
-                            color: '#333333',
-                            size: 14,
-                            vadjust: -10
-                        },
-                        color: {
-                            color: '#cccccc',  // lighter edge line color
-                            highlight: '#ff7f00',
-                            hover: '#ff7f00'
-                        }
-                    }))
-                );
+                // Create a mapping from original Neo4j IDs to sequential IDs to avoid conflicts
+                const nodeIdMap = new Map();
+                let nextId = 1;
+                
+                // Process nodes with sequential IDs
+                const processedNodes = (graphData.nodes || []).map(node => {
+                    const originalId = node.id;
+                    let newId;
+                    
+                    if (nodeIdMap.has(originalId)) {
+                        newId = nodeIdMap.get(originalId);
+                    } else {
+                        newId = nextId++;
+                        nodeIdMap.set(originalId, newId);
+                    }
+                    
+                    return {
+                        ...node,
+                        id: newId,
+                        originalId: originalId, // Keep original ID for reference
+                        title: `Node ID: ${originalId}\nLabel: ${node.label || 'Unknown'}\nClick for details`
+                    };
+                });
+                
+                // Process relationships with mapped IDs
+                const processedEdges = (graphData.relationships || []).map((rel, index) => {
+                    const fromId = nodeIdMap.get(rel.from || rel.start || rel.source);
+                    const toId = nodeIdMap.get(rel.to || rel.end || rel.target);
+                    
+                    // Only create edge if both nodes exist
+                    if (fromId && toId) {
+                        return {
+                            id: `edge_${index}`, // Use sequential edge IDs
+                            from: fromId,
+                            to: toId,
+                            label: rel.type || '',
+                            originalId: rel.id,
+                            arrows: 'to',
+                            font: { 
+                                align: 'middle',
+                                background: 'white',
+                                backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                                strokeWidth: 1,
+                                strokeColor: '#888',
+                                color: '#333333',
+                                size: 14,
+                                vadjust: -10
+                            },
+                            color: {
+                                color: '#444444',
+                                highlight: '#ff7f00',
+                                hover: '#ff7f00'
+                            },
+                            title: `Relationship: ${rel.type || 'Unknown'}\nOriginal ID: ${rel.id}`
+                        };
+                    }
+                    return null;
+                }).filter(edge => edge !== null);
+                
+                console.log(`Processed ${processedNodes.length} nodes and ${processedEdges.length} edges`);
+                
+                const nodes = new vis.DataSet(processedNodes);
+                const edges = new vis.DataSet(processedEdges);
                 
                 const options = {
                     nodes: {
@@ -1204,6 +1275,26 @@
                 ],
                 relationships: []
             });
+
+        // Fetch and pre-fill Neo4j credentials, then show the form
+        fetch('/neo4j/default_credentials')
+            .then(response => response.json())
+            .then(data => {
+                // Set for load form
+                document.getElementById('neo4j-uri').value = data.uri;
+                document.getElementById('neo4j-user').value = data.user;
+                
+                // Set for save form
+                document.getElementById('save-neo4j-uri').value = data.uri;
+                document.getElementById('save-neo4j-user').value = data.user;
+                
+                // Show the form now that we have credentials
+                document.getElementById('neo4j-form').style.display = 'block';
+            })
+                .catch(error => {
+                    console.error('Error fetching default Neo4j credentials:', error);
+                    showError('Failed to load default Neo4j credentials');
+                });
             
         // Set up model dropdowns
         function setupModelDropdowns() {
@@ -1510,14 +1601,14 @@
                 }
             }
             
-            // Neo4j connection handler
+            // Neo4j connection handler with enhanced options
             async function handleConnectNeo4j() {
                 const connectButton = document.getElementById('connect-neo4j');
                 const originalText = connectButton.textContent;
                 
                 try {
                     // Show loading spinner
-                    connectButton.innerHTML = '<div class="spinner"></div> Connecting...';
+                    connectButton.innerHTML = '<div class="spinner"></div> Loading...';
                     connectButton.disabled = true;
                     
                     const uri = document.getElementById('neo4j-uri').value;
@@ -1529,11 +1620,40 @@
                         return;
                     }
                     
+                    // Get selected load mode
+                    const loadMode = document.querySelector('input[name="load-mode"]:checked').value;
+                    const nodeLimit = document.getElementById('node-limit').value;
+                    const kgLabelFilter = document.getElementById('kg-label-filter').value.trim();
+                    
                     const formData = new FormData();
                     formData.append('uri', uri);
                     formData.append('user', user);
                     formData.append('password', password);
-                    formData.append('query', 'MATCH (n) RETURN n LIMIT 100');
+                    
+                    // Add optional parameters based on selection
+                    if (kgLabelFilter) {
+                        formData.append('kg_label', kgLabelFilter);
+                    }
+                    
+                    // Set parameters based on load mode
+                    switch (loadMode) {
+                        case 'limited':
+                            formData.append('limit', nodeLimit);
+                            formData.append('sample_mode', 'false');
+                            formData.append('load_complete', 'false');
+                            break;
+                        case 'sample':
+                            formData.append('sample_mode', 'true');
+                            formData.append('load_complete', 'false');
+                            if (nodeLimit) {
+                                formData.append('limit', nodeLimit);
+                            }
+                            break;
+                        case 'complete':
+                            formData.append('load_complete', 'true');
+                            formData.append('sample_mode', 'false');
+                            break;
+                    }
                     
                     const response = await fetch('/load_kg_from_neo4j', {
                         method: 'POST',
@@ -1541,13 +1661,33 @@
                     });
                     
                     if (!response.ok) {
-                        throw new Error('Failed to load from Neo4j');
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to load from Neo4j');
                     }
                     
                     const result = await response.json();
                     currentKGId = result.kg_id;
                     initializeGraph(result.graph_data);
-                    showError(`Loaded KG from Neo4j with ${result.graph_data.nodes.length} nodes`);
+                    
+                    // Display detailed loading statistics
+                    const stats = result.stats || {};
+                    const statsDiv = document.getElementById('neo4j-stats');
+                    document.getElementById('db-node-count').textContent = stats.total_nodes_in_db || '-';
+                    document.getElementById('db-rel-count').textContent = stats.total_relationships_in_db || '-';
+                    document.getElementById('loaded-node-count').textContent = stats.loaded_nodes || '-';
+                    document.getElementById('loaded-rel-count').textContent = stats.loaded_relationships || '-';
+                    statsDiv.style.display = 'block';
+                    
+                    // Show success message with details
+                    let successMsg = result.message || `Loaded KG from Neo4j with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`;
+                    if (stats.sample_mode) {
+                        successMsg += ' (Smart Sample)';
+                    } else if (stats.complete_import) {
+                        successMsg += ' (Complete Import)';
+                    }
+                    
+                    addToChat(successMsg, 'ai');
+                    showError(successMsg);
                     
                     // Hide form after successful connection
                     document.getElementById('neo4j-form').style.display = 'none';

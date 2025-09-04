@@ -1,5 +1,9 @@
 import os
+import sys
 from dotenv import load_dotenv
+
+# Add project root to Python path for module imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from kg_loader import KGLoader
 
 # Load environment variables from .env file

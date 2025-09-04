@@ -89,6 +89,11 @@ def validate_file_size(file_bytes: bytes) -> None:
 
 # Create KGLoader and ImprovedKGCreator instances
 kg_loader = KGLoader()
+
+# Default Neo4j credentials for UI
+DEFAULT_NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+DEFAULT_NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+DEFAULT_NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 improved_kg_creator = ImprovedKGCreator()
 
 def get_model_providers():
@@ -532,15 +537,45 @@ async def test_owl_parser(file: UploadFile = File(...)):
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"OWL parsing failed: {str(e)}")
 
+@app.post("/list_neo4j_labels")
+async def list_neo4j_labels(
+    uri: str = Form(...),
+    user: str = Form(...),
+    password: str = Form(...)
+):
+    try:
+        result = kg_loader.list_kg_labels(uri, user, password)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+        
 @app.post("/load_kg_from_neo4j")
 async def load_kg_from_neo4j(
     uri: str = Form(...),
     user: str = Form(...),
     password: str = Form(...),
-    query: str = Form("MATCH (n) RETURN n LIMIT 100")
+    kg_label: str = Form(None),
+    query: str = Form(None),
+    limit: int = Form(None),
+    sample_mode: bool = Form(False),
+    load_complete: bool = Form(False)
 ):
     try:
-        result = kg_loader.load_from_neo4j(uri, user, password, query)
+        # Determine loading parameters based on user selection
+        if load_complete:
+            # Load complete graph without limits
+            result = kg_loader.load_from_neo4j(uri, user, password, kg_label, query, limit=None, sample_mode=False)
+        elif sample_mode:
+            # Load representative sample for large graphs
+            result = kg_loader.load_from_neo4j(uri, user, password, kg_label, query, limit=limit, sample_mode=True)
+        else:
+            # Default behavior with optional limit
+            if limit is None:
+                limit = 1000  # Default reasonable limit
+            result = kg_loader.load_from_neo4j(uri, user, password, kg_label, query, limit=limit, sample_mode=False)
         
         if result['status'] == 'error':
             raise ValueError(result['message'])
@@ -552,10 +587,34 @@ async def load_kg_from_neo4j(
             "model": "database"
         }
         
+        # Create vector store for RAG if we have meaningful content
+        try:
+            # Extract text content from nodes for vector store
+            text_content = []
+            for node in result.get('nodes', []):
+                props = node.get('properties', {})
+                for key, value in props.items():
+                    if isinstance(value, str) and len(value) > 10:
+                        text_content.append(f"{key}: {value}")
+            
+            combined_text = " ".join(text_content)
+            if combined_text.strip():
+                create_vector_store(kg_id, combined_text, "ollama")
+        except Exception as e:
+            print(f"Warning: Could not create vector store for Neo4j KG: {str(e)}")
+        
         return {
-            "message": "Knowledge graph loaded from Neo4j successfully",
+            "message": f"Knowledge graph loaded from Neo4j successfully. Loaded {result.get('loaded_nodes', 0)} nodes and {result.get('loaded_relationships', 0)} relationships from {result.get('total_nodes_in_db', 0)} total nodes in database.",
             "kg_id": kg_id,
-            "graph_data": result
+            "graph_data": result,
+            "stats": {
+                "loaded_nodes": result.get('loaded_nodes', 0),
+                "loaded_relationships": result.get('loaded_relationships', 0),
+                "total_nodes_in_db": result.get('total_nodes_in_db', 0),
+                "total_relationships_in_db": result.get('total_relationships_in_db', 0),
+                "complete_import": result.get('complete_import', False),
+                "sample_mode": result.get('sample_mode', False)
+            }
         }
     except Exception as e:
         import traceback
@@ -1425,6 +1484,34 @@ async def get_graph(kg_id: str):
 @app.get("/")
 async def root():
     return RedirectResponse(url="/static/index.html")
+
+# Endpoint to get default Neo4j credentials for UI
+@app.get("/neo4j/default_credentials")
+async def get_default_neo4j_credentials():
+    return {
+        "uri": DEFAULT_NEO4J_URI,
+        "user": DEFAULT_NEO4J_USER,
+        "password": DEFAULT_NEO4J_PASSWORD
+    }
+
+# Endpoint to update default Neo4j credentials from UI
+from fastapi import Body
+
+@app.post("/neo4j/update_credentials")
+async def update_neo4j_credentials(
+    uri: str = Body(...),
+    user: str = Body(...),
+    password: str = Body(...)
+):
+    global DEFAULT_NEO4J_URI, DEFAULT_NEO4J_USER, DEFAULT_NEO4J_PASSWORD
+    DEFAULT_NEO4J_URI = uri
+    DEFAULT_NEO4J_USER = user
+    DEFAULT_NEO4J_PASSWORD = password
+    # Optionally update kg_loader instance as well
+    kg_loader.neo4j_uri = uri
+    kg_loader.neo4j_user = user
+    kg_loader.neo4j_password = password
+    return {"message": "Neo4j default credentials updated successfully"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8004)

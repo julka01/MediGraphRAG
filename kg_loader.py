@@ -71,71 +71,278 @@ class KGLoader:
                 "ontology": os.path.basename(ontology_path) if ontology_path else None
             }
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            # Capture full error details for debugging
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "error_args": e.args
+            }
+            print(f"Error loading from Neo4j: {error_details}")
+            return {
+                "status": "error",
+                "message": "Failed to load from Neo4j",
+                "details": error_details
+            }
 
-    def load_from_neo4j(self, uri: str, user: str, password: str, query: str = "MATCH (n) RETURN n LIMIT 100") -> Dict:
-        """Fetch data from Neo4j database"""
+    def list_kg_labels(self, uri: str, user: str, password: str) -> Dict:
+        """List available KG labels in Neo4j database"""
+        try:
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver.verify_connectivity()
+            
+            with driver.session() as session:
+                result = session.run("CALL db.labels()")
+                labels = [record['label'] for record in result]
+                return {
+                    "status": "success",
+                    "labels": labels
+                }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+            
+    def load_from_neo4j(self, uri: str, user: str, password: str, kg_label: str = None, query: str = None, limit: int = None, sample_mode: bool = False) -> Dict:
+        """Fetch data from Neo4j database with enhanced options for complete KG import
+        
+        Args:
+            uri: Neo4j connection URI
+            user: Neo4j username
+            password: Neo4j password
+            kg_label: Optional label to filter nodes
+            query: Custom query (overrides other parameters)
+            limit: Maximum number of nodes to retrieve (None = no limit)
+            sample_mode: If True, loads a representative sample for large graphs
+        """
         try:
             # Set last_import_dir to kg_storage directory for consistent export behavior
             kg_storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "kg_storage"))
             os.makedirs(kg_storage_dir, exist_ok=True)
             self.last_import_dir = kg_storage_dir
-            
-            driver = GraphDatabase.driver(
-                uri, 
-                auth=(user, password)
-            )
-            
+
+            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver.verify_connectivity()
+
             with driver.session() as session:
-                result = session.run(query)
-                nodes = []
-                relationships = []
+                # First, get database statistics
+                stats_result = session.run("MATCH (n) RETURN count(n) as node_count")
+                total_nodes = stats_result.single()["node_count"]
                 
+                stats_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
+                total_relationships = stats_result.single()["rel_count"]
+                
+                print(f"Neo4j Database Stats: {total_nodes} nodes, {total_relationships} relationships")
+                
+                # Determine loading strategy based on graph size
+                if sample_mode and total_nodes > 1000:
+                    # For very large graphs, use sampling strategy
+                    return self._load_neo4j_sample(session, kg_label, total_nodes, total_relationships)
+                
+                # Build queries for complete or filtered loading
+                if query:
+                    # Custom query provided
+                    node_query = query
+                    # Try to extract relationships for custom queries
+                    rel_query = "MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end"
+                    if limit:
+                        rel_query += f" LIMIT {limit}"
+                elif kg_label:
+                    # Filter by specific label
+                    node_query = f"MATCH (n:`{kg_label}`) RETURN n"
+                    rel_query = f"MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`) RETURN r, a as start, b as end"
+                    if limit:
+                        node_query += f" LIMIT {limit}"
+                        rel_query += f" LIMIT {limit}"
+                else:
+                    # Load entire graph
+                    node_query = "MATCH (n) RETURN n"
+                    rel_query = "MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end"
+                    if limit:
+                        node_query += f" LIMIT {limit}"
+                        rel_query += f" LIMIT {limit}"
+
+                print(f"Executing node query: {node_query}")
+                result = session.run(node_query)
+                nodes = []
+                node_id_map = {}  # Map Neo4j internal IDs to our node indices
+
                 for record in result:
                     node = record["n"]
-                    # Convert properties to JSON-serializable format
                     properties = {}
                     for key, value in dict(node).items():
                         if isinstance(value, (list, dict, str, int, float, bool, type(None))):
                             properties[key] = value
                         else:
                             properties[key] = str(value)
-                    
-                    nodes.append({
+
+                    # Use Neo4j internal ID as our node ID for consistency
+                    node_data = {
                         "id": node.id,
                         "labels": list(node.labels),
                         "label": list(node.labels)[0] if node.labels else "Node",
                         "properties": properties
-                    })
-                
+                    }
+                    nodes.append(node_data)
+                    node_id_map[node.id] = node.id
+
+                print(f"Loaded {len(nodes)} nodes")
+
                 # Get relationships
-                rel_result = session.run("MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end LIMIT 100")
+                print(f"Executing relationship query: {rel_query}")
+                rel_result = session.run(rel_query)
+                relationships = []
+
                 for record in rel_result:
                     rel = record["r"]
+                    start_node = record["start"]
+                    end_node = record["end"]
+                    
+                    # Only include relationships where both nodes were loaded
+                    if start_node.id in node_id_map and end_node.id in node_id_map:
+                        properties = {}
+                        for key, value in dict(rel).items():
+                            if isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                                properties[key] = value
+                            else:
+                                properties[key] = str(value)
+
+                        relationships.append({
+                            "id": rel.id,
+                            "type": rel.type,
+                            "from": start_node.id,
+                            "to": end_node.id,
+                            "properties": properties
+                        })
+
+                print(f"Loaded {len(relationships)} relationships")
+
+                return {
+                    "status": "success",
+                    "nodes": nodes,
+                    "relationships": relationships,
+                    "source": "neo4j",
+                    "kg_label": kg_label,
+                    "query": node_query,
+                    "total_nodes_in_db": total_nodes,
+                    "total_relationships_in_db": total_relationships,
+                    "loaded_nodes": len(nodes),
+                    "loaded_relationships": len(relationships),
+                    "complete_import": limit is None and not kg_label and not query
+                }
+        except Exception as e:
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "error_args": e.args
+            }
+            print(f"Error loading from Neo4j: {error_details}")
+            return {"status": "error", "message": str(e), "details": error_details}
+
+    def _load_neo4j_sample(self, session, kg_label: str, total_nodes: int, total_relationships: int) -> Dict:
+        """Load a representative sample from a large Neo4j graph"""
+        try:
+            # Sample strategy: get high-degree nodes and their neighborhoods
+            sample_size = min(500, total_nodes // 10)  # Sample 10% or max 500 nodes
+            
+            if kg_label:
+                # Sample nodes with highest degree (most connected)
+                sample_query = f"""
+                MATCH (n:`{kg_label}`)
+                WITH n, size((n)--()) as degree
+                ORDER BY degree DESC
+                LIMIT {sample_size}
+                RETURN n
+                """
+                
+                rel_query = f"""
+                MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`)
+                WITH a, r, b, size((a)--()) + size((b)--()) as combined_degree
+                ORDER BY combined_degree DESC
+                LIMIT {sample_size}
+                RETURN r, a as start, b as end
+                """
+            else:
+                sample_query = f"""
+                MATCH (n)
+                WITH n, size((n)--()) as degree
+                ORDER BY degree DESC
+                LIMIT {sample_size}
+                RETURN n
+                """
+                
+                rel_query = f"""
+                MATCH ()-[r]->()
+                WITH r, startNode(r) as start, endNode(r) as end, 
+                     size((startNode(r))--()) + size((endNode(r))--()) as combined_degree
+                ORDER BY combined_degree DESC
+                LIMIT {sample_size}
+                RETURN r, start, end
+                """
+
+            print(f"Loading sample of {sample_size} most connected nodes from {total_nodes} total nodes")
+            
+            # Load sample nodes
+            result = session.run(sample_query)
+            nodes = []
+            node_id_map = {}
+
+            for record in result:
+                node = record["n"]
+                properties = {}
+                for key, value in dict(node).items():
+                    if isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                        properties[key] = value
+                    else:
+                        properties[key] = str(value)
+
+                node_data = {
+                    "id": node.id,
+                    "labels": list(node.labels),
+                    "label": list(node.labels)[0] if node.labels else "Node",
+                    "properties": properties
+                }
+                nodes.append(node_data)
+                node_id_map[node.id] = node.id
+
+            # Load sample relationships
+            rel_result = session.run(rel_query)
+            relationships = []
+
+            for record in rel_result:
+                rel = record["r"]
+                start_node = record["start"]
+                end_node = record["end"]
+                
+                if start_node.id in node_id_map and end_node.id in node_id_map:
                     properties = {}
                     for key, value in dict(rel).items():
                         if isinstance(value, (list, dict, str, int, float, bool, type(None))):
                             properties[key] = value
                         else:
                             properties[key] = str(value)
-                    
+
                     relationships.append({
                         "id": rel.id,
                         "type": rel.type,
-                        "from": record["start"].id,
-                        "to": record["end"].id,
+                        "from": start_node.id,
+                        "to": end_node.id,
                         "properties": properties
                     })
-                
-                return {
-                    "status": "success",
-                    "nodes": nodes,
-                    "relationships": relationships,
-                    "source": "neo4j",
-                    "query": query
-                }
+
+            return {
+                "status": "success",
+                "nodes": nodes,
+                "relationships": relationships,
+                "source": "neo4j_sample",
+                "kg_label": kg_label,
+                "total_nodes_in_db": total_nodes,
+                "total_relationships_in_db": total_relationships,
+                "loaded_nodes": len(nodes),
+                "loaded_relationships": len(relationships),
+                "sample_mode": True,
+                "sample_strategy": "high_degree_nodes"
+            }
+            
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"Sample loading failed: {str(e)}"}
 
     def _create_graph_with_ontology(self, text: str, ontology: Dict) -> Tuple[List, List, List]:
         """Create knowledge graph with ontology harmonization and supernodes"""
@@ -317,11 +524,10 @@ class KGLoader:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-# Example usage
 if __name__ == "__main__":
     loader = KGLoader()
     print("Testing PDF loading:")
     print(loader.load_from_pdf("test_document.pdf"))
     
     print("\nTesting Neo4j loading:")
-    print(loader.load_from_neo4j())
+    print(loader.load_from_neo4j(loader.neo4j_uri, loader.neo4j_user, loader.neo4j_password))
