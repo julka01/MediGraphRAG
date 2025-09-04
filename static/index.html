@@ -81,39 +81,129 @@
             overflow: hidden;
         }
 
-        /* Sidebar Styles */
-        .sidebar {
-            width: 60px;
+        /* Left Panel - Minimal Controls */
+        .left-panel {
+            width: 280px;
             background-color: #2c3e50;
             height: 100%;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            padding-top: 20px;
+            padding: 15px;
+            overflow-y: auto;
         }
 
-        .sidebar-icon {
-            width: 40px;
-            height: 40px;
-            background-color: #34495e;
-            border-radius: 8px;
-            margin: 10px 0;
+        .panel-section {
+            margin-bottom: 20px;
+        }
+
+        .panel-section h3 {
+            color: #ecf0f1;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            color: #bdc3c7;
+            font-size: 12px;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .control-group select,
+        .control-group input[type="range"] {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #34495e;
+            border-radius: 4px;
+            background: #34495e;
+            color: #ecf0f1;
+            font-size: 12px;
+        }
+
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #3498db;
+            background: #2c3e50;
+        }
+
+        .action-buttons {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-primary {
+            padding: 8px 12px;
+            background: #3498db;
             color: white;
-            font-size: 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
         }
 
-        .sidebar-icon.active {
-            background-color: #3498db;
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
         }
 
-        .sidebar-icon:hover {
-            background-color: #2980b9;
-            transform: scale(1.1);
+        .btn-secondary {
+            padding: 6px 10px;
+            background: #95a5a6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .temp-display {
+            color: #3498db;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        /* View Toggle */
+        .view-toggle {
+            display: flex;
+            background: #34495e;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .view-toggle button {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: none;
+            color: #bdc3c7;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .view-toggle button.active {
+            background: #3498db;
+            color: white;
         }
 
         /* Main Content Area */
@@ -130,7 +220,7 @@
         .view-container {
             display: flex;
             flex: 1;
-            gap: 20px;
+            gap: 15px;
             height: 100%;
         }
 
@@ -140,16 +230,23 @@
             display: flex;
             flex-direction: column;
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             padding: 15px;
             overflow: hidden;
+        }
+
+        #kg-view h2 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
         }
 
         #graph-container {
             flex: 1;
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: hidden;
         }
 
@@ -157,24 +254,22 @@
             display: flex;
             justify-content: flex-end;
             padding: 10px 0;
-            gap: 10px;
+            gap: 8px;
         }
 
         .zoom-btn {
-            width: auto;
-            padding: 0 8px;
-            height: 30px;
+            padding: 6px 12px;
             border: none;
             background: #3498db;
             color: white;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
+            transition: all 0.2s ease;
         }
-        
-        #save-to-neo4j-btn {
-            width: auto;
-            padding: 0 8px;
+
+        .zoom-btn:hover {
+            background: #2980b9;
         }
 
         /* Chat View */
@@ -183,50 +278,58 @@
             display: flex;
             flex-direction: column;
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             padding: 15px;
             overflow: hidden;
+        }
+
+        #chat-view h2 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
         }
 
         .chat-container {
             flex: 1;
             display: flex;
-            flex-direction: column; /* Changed to column */
-            gap: 10px; /* Reduced gap */
+            flex-direction: column;
+            gap: 10px;
         }
 
         #chat-section {
             flex: 1;
             display: flex;
             flex-direction: column;
-            overflow: hidden; /* Added to prevent overflow */
+            overflow: hidden;
         }
 
         #chat-box {
             flex: 1;
             border: 1px solid #ddd;
-            border-radius: 8px;
+            border-radius: 6px;
             padding: 15px;
             overflow-y: auto;
             background: #f9f9f9;
-            min-height: 0; /* Changed from 200px to 0 */
-            flex-basis: 0; /* Added to make it flexible */
+            min-height: 0;
+            flex-basis: 0;
         }
 
         .chat-input-container {
             display: flex;
             gap: 10px;
-            padding-top: 10px; /* Added padding to separate from chat box */
-            border-top: 1px solid #ddd; /* Added border to separate from chat box */
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
         }
 
         #question {
             flex: 1;
             padding: 10px;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 4px;
             resize: none;
+            font-family: inherit;
         }
 
         #send-btn {
@@ -234,156 +337,114 @@
             background: #3498db;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
+            font-weight: 500;
         }
 
-        /* Model Selection - Reduced padding and margin */
-        .model-card {
-            background: #f5f5f5;
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            color: #333;
-            border: 1px solid #ddd;
-            margin-bottom: 10px;
+        #send-btn:hover {
+            background: #2980b9;
         }
-        
-        .model-card h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            font-size: 18px;
-            border-bottom: 2px solid rgba(52, 152, 219, 0.3);
-            padding-bottom: 8px;
-            color: #2c3e50;
+
+        /* File Selection */
+        #file-selection {
+            display: none;
+            margin-top: 10px;
+            padding: 8px;
+            background: #34495e;
+            border-radius: 4px;
         }
-        
-        .model-group {
+
+        #selected-file {
+            color: #ecf0f1;
+            font-size: 11px;
             margin-bottom: 8px;
         }
-        
-        .model-group label {
-            display: block;
-            margin-bottom: 4px;
-            font-weight: 500;
+
+        #selected-ontology {
+            color: #ecf0f1;
+            font-size: 10px;
+            margin-top: 5px;
+        }
+
+        /* Neo4j Forms */
+        #neo4j-form, #save-neo4j-form {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        #neo4j-form h4, #save-neo4j-form h4 {
+            margin-bottom: 15px;
             color: #2c3e50;
         }
-        
-        select, input[type="range"] {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background: white;
-        }
-        
-        .kg-options {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        
-        .kg-options button {
-            padding: 8px 15px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        
-        .kg-options button:hover {
-            background: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
-        #neo4j-form {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 10px;
-            display: none;
-            border: 1px solid #ddd;
-        }
-        
-        #neo4j-form input {
+
+        #neo4j-form input, #save-neo4j-form input {
             width: 100%;
             padding: 8px;
             margin-bottom: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
-        
-        #neo4j-form button {
+
+        #neo4j-form button, #save-neo4j-form button {
             background: #2ecc71;
             color: white;
             border: none;
-            padding: 8px 15px;
+            padding: 10px 15px;
             border-radius: 4px;
             cursor: pointer;
+            font-weight: 500;
         }
-        
-        #temperature {
-            width: 100%;
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #7f8c8d;
         }
-        
-        #temp-value {
-            display: inline-block;
-            width: 30px;
-            text-align: right;
+
+        .close-btn:hover {
+            color: #2c3e50;
         }
 
         /* Enhanced Message Styling with Heavy Markdown Support */
         .ai-message {
             background: #e3f2fd;
-            padding: 10px 12px;
+            padding: 12px 15px;
             border-radius: 8px;
-            margin-bottom: 10px;
-            /* Removed border-left */
-            /* Removed box-shadow */
+            margin-bottom: 12px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.4;
+            line-height: 1.5;
             position: relative;
             overflow: hidden;
-        }
-
-        .ai-message::before {
-            display: none;
         }
 
         .user-message {
             background: #f1f8e9;
-            padding: 10px 12px;
+            padding: 12px 15px;
             border-radius: 8px;
-            margin-bottom: 10px;
-            /* Removed border-left */
-            /* Removed box-shadow */
+            margin-bottom: 12px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.4;
+            line-height: 1.5;
             position: relative;
             overflow: hidden;
         }
-
-        .user-message::before {
-            display: none;
-        }
         
-        .thinking-message {
-            background: linear-gradient(135deg, #fffde7 0%, #f8f9fa 100%);
-            padding: 16px 20px;
-            border-radius: 16px;
-            margin-bottom: 20px;
-            border-left: 6px solid #ffd600;
-            display: flex;
-            align-items: center;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            animation: pulse 2s infinite;
-        }
         .thinking-message {
             background: linear-gradient(135deg, #fffde7 0%, #f8f9fa 100%);
             padding: 16px 20px;
@@ -415,7 +476,7 @@
         /* Enhanced Typography with Markdown Support */
         .ai-message h1, .user-message h1 {
             color: #1976d2;
-            font-size: 2em;
+            font-size: 1.8em;
             font-weight: 700;
             margin: 0 0 16px 0;
             padding-bottom: 8px;
@@ -424,18 +485,18 @@
 
         .ai-message h2, .user-message h2 {
             color: #1976d2;
-            font-size: 1.6em;
+            font-size: 1.4em;
             font-weight: 600;
-            margin: 20px 0 12px 0;
+            margin: 16px 0 10px 0;
             padding-bottom: 6px;
             border-bottom: 2px solid #e3f2fd;
         }
 
         .ai-message h3, .user-message h3 {
             color: #1976d2;
-            font-size: 1.3em;
+            font-size: 1.2em;
             font-weight: 600;
-            margin: 16px 0 10px 0;
+            margin: 14px 0 8px 0;
             padding-bottom: 4px;
             border-bottom: 1px solid #e3f2fd;
         }
@@ -444,7 +505,7 @@
             color: #1976d2;
             font-size: 1.1em;
             font-weight: 600;
-            margin: 12px 0 8px 0;
+            margin: 12px 0 6px 0;
         }
 
         .ai-message h5, .user-message h5 {
@@ -506,7 +567,7 @@
             background: #2d3748;
             color: #e2e8f0;
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin: 16px 0;
             overflow-x: auto;
             border-left: 4px solid #3498db;
@@ -517,7 +578,7 @@
             background: #f7fafc;
             color: #e53e3e;
             padding: 3px 8px;
-            border-radius: 6px;
+            border-radius: 4px;
             font-family: 'Fira Code', 'Courier New', monospace;
             font-size: 0.9em;
             font-weight: 500;
@@ -538,7 +599,7 @@
             border-left: 6px solid #3498db;
             margin: 16px 0;
             padding: 16px 20px;
-            border-radius: 0 12px 12px 0;
+            border-radius: 0 8px 8px 0;
             font-style: italic;
             color: #4a5568;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
@@ -581,7 +642,7 @@
             border-collapse: collapse;
             margin: 16px 0;
             background: white;
-            border-radius: 8px;
+            border-radius: 6px;
             overflow: hidden;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
@@ -607,7 +668,7 @@
         .clinical-summary {
             background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin: 16px 0;
             border-left: 6px solid #4caf50;
             font-weight: 500;
@@ -617,7 +678,7 @@
         .clinical-points {
             background: linear-gradient(135deg, #f3f4f6 0%, #f8f9fa 100%);
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin: 16px 0;
             border-left: 6px solid #2196f3;
             box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
@@ -646,7 +707,7 @@
         .graph-evidence {
             background: linear-gradient(135deg, #fff3e0 0%, #fef7e0 100%);
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin: 16px 0;
             border-left: 6px solid #ff9800;
             font-family: 'Fira Code', 'Courier New', monospace;
@@ -657,7 +718,7 @@
         .clinical-notes {
             background: linear-gradient(135deg, #ffebee 0%, #fce4ec 100%);
             padding: 16px;
-            border-radius: 12px;
+            border-radius: 8px;
             margin: 16px 0;
             border-left: 6px solid #f44336;
             font-style: italic;
@@ -666,11 +727,11 @@
 
         .confidence-level {
             background: #e1f5fe;
-            padding: 10px 16px;
-            border-radius: 25px;
+            padding: 8px 12px;
+            border-radius: 20px;
             margin: 12px 0;
             display: inline-block;
-            font-size: 0.9em;
+            font-size: 0.85em;
             font-weight: 700;
             border: 2px solid #0288d1;
             text-transform: uppercase;
@@ -711,7 +772,7 @@
         /* Enhanced Paragraphs */
         .ai-message p, .user-message p {
             margin: 12px 0;
-            line-height: 1.7;
+            line-height: 1.6;
         }
 
         .ai-message p:first-child, .user-message p:first-child {
@@ -720,25 +781,6 @@
 
         .ai-message p:last-child, .user-message p:last-child {
             margin-bottom: 0;
-        }
-        
-        #file-selection {
-            display: none;
-            margin-top: 10px;
-            padding: 10px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-        }
-        
-        #create-kg-btn {
-            background: #3498db;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
         }
         
         /* Reasoning Steps Styling */
@@ -769,6 +811,55 @@
             max-height: 300px;
             overflow-y: auto;
         }
+
+        /* Clear chat button */
+        .clear-chat-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+
+        .clear-chat-btn {
+            padding: 5px 10px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .clear-chat-btn:hover {
+            background: #c0392b;
+        }
+
+        /* Neo4j stats */
+        #neo4j-stats {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #7f8c8d;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .left-panel {
+                width: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .left-panel {
+                width: 220px;
+            }
+            
+            .view-container {
+                flex-direction: column;
+            }
+            
+            #kg-view, #chat-view {
+                min-height: 400px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -780,112 +871,96 @@
         </div>
     </div>
     
-    <!-- Sidebar -->
-    <div class="sidebar">
-        <div class="sidebar-icon active" id="kg-icon">KG</div>
-        <div class="sidebar-icon" id="chat-icon">💬</div>
+    <!-- Left Panel - Minimal Controls -->
+    <div class="left-panel">
+        <!-- View Toggle -->
+        <div class="view-toggle">
+            <button id="kg-toggle" class="active">KG</button>
+            <button id="chat-toggle">Chat</button>
+            <button id="both-toggle">Both</button>
+        </div>
+
+        <!-- KG Configuration -->
+        <div class="panel-section">
+            <h3>Knowledge Graph</h3>
+            
+            <div class="control-group">
+                <label for="kg-provider">Vendor:</label>
+                <select id="kg-provider">
+                    <option value="openai">OpenAI</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="lmu_lightllm">LMU Lightllm</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="google">Google</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="kg-model">Model:</label>
+                <select id="kg-model">
+                    <option value="gpt-4">GPT-4</option>
+                </select>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="btn-primary" id="load-file">Select File</button>
+                <button class="btn-primary" id="load-neo4j">From Neo4j</button>
+                <button class="btn-primary" id="import-kg">Import KG</button>
+            </div>
+
+            <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
+            
+            <div style="margin-top: 12px;">
+                <label style="color: #bdc3c7; font-size: 11px;">Optional Ontology:</label>
+                <input type="file" id="ontology-upload" accept=".json,.owl" style="display:none">
+                <button class="btn-secondary" id="select-ontology">Select Ontology</button>
+                <div id="selected-ontology"></div>
+            </div>
+            
+            <div id="file-selection">
+                <div id="selected-file"></div>
+                <button class="btn-primary" id="create-kg-btn">Create KG</button>
+            </div>
+        </div>
+
+        <!-- RAG Configuration -->
+        <div class="panel-section">
+            <h3>RAG Model</h3>
+            
+            <div class="control-group">
+                <label for="rag-vendor">Vendor:</label>
+                <select id="rag-vendor">
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="lmu_lightllm">LMU Lightllm</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="google">Google</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="rag-model">Model:</label>
+                <select id="rag-model">
+                    <option value="gpt-4">GPT-4</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="temperature">Temperature: <span class="temp-display" id="temp-value">0.1</span></label>
+                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.1">
+            </div>
+        </div>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
         <!-- View Container -->
         <div class="view-container">
-            <!-- KG View with integrated model card -->
+            <!-- KG View -->
             <div id="kg-view">
-                <div class="model-card">
-                    <h3>Knowledge Graph</h3>
-                    <div class="model-group">
-                        <label for="kg-provider">Vendor:</label>
-<select id="kg-provider">
-    <option value="openai">OpenAI</option>
-    <option value="openrouter">OpenRouter</option>
-    <option value="lmu_lightllm">LMU Lightllm</option>
-    <option value="ollama">Ollama</option>
-    <option value="anthropic">Anthropic</option>
-    <option value="google">Google</option>
-</select>
-                    </div>
-                    
-                    <div class="model-group">
-                        <label for="kg-model">Model:</label>
-                        <select id="kg-model">
-                            <option value="gpt-4">GPT-4</option>
-                        </select>
-                    </div>
-                    
-            <div class="kg-options">
-                <button id="load-file">Select File</button>
-                <button id="load-neo4j">From Neo4j</button>
-                <button id="import-kg">Import KG</button>
-            </div>
-                    <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
-                    <div style="margin-top: 10px;">
-                        <label for="ontology-upload" style="font-size: 12px;">Optional Ontology File:</label>
-                        <input type="file" id="ontology-upload" accept=".json,.owl" style="display:none">
-                        <button id="select-ontology" style="font-size: 12px; padding: 4px 8px;">Select Ontology</button>
-                        <div style="font-size: 10px; color: #666; margin-top: 5px;">
-                            <strong>Note:</strong> Supported JSON and OWL
-                        </div>
-                    </div>
-                    <div id="selected-ontology" style="font-size: 12px; margin-top: 5px;"></div>
-                    
-                    <div id="file-selection">
-                        <div id="selected-file" style="font-size: 12px; margin-bottom: 10px;"></div>
-                        <button id="create-kg-btn">Create KG</button>
-                    </div>
-                    
-                <div id="neo4j-form" style="display: none; position: absolute; top: 120px; right: 10px; background: white; padding: 20px; border-radius: 8px; border: 1px solid #ddd; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 320px;">
-                    <button id="close-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
-                    <h4 style="margin-bottom: 15px; color: #2c3e50;">Load from Neo4j</h4>
-                    
-                    <input type="text" id="neo4j-uri" placeholder="Neo4j URI" style="margin-bottom: 10px;" value="bolt://localhost:7687">
-                    <input type="text" id="neo4j-user" placeholder="Username" style="margin-bottom: 10px;" value="neo4j">
-                    <input type="password" id="neo4j-password" placeholder="Password" style="margin-bottom: 15px;">
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="display: block; margin-bottom: 5px; font-weight: bold;">Import Options:</label>
-                        <div style="margin-bottom: 8px;">
-                            <input type="radio" id="load-limited" name="load-mode" value="limited" checked>
-                            <label for="load-limited" style="margin-left: 5px;">Limited (1000 nodes max)</label>
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <input type="radio" id="load-sample" name="load-mode" value="sample">
-                            <label for="load-sample" style="margin-left: 5px;">Smart Sample (for large graphs)</label>
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <input type="radio" id="load-complete" name="load-mode" value="complete">
-                            <label for="load-complete" style="margin-left: 5px;">Complete Import (all data)</label>
-                        </div>
-                    </div>
-                    
-                    <div id="limit-options" style="margin-bottom: 15px;">
-                        <label for="node-limit" style="display: block; margin-bottom: 5px;">Node Limit:</label>
-                        <input type="number" id="node-limit" value="1000" min="100" max="10000" step="100" style="width: 100%;">
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label for="kg-label-filter" style="display: block; margin-bottom: 5px;">Filter by Label (optional):</label>
-                        <input type="text" id="kg-label-filter" placeholder="e.g., Person, Disease" style="width: 100%;">
-                    </div>
-                    
-                    <button id="connect-neo4j" style="width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Load Knowledge Graph</button>
-                    
-                    <div id="neo4j-stats" style="margin-top: 10px; font-size: 12px; color: #666; display: none;">
-                        <div>Database: <span id="db-node-count">-</span> nodes, <span id="db-rel-count">-</span> relationships</div>
-                        <div>Loaded: <span id="loaded-node-count">-</span> nodes, <span id="loaded-rel-count">-</span> relationships</div>
-                    </div>
-                </div>
-                
-                <div id="save-neo4j-form" style="display: none; position: absolute; bottom: 50px; left: 10px; background: white; padding: 15px; border-radius: 8px; border: 1px solid #ddd; z-index: 100;">
-                    <button id="close-save-neo4j-form" style="position: absolute; top: 5px; right: 5px; background: none; border: none; font-size: 16px; cursor: pointer;">×</button>
-                    <h4>Save to Neo4j</h4>
-                    <input type="text" id="save-neo4j-uri" placeholder="Neo4j URI" style="margin-bottom: 10px;" value="bolt://localhost:7687">
-                    <input type="text" id="save-neo4j-user" placeholder="Username" style="margin-bottom: 10px;" value="neo4j">
-                    <input type="password" id="save-neo4j-password" placeholder="Password" style="margin-bottom: 10px;">
-                    <button id="save-to-neo4j">Save KG to Neo4j</button>
-                </div>
-                </div>
-                
+                <h2>Knowledge Graph</h2>
                 <div id="graph-container"></div>
                 <div class="graph-controls">
                     <button class="zoom-btn" id="save-to-neo4j-btn">Save to Neo4j</button>
@@ -896,47 +971,75 @@
                 </div>
             </div>
 
-            <!-- Chat View with integrated model card -->
+            <!-- Chat View -->
             <div id="chat-view">
+                <h2>RAG Chat</h2>
                 <div class="chat-container">
                     <div id="chat-section">
-                        <div class="model-card">
-                            <h3>RAG Model</h3>
-                            <div class="model-group">
-                                <label for="rag-vendor">Vendor:</label>
-<select id="rag-vendor">
-    <option value="openrouter">OpenRouter</option>
-    <option value="lmu_lightllm">LMU Lightllm</option>
-    <option value="openai">OpenAI</option>
-    <option value="ollama">Ollama</option>
-    <option value="anthropic">Anthropic</option>
-    <option value="google">Google</option>
-</select>
-                            </div>
-                            <div class="model-group">
-                                <label for="rag-model">Model:</label>
-                                <select id="rag-model">
-                                    <option value="gpt-4">GPT-4</option>
-                                </select>
-                            </div>
-                            <div class="model-group">
-                                <label for="temperature">Temperature: <span id="temp-value">0.1</span></label>
-                                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.1">
-                            </div>
+                        <div id="chat-box"></div>
+                        <div class="clear-chat-container">
+                            <button class="clear-chat-btn" id="clear-chat-btn">Clear Chat</button>
                         </div>
-                        
-            <div id="chat-box"></div>
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
-                <button id="clear-chat-btn" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear Chat</button>
-            </div>
-            <div class="chat-input-container">
-                <textarea id="question" placeholder="Ask a question..." onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuestion(); }"></textarea>
-                <button id="send-btn" onclick="sendQuestion()">Send</button>
-            </div>
+                        <div class="chat-input-container">
+                            <textarea id="question" placeholder="Ask a question..." onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendQuestion(); }"></textarea>
+                            <button id="send-btn" onclick="sendQuestion()">Send</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Neo4j Forms -->
+    <div id="neo4j-form" style="display: none;">
+        <button class="close-btn" id="close-neo4j-form">×</button>
+        <h4>Load from Neo4j</h4>
+        
+        <input type="text" id="neo4j-uri" placeholder="Neo4j URI" value="bolt://localhost:7687">
+        <input type="text" id="neo4j-user" placeholder="Username" value="neo4j">
+        <input type="password" id="neo4j-password" placeholder="Password">
+        
+        <div style="margin-bottom: 15px;">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Import Options:</label>
+            <div style="margin-bottom: 8px;">
+                <input type="radio" id="load-limited" name="load-mode" value="limited" checked>
+                <label for="load-limited" style="margin-left: 5px;">Limited (1000 nodes max)</label>
+            </div>
+            <div style="margin-bottom: 8px;">
+                <input type="radio" id="load-sample" name="load-mode" value="sample">
+                <label for="load-sample" style="margin-left: 5px;">Smart Sample (for large graphs)</label>
+            </div>
+            <div style="margin-bottom: 8px;">
+                <input type="radio" id="load-complete" name="load-mode" value="complete">
+                <label for="load-complete" style="margin-left: 5px;">Complete Import (all data)</label>
+            </div>
+        </div>
+        
+        <div id="limit-options" style="margin-bottom: 15px;">
+            <label for="node-limit" style="display: block; margin-bottom: 5px;">Node Limit:</label>
+            <input type="number" id="node-limit" value="1000" min="100" max="10000" step="100" style="width: 100%;">
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <label for="kg-label-filter" style="display: block; margin-bottom: 5px;">Filter by Label (optional):</label>
+            <input type="text" id="kg-label-filter" placeholder="e.g., Person, Disease" style="width: 100%;">
+        </div>
+        
+        <button id="connect-neo4j" style="width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Load Knowledge Graph</button>
+        
+        <div id="neo4j-stats" style="margin-top: 10px; font-size: 12px; color: #666; display: none;">
+            <div>Database: <span id="db-node-count">-</span> nodes, <span id="db-rel-count">-</span> relationships</div>
+            <div>Loaded: <span id="loaded-node-count">-</span> nodes, <span id="loaded-rel-count">-</span> relationships</div>
+        </div>
+    </div>
+    
+    <div id="save-neo4j-form" style="display: none;">
+        <button class="close-btn" id="close-save-neo4j-form">×</button>
+        <h4>Save to Neo4j</h4>
+        <input type="text" id="save-neo4j-uri" placeholder="Neo4j URI" value="bolt://localhost:7687">
+        <input type="text" id="save-neo4j-user" placeholder="Username" value="neo4j">
+        <input type="password" id="save-neo4j-password" placeholder="Password">
+        <button id="save-to-neo4j">Save KG to Neo4j</button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.js"></script>
@@ -944,277 +1047,275 @@
         let network = null;
         let currentKGId = null;
         
-            function initializeGraph(graphData) {
-                const container = document.getElementById('graph-container');
-                if (network) {
-                    network.destroy();
+        function initializeGraph(graphData) {
+            const container = document.getElementById('graph-container');
+            if (network) {
+                network.destroy();
+            }
+            
+            // Create a mapping from original Neo4j IDs to sequential IDs to avoid conflicts
+            const nodeIdMap = new Map();
+            let nextId = 1;
+            
+            // Process nodes with sequential IDs
+            const processedNodes = (graphData.nodes || []).map(node => {
+                const originalId = node.id;
+                let newId;
+                
+                if (nodeIdMap.has(originalId)) {
+                    newId = nodeIdMap.get(originalId);
+                } else {
+                    newId = nextId++;
+                    nodeIdMap.set(originalId, newId);
                 }
                 
-                // Create a mapping from original Neo4j IDs to sequential IDs to avoid conflicts
-                const nodeIdMap = new Map();
-                let nextId = 1;
+                return {
+                    ...node,
+                    id: newId,
+                    originalId: originalId, // Keep original ID for reference
+                    title: `Node ID: ${originalId}\nLabel: ${node.label || 'Unknown'}\nClick for details`
+                };
+            });
+            
+            // Process relationships with mapped IDs
+            const processedEdges = (graphData.relationships || []).map((rel, index) => {
+                const fromId = nodeIdMap.get(rel.from || rel.start || rel.source);
+                const toId = nodeIdMap.get(rel.to || rel.end || rel.target);
                 
-                // Process nodes with sequential IDs
-                const processedNodes = (graphData.nodes || []).map(node => {
-                    const originalId = node.id;
-                    let newId;
-                    
-                    if (nodeIdMap.has(originalId)) {
-                        newId = nodeIdMap.get(originalId);
-                    } else {
-                        newId = nextId++;
-                        nodeIdMap.set(originalId, newId);
-                    }
-                    
+                // Only create edge if both nodes exist
+                if (fromId && toId) {
                     return {
-                        ...node,
-                        id: newId,
-                        originalId: originalId, // Keep original ID for reference
-                        title: `Node ID: ${originalId}\nLabel: ${node.label || 'Unknown'}\nClick for details`
-                    };
-                });
-                
-                // Process relationships with mapped IDs
-                const processedEdges = (graphData.relationships || []).map((rel, index) => {
-                    const fromId = nodeIdMap.get(rel.from || rel.start || rel.source);
-                    const toId = nodeIdMap.get(rel.to || rel.end || rel.target);
-                    
-                    // Only create edge if both nodes exist
-                    if (fromId && toId) {
-                        return {
-                            id: `edge_${index}`, // Use sequential edge IDs
-                            from: fromId,
-                            to: toId,
-                            label: rel.type || '',
-                            originalId: rel.id,
-                            arrows: 'to',
-                            font: { 
-                                align: 'middle',
-                                background: 'white',
-                                backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                                strokeWidth: 1,
-                                strokeColor: '#888',
-                                color: '#333333',
-                                size: 14,
-                                vadjust: -10
-                            },
-                            color: {
-                                color: '#444444',
-                                highlight: '#ff7f00',
-                                hover: '#ff7f00'
-                            },
-                            title: `Relationship: ${rel.type || 'Unknown'}\nOriginal ID: ${rel.id}`
-                        };
-                    }
-                    return null;
-                }).filter(edge => edge !== null);
-                
-                console.log(`Processed ${processedNodes.length} nodes and ${processedEdges.length} edges`);
-                
-                const nodes = new vis.DataSet(processedNodes);
-                const edges = new vis.DataSet(processedEdges);
-                
-                const options = {
-                    nodes: {
-                        shape: 'dot',
-                        size: 30,
-                        font: {
-                            size: 16,
-                            face: 'Tahoma',
-                            color: '#222222',
-                            strokeWidth: 2,
-                            strokeColor: '#ffffff'
-                        },
-                        borderWidth: 3,
-                        borderWidthSelected: 5,
-                        color: {
-                            background: '#a6cee3',
-                            border: '#1f78b4',
-                            highlight: {
-                                background: '#1f78b4',
-                                border: '#a6cee3'
-                            },
-                            hover: {
-                                background: '#b2df8a',
-                                border: '#33a02c'
-                            }
-                        },
-                        shadow: {
-                            enabled: true,
-                            color: 'rgba(0,0,0,0.3)',
-                            size: 10,
-                            x: 5,
-                            y: 5
-                        }
-                    },
-                    edges: {
-                        width: 3,
-                        color: {
-                            color: '#444444',  // darker gray edge line color as requested
-                            highlight: '#ff7f00',
-                            hover: '#ff7f00',
-                            inherit: false
-                        },
-                        arrows: {
-                            to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
-                        },
-                        font: {
-                            size: 14,
-                            align: 'middle',  // position label between arrow and edge start
-                            color: '#333333',
-                            strokeWidth: 0,
-                            strokeColor: '#ffffff'
-                        },
-                        smooth: {
-                            enabled: true,
-                            type: 'dynamic',
-                            roundness: 0.3
-                        },
-                        label: {
-                            enabled: true,
-                            min: 10,
-                            max: 40,
-                            maxVisible: 100,
-                            color: '#333333',
-                            font: 'bold 14px Arial',
+                        id: `edge_${index}`, // Use sequential edge IDs
+                        from: fromId,
+                        to: toId,
+                        label: rel.type || '',
+                        originalId: rel.id,
+                        arrows: 'to',
+                        font: { 
+                            align: 'middle',
                             background: 'white',
                             backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                            backgroundColor: 'white',
                             strokeWidth: 1,
                             strokeColor: '#888',
-                            xOffset: 0,
-                            yOffset: 0,  // reset offset to center label on edge line
-                            drawBackground: true,
-                            labelHighlightBold: true
+                            color: '#333333',
+                            size: 14,
+                            vadjust: -10
                         },
-                        shadow: {
-                            enabled: true,
-                            color: 'rgba(0,0,0,0.2)',
-                            size: 5,
-                            x: 3,
-                            y: 3
+                        color: {
+                            color: '#444444',
+                            highlight: '#ff7f00',
+                            hover: '#ff7f00'
+                        },
+                        title: `Relationship: ${rel.type || 'Unknown'}\nOriginal ID: ${rel.id}`
+                    };
+                }
+                return null;
+            }).filter(edge => edge !== null);
+            
+            console.log(`Processed ${processedNodes.length} nodes and ${processedEdges.length} edges`);
+            
+            const nodes = new vis.DataSet(processedNodes);
+            const edges = new vis.DataSet(processedEdges);
+            
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 30,
+                    font: {
+                        size: 16,
+                        face: 'Tahoma',
+                        color: '#222222',
+                        strokeWidth: 2,
+                        strokeColor: '#ffffff'
+                    },
+                    borderWidth: 3,
+                    borderWidthSelected: 5,
+                    color: {
+                        background: '#a6cee3',
+                        border: '#1f78b4',
+                        highlight: {
+                            background: '#1f78b4',
+                            border: '#a6cee3'
+                        },
+                        hover: {
+                            background: '#b2df8a',
+                            border: '#33a02c'
                         }
                     },
-                    physics: {
-                        stabilization: true,
-                        barnesHut: {
-                            gravitationalConstant: -12000,
-                            springConstant: 0.06,
-                            springLength: 250,
-                            damping: 0.09
-                        },
-                        minVelocity: 0.75
-                    },
-                    interaction: {
-                        hover: true,
-                        tooltipDelay: 150,
-                        zoomView: true,
-                        dragView: true,
-                        dragNodes: true,
-                        multiselect: true,
-                        navigationButtons: true,
-                        keyboard: true
-                    },
-                    layout: {
-                        improvedLayout: true,
-                        hierarchical: false
+                    shadow: {
+                        enabled: true,
+                        color: 'rgba(0,0,0,0.3)',
+                        size: 10,
+                        x: 5,
+                        y: 5
                     }
-                };
-                
-                network = new vis.Network(container, { nodes, edges }, options);
-                
-                // Add click event listener for nodes to show info overlay
-                network.on("click", function (params) {
-                    const infoOverlayId = 'node-info-overlay';
-                    // Remove existing overlay if any
-                    const existingOverlay = document.getElementById(infoOverlayId);
-                    if (existingOverlay) {
-                        existingOverlay.remove();
+                },
+                edges: {
+                    width: 3,
+                    color: {
+                        color: '#444444',  // darker gray edge line color as requested
+                        highlight: '#ff7f00',
+                        hover: '#ff7f00',
+                        inherit: false
+                    },
+                    arrows: {
+                        to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
+                    },
+                    font: {
+                        size: 14,
+                        align: 'middle',  // position label between arrow and edge start
+                        color: '#333333',
+                        strokeWidth: 0,
+                        strokeColor: '#ffffff'
+                    },
+                    smooth: {
+                        enabled: true,
+                        type: 'dynamic',
+                        roundness: 0.3
+                    },
+                    label: {
+                        enabled: true,
+                        min: 10,
+                        max: 40,
+                        maxVisible: 100,
+                        color: '#333333',
+                        font: 'bold 14px Arial',
+                        background: 'white',
+                        backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                        backgroundColor: 'white',
+                        strokeWidth: 1,
+                        strokeColor: '#888',
+                        xOffset: 0,
+                        yOffset: 0,  // reset offset to center label on edge line
+                        drawBackground: true,
+                        labelHighlightBold: true
+                    },
+                    shadow: {
+                        enabled: true,
+                        color: 'rgba(0,0,0,0.2)',
+                        size: 5,
+                        x: 3,
+                        y: 3
                     }
-                    
-                    if (params.nodes.length > 0) {
-                        const nodeId = params.nodes[0];
-                        const node = nodes.get(nodeId);
-                        if (node) {
-                            // Create overlay div
-                            const overlay = document.createElement('div');
-                            overlay.id = infoOverlayId;
-                            overlay.style.position = 'absolute';
-                            overlay.style.background = 'rgba(255, 255, 255, 0.95)';
-                            overlay.style.border = '1px solid #888';
-                            overlay.style.borderRadius = '8px';
-                            overlay.style.padding = '10px';
-                            overlay.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                            overlay.style.maxWidth = '300px';
-                            overlay.style.zIndex = 10000;
-                            overlay.style.fontSize = '14px';
-                            overlay.style.color = '#333';
-                            overlay.style.overflowY = 'auto';
-                            overlay.style.maxHeight = '200px';
-                            
-                            // Position overlay near clicked node
-                            const canvasPos = network.canvasToDOM({x: params.pointer.canvas.x, y: params.pointer.canvas.y});
-                            overlay.style.left = `${canvasPos.x + 10}px`;
-                            overlay.style.top = `${canvasPos.y + 10}px`;
-                            
-                            // Build info content
-                            let infoHtml = `<strong>Node ID:</strong> ${node.id}<br><strong>Label:</strong> ${node.label}<br><strong>Properties:</strong><br><ul>`;
-                            if (node.properties) {
-                                for (const [key, value] of Object.entries(node.properties)) {
-                                    infoHtml += `<li><strong>${key}:</strong> ${value}</li>`;
-                                }
-                            } else {
-                                infoHtml += "<li>No additional properties.</li>";
+                },
+                physics: {
+                    stabilization: true,
+                    barnesHut: {
+                        gravitationalConstant: -12000,
+                        springConstant: 0.06,
+                        springLength: 250,
+                        damping: 0.09
+                    },
+                    minVelocity: 0.75
+                },
+                interaction: {
+                    hover: true,
+                    tooltipDelay: 150,
+                    zoomView: true,
+                    dragView: true,
+                    dragNodes: true,
+                    multiselect: true,
+                    navigationButtons: true,
+                    keyboard: true
+                },
+                layout: {
+                    improvedLayout: true,
+                    hierarchical: false
+                }
+            };
+            
+            network = new vis.Network(container, { nodes, edges }, options);
+            
+            // Add click event listener for nodes to show info overlay
+            network.on("click", function (params) {
+                const infoOverlayId = 'node-info-overlay';
+                // Remove existing overlay if any
+                const existingOverlay = document.getElementById(infoOverlayId);
+                if (existingOverlay) {
+                    existingOverlay.remove();
+                }
+                
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    const node = nodes.get(nodeId);
+                    if (node) {
+                        // Create overlay div
+                        const overlay = document.createElement('div');
+                        overlay.id = infoOverlayId;
+                        overlay.style.position = 'absolute';
+                        overlay.style.background = 'rgba(255, 255, 255, 0.95)';
+                        overlay.style.border = '1px solid #888';
+                        overlay.style.borderRadius = '8px';
+                        overlay.style.padding = '10px';
+                        overlay.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                        overlay.style.maxWidth = '300px';
+                        overlay.style.zIndex = 10000;
+                        overlay.style.fontSize = '14px';
+                        overlay.style.color = '#333';
+                        overlay.style.overflowY = 'auto';
+                        overlay.style.maxHeight = '200px';
+                        
+                        // Position overlay near clicked node
+                        const canvasPos = network.canvasToDOM({x: params.pointer.canvas.x, y: params.pointer.canvas.y});
+                        overlay.style.left = `${canvasPos.x + 10}px`;
+                        overlay.style.top = `${canvasPos.y + 10}px`;
+                        
+                        // Build info content
+                        let infoHtml = `<strong>Node ID:</strong> ${node.id}<br><strong>Label:</strong> ${node.label}<br><strong>Properties:</strong><br><ul>`;
+                        if (node.properties) {
+                            for (const [key, value] of Object.entries(node.properties)) {
+                                infoHtml += `<li><strong>${key}:</strong> ${value}</li>`;
                             }
-                            infoHtml += '</ul>';
-                            
-                            // Add close button
-                            const closeBtn = document.createElement('button');
-                            closeBtn.textContent = 'Close';
-                            closeBtn.style.marginTop = '8px';
-                            closeBtn.style.padding = '4px 8px';
-                            closeBtn.style.border = 'none';
-                            closeBtn.style.background = '#3498db';
-                            closeBtn.style.color = 'white';
-                            closeBtn.style.borderRadius = '4px';
-                            closeBtn.style.cursor = 'pointer';
-                            closeBtn.addEventListener('click', () => {
-                                overlay.remove();
-                            });
-                            
-                            overlay.innerHTML = infoHtml;
-                            overlay.appendChild(closeBtn);
-                            
-                            // Append overlay to graph container
-                            const container = document.getElementById('graph-container');
-                            container.appendChild(overlay);
+                        } else {
+                            infoHtml += "<li>No additional properties.</li>";
                         }
+                        infoHtml += '</ul>';
+                        
+                        // Add close button
+                        const closeBtn = document.createElement('button');
+                        closeBtn.textContent = 'Close';
+                        closeBtn.style.marginTop = '8px';
+                        closeBtn.style.padding = '4px 8px';
+                        closeBtn.style.border = 'none';
+                        closeBtn.style.background = '#3498db';
+                        closeBtn.style.color = 'white';
+                        closeBtn.style.borderRadius = '4px';
+                        closeBtn.style.cursor = 'pointer';
+                        closeBtn.addEventListener('click', () => {
+                            overlay.remove();
+                        });
+                        
+                        overlay.innerHTML = infoHtml;
+                        overlay.appendChild(closeBtn);
+                        
+                        // Append overlay to graph container
+                        const container = document.getElementById('graph-container');
+                        container.appendChild(overlay);
                     }
+                }
+            });
+            
+            // Zoom functionality
+            document.getElementById('zoom-in').addEventListener('click', function() {
+                network.moveTo({
+                    scale: network.getScale() * 1.2,
+                    animation: true
                 });
-                
-                // Zoom functionality
-                document.getElementById('zoom-in').addEventListener('click', function() {
-                    network.moveTo({
-                        scale: network.getScale() * 1.2,
-                        animation: true
-                    });
+            });
+            
+            document.getElementById('zoom-out').addEventListener('click', function() {
+                network.moveTo({
+                    scale: network.getScale() * 0.8,
+                    animation: true
                 });
-                
-                document.getElementById('zoom-out').addEventListener('click', function() {
-                    network.moveTo({
-                        scale: network.getScale() * 0.8,
-                        animation: true
-                    });
+            });
+            
+            document.getElementById('reset-zoom').addEventListener('click', function() {
+                network.fit({
+                    animation: true
                 });
-                
-                document.getElementById('reset-zoom').addEventListener('click', function() {
-                    network.fit({
-                        animation: true
-                    });
-                });
-            }
-        
-        // Removed old showError function
+            });
+        }
         
         function addToChat(message, type, id = null) {
             const chatBox = document.getElementById('chat-box');
@@ -1276,144 +1377,136 @@
                 relationships: []
             });
 
-        // Fetch and pre-fill Neo4j credentials, then show the form
-        fetch('/neo4j/default_credentials')
-            .then(response => response.json())
-            .then(data => {
-                // Set for load form
-                document.getElementById('neo4j-uri').value = data.uri;
-                document.getElementById('neo4j-user').value = data.user;
-                
-                // Set for save form
-                document.getElementById('save-neo4j-uri').value = data.uri;
-                document.getElementById('save-neo4j-user').value = data.user;
-                
-                // Show the form now that we have credentials
-                document.getElementById('neo4j-form').style.display = 'block';
-            })
+            // Fetch and pre-fill Neo4j credentials
+            fetch('/neo4j/default_credentials')
+                .then(response => response.json())
+                .then(data => {
+                    // Set for load form
+                    document.getElementById('neo4j-uri').value = data.uri;
+                    document.getElementById('neo4j-user').value = data.user;
+                    
+                    // Set for save form
+                    document.getElementById('save-neo4j-uri').value = data.uri;
+                    document.getElementById('save-neo4j-user').value = data.user;
+                })
                 .catch(error => {
                     console.error('Error fetching default Neo4j credentials:', error);
                     showError('Failed to load default Neo4j credentials');
                 });
             
-        // Set up model dropdowns
-        function setupModelDropdowns() {
-            updateModelDropdown('kg-provider', 'kg-model');
-            updateModelDropdown('rag-vendor', 'rag-model');
-        }
-        setupModelDropdowns();
-        
-        // Add event listeners to vendor dropdowns
-        document.getElementById('kg-provider').addEventListener('change', function() {
-            updateModelDropdown('kg-provider', 'kg-model');
-        });
-        
-        document.getElementById('rag-vendor').addEventListener('change', function() {
-            updateModelDropdown('rag-vendor', 'rag-model');
-        });
-        
-        async function updateModelDropdown(vendorSelectId, modelSelectId) {
-            const vendorSelect = document.getElementById(vendorSelectId);
-            const modelSelect = document.getElementById(modelSelectId);
-            const vendor = vendorSelect.value;
+            // Set up model dropdowns
+            function setupModelDropdowns() {
+                updateModelDropdown('kg-provider', 'kg-model');
+                updateModelDropdown('rag-vendor', 'rag-model');
+            }
+            setupModelDropdowns();
             
-            // Show loading indicator
-            modelSelect.innerHTML = '<option value="">Loading models...</option>';
+            // Add event listeners to vendor dropdowns
+            document.getElementById('kg-provider').addEventListener('change', function() {
+                updateModelDropdown('kg-provider', 'kg-model');
+            });
             
-            try {
-                const response = await fetch(`/models/${vendor}`);
-                if (!response.ok) throw new Error('Failed to fetch models');
+            document.getElementById('rag-vendor').addEventListener('change', function() {
+                updateModelDropdown('rag-vendor', 'rag-model');
+            });
+            
+            async function updateModelDropdown(vendorSelectId, modelSelectId) {
+                const vendorSelect = document.getElementById(vendorSelectId);
+                const modelSelect = document.getElementById(modelSelectId);
+                const vendor = vendorSelect.value;
                 
-                const data = await response.json();
-                modelSelect.innerHTML = '';
+                // Show loading indicator
+                modelSelect.innerHTML = '<option value="">Loading models...</option>';
                 
                 try {
-                    data.models.forEach(model => {
-                        const option = document.createElement('option');
-                        option.value = model;
-                        
-                        // Map model names to more user-friendly display names
-                        let displayName = model;
-                        if (vendor === 'openrouter') {
-                            // Extract the last part after the last slash
-                            const parts = model.split('/');
-                            if (parts.length > 1) {
-                                displayName = parts[parts.length - 1];
-                            }
-                            // Remove any suffixes after colon
-                            displayName = displayName.split(':')[0];
-                        }
-                        
-                        option.textContent = displayName;
-                        modelSelect.appendChild(option);
-                    });
+                    const response = await fetch(`/models/${vendor}`);
+                    if (!response.ok) throw new Error('Failed to fetch models');
                     
-                    // Preselect first model
-                    if (data.models.length > 0) {
-                        if (vendor === 'openrouter' && data.models.includes('meta-llama/llama-4-maverick:free')) {
-                            modelSelect.value = 'meta-llama/llama-4-maverick:free';
+                    const data = await response.json();
+                    modelSelect.innerHTML = '';
+                    
+                    try {
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model;
+                            
+                            // Map model names to more user-friendly display names
+                            let displayName = model;
+                            if (vendor === 'openrouter') {
+                                // Extract the last part after the last slash
+                                const parts = model.split('/');
+                                if (parts.length > 1) {
+                                    displayName = parts[parts.length - 1];
+                                }
+                                // Remove any suffixes after colon
+                                displayName = displayName.split(':')[0];
+                            }
+                            
+                            option.textContent = displayName;
+                            modelSelect.appendChild(option);
+                        });
+                        
+                        // Preselect first model
+                        if (data.models.length > 0) {
+                            if (vendor === 'openrouter' && data.models.includes('meta-llama/llama-4-maverick:free')) {
+                                modelSelect.value = 'meta-llama/llama-4-maverick:free';
+                            } else {
+                                modelSelect.value = data.models[0];
+                            }
                         } else {
-                            modelSelect.value = data.models[0];
+                            modelSelect.innerHTML = '<option value="">No models available</option>';
                         }
-                    } else {
-                        modelSelect.innerHTML = '<option value="">No models available</option>';
+                    } catch (error) {
+                        console.error('Error processing models:', error);
+                        modelSelect.innerHTML = '<option value="">Error processing models</option>';
                     }
                 } catch (error) {
-                    console.error('Error processing models:', error);
-                    modelSelect.innerHTML = '<option value="">Error processing models</option>';
+                    console.error('Error fetching models:', error);
+                    modelSelect.innerHTML = '<option value="">Error loading models</option>';
                 }
-            } catch (error) {
-                console.error('Error fetching models:', error);
-                modelSelect.innerHTML = '<option value="">Error loading models</option>';
             }
-        }
-        
-        // Temperature control
-        document.getElementById('temperature').addEventListener('input', function() {
-            document.getElementById('temp-value').textContent = this.value;
-        });
             
+            // Temperature control
+            document.getElementById('temperature').addEventListener('input', function() {
+                document.getElementById('temp-value').textContent = this.value;
+            });
+                
             // View toggling functionality
             const kgView = document.getElementById('kg-view');
             const chatView = document.getElementById('chat-view');
-            const kgIcon = document.getElementById('kg-icon');
-            const chatIcon = document.getElementById('chat-icon');
+            const kgToggle = document.getElementById('kg-toggle');
+            const chatToggle = document.getElementById('chat-toggle');
+            const bothToggle = document.getElementById('both-toggle');
             
             // Set default view to both
             let currentView = 'both';
+            bothToggle.classList.add('active');
             
-            kgIcon.addEventListener('click', function() {
-                if (currentView === 'kg') {
-                    // Already in KG view, switch back to both view
-                    kgView.style.display = 'flex';
-                    chatView.style.display = 'flex';
-                    currentView = 'both';
-                    kgIcon.classList.remove('active');
-                } else {
-                    // Show only KG in full width
-                    kgView.style.display = 'flex';
-                    chatView.style.display = 'none';
-                    currentView = 'kg';
-                    kgIcon.classList.add('active');
-                    chatIcon.classList.remove('active');
-                }
+            kgToggle.addEventListener('click', function() {
+                kgView.style.display = 'flex';
+                chatView.style.display = 'none';
+                currentView = 'kg';
+                kgToggle.classList.add('active');
+                chatToggle.classList.remove('active');
+                bothToggle.classList.remove('active');
             });
             
-            chatIcon.addEventListener('click', function() {
-                if (currentView === 'chat') {
-                    // Already in chat view, switch back to both view
-                    kgView.style.display = 'flex';
-                    chatView.style.display = 'flex';
-                    currentView = 'both';
-                    chatIcon.classList.remove('active');
-                } else {
-                    // Show only chat in full width
-                    kgView.style.display = 'none';
-                    chatView.style.display = 'flex';
-                    currentView = 'chat';
-                    chatIcon.classList.add('active');
-                    kgIcon.classList.remove('active');
-                }
+            chatToggle.addEventListener('click', function() {
+                kgView.style.display = 'none';
+                chatView.style.display = 'flex';
+                currentView = 'chat';
+                chatToggle.classList.add('active');
+                kgToggle.classList.remove('active');
+                bothToggle.classList.remove('active');
+            });
+            
+            bothToggle.addEventListener('click', function() {
+                kgView.style.display = 'flex';
+                chatView.style.display = 'flex';
+                currentView = 'both';
+                bothToggle.classList.add('active');
+                kgToggle.classList.remove('active');
+                chatToggle.classList.remove('active');
             });
             
             // KG Loading functionality
@@ -1515,19 +1608,19 @@
                 document.getElementById('ontology-upload').click();
             });
             
-        document.getElementById('ontology-upload').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                if (!file.name.endsWith('.json') && !file.name.endsWith('.owl')) {
-                    showError('Only JSON and OWL ontology files are supported');
-                    e.target.value = '';
-                    document.getElementById('selected-ontology').textContent = '';
-                    return;
+            document.getElementById('ontology-upload').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    if (!file.name.endsWith('.json') && !file.name.endsWith('.owl')) {
+                        showError('Only JSON and OWL ontology files are supported');
+                        e.target.value = '';
+                        document.getElementById('selected-ontology').textContent = '';
+                        return;
+                    }
+                    document.getElementById('selected-ontology').textContent = `Ontology: ${file.name}`;
                 }
-                document.getElementById('selected-ontology').textContent = `Ontology: ${file.name}`;
-            }
-        });
-            
+            });
+                
             // File selection functionality
             document.getElementById('file-upload').addEventListener('change', function(e) {
                 const file = e.target.files[0];
@@ -1713,57 +1806,57 @@
                 }
             }
             
-async function saveKGToFile() {
-    if (!network) {
-        showError('No graph to save');
-        return;
-    }
-    
-    try {
-        if (!currentKGId) {
-            showError('No knowledge graph loaded');
-            return;
-        }
-        
-        // Prompt user for filename
-        const userFilename = prompt('Enter a name for your knowledge graph:', 'my_knowledge_graph');
-        
-        if (!userFilename) {
-            return; // User canceled
-        }
-        
-        // Use backend export endpoint with custom name
-        const exportButton = document.getElementById('export-kg');
-        const originalText = exportButton.textContent;
-        exportButton.innerHTML = '<div class="spinner"></div> Saving...';
-        exportButton.disabled = true;
-        
-        try {
-            const response = await fetch('/save_kg_with_name', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    kg_id: currentKGId,
-                    filename: userFilename
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to save KG');
+            async function saveKGToFile() {
+                if (!network) {
+                    showError('No graph to save');
+                    return;
+                }
+                
+                try {
+                    if (!currentKGId) {
+                        showError('No knowledge graph loaded');
+                        return;
+                    }
+                    
+                    // Prompt user for filename
+                    const userFilename = prompt('Enter a name for your knowledge graph:', 'my_knowledge_graph');
+                    
+                    if (!userFilename) {
+                        return; // User canceled
+                    }
+                    
+                    // Use backend export endpoint with custom name
+                    const exportButton = document.getElementById('export-kg');
+                    const originalText = exportButton.textContent;
+                    exportButton.innerHTML = '<div class="spinner"></div> Saving...';
+                    exportButton.disabled = true;
+                    
+                    try {
+                        const response = await fetch('/save_kg_with_name', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                kg_id: currentKGId,
+                                filename: userFilename
+                            })
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || 'Failed to save KG');
+                        }
+                        
+                        const result = await response.json();
+                        showError(`Knowledge graph saved as "${result.filename}" with ${result.nodes} nodes and ${result.relationships} relationships`);
+                    } finally {
+                        exportButton.innerHTML = originalText;
+                        exportButton.disabled = false;
+                    }
+                } catch (error) {
+                    showError(`Failed to save graph: ${error.message}`);
+                }
             }
-            
-            const result = await response.json();
-            showError(`Knowledge graph saved as "${result.filename}" with ${result.nodes} nodes and ${result.relationships} relationships`);
-        } finally {
-            exportButton.innerHTML = originalText;
-            exportButton.disabled = false;
-        }
-    } catch (error) {
-        showError(`Failed to save graph: ${error.message}`);
-    }
-}
-            
+                
             async function loadKGFromFile() {
                 try {
                     // First, get list of available stored KGs
@@ -1834,110 +1927,109 @@ async function saveKGToFile() {
                 }
             }
             
-        // Send question function with loading indicator
-window.sendQuestion = async function() {
-    const input = document.getElementById('question');
-    const sendButton = document.getElementById('send-btn');
-    const chatBox = document.getElementById('chat-box');
-    const question = input.value.trim();
-    if (!question) return;
-    
-    const vendor = document.getElementById('rag-vendor').value;
-    const model = document.getElementById('rag-model').value;
-    
-    addToChat(`You: ${question}`, 'user');
-    input.value = '';
-    
-    
-    const originalButtonText = sendButton.textContent;
-    try {
-        // Show loading state on button
-        sendButton.innerHTML = '<div class="spinner"></div> Thinking...';
-        sendButton.disabled = true;
-        
-        // Create payload with required parameters
-        const payload = {
-            question: question,
-            provider_rag: vendor,
-            model_rag: model
-        };
-        
-        // Add kg_id if available
-        if (currentKGId) {
-            payload.kg_id = currentKGId;
-        }
-        
-        const response = await fetch('/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-            
-        if (!response.ok) {
-            throw new Error('Error getting response');
-        }
-            
-        const result = await response.json();
-            
-        // Enhanced response formatting for new LLM COPILOT format
-        let formattedResponse = result.response;
-        
-        // Handle the new numbered section format with bold and underline
-        // Convert ## **<u>1. SECTION:</u>** to proper HTML
-        formattedResponse = formattedResponse.replace(/##\s*\*\*<u>(\d+)\.\s*(.*?):<\/u>\*\*/g, function(match, number, title) {
-            return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${number}. ${title.toUpperCase()}:</h2>`;
-        });
-        
-        // Handle regular ## headings as numbered bold underlined titles
-        let sectionCount = 0;
-        formattedResponse = formattedResponse.replace(/^##\s+(.*)$/gm, function(match, title) {
-            sectionCount += 1;
-            return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${sectionCount}. ${title.toUpperCase()}</h2>`;
-        });
-        
-        // Extract and format the detailed reasoning dropdown
-        const detailsMatch = formattedResponse.match(/<details>([\s\S]*?)<\/details>/);
-        let detailedReasoning = '';
-        if (detailsMatch) {
-            detailedReasoning = detailsMatch[0];
-            // Remove from main response
-            formattedResponse = formattedResponse.replace(/<details>[\s\S]*?<\/details>/, '');
-        }
-        
-        // Convert bullet points (•) to proper HTML bullets
-        formattedResponse = formattedResponse.replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">');
-        
-        // Convert line breaks to proper HTML
-        formattedResponse = formattedResponse.replace(/\n/g, '<br>');
-        
-        // Enhanced markdown formatting
-        formattedResponse = formattedResponse
-            .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
-            .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>');
-        
-        // Handle special formatting for clinical sections
-        formattedResponse = formattedResponse
-            .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g, 
-                '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>')
-            .replace(/LET ME KNOW IF YOU'D LIKE ME TO (.*?)\./g, 
-                '<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 16px 0; font-style: italic; color: #1976d2;"><strong>LET ME KNOW IF YOU\'D LIKE ME TO $1.</strong></div>');
-        
-        // Combine main response with detailed reasoning
-        if (detailedReasoning) {
-            formattedResponse += '<br><br>' + detailedReasoning;
-        }
-        
-        addToChat(`${formattedResponse}`, 'ai');
-    } catch (error) {
-        addToChat(`Error: ${error.message}`, 'error');
-    } finally {
-        // Restore button state
-        sendButton.innerHTML = originalButtonText;
-        sendButton.disabled = false;
-    }
-};
-            
+            // Send question function with loading indicator
+            window.sendQuestion = async function() {
+                const input = document.getElementById('question');
+                const sendButton = document.getElementById('send-btn');
+                const chatBox = document.getElementById('chat-box');
+                const question = input.value.trim();
+                if (!question) return;
+                
+                const vendor = document.getElementById('rag-vendor').value;
+                const model = document.getElementById('rag-model').value;
+                
+                addToChat(`You: ${question}`, 'user');
+                input.value = '';
+                
+                const originalButtonText = sendButton.textContent;
+                try {
+                    // Show loading state on button
+                    sendButton.innerHTML = '<div class="spinner"></div> Thinking...';
+                    sendButton.disabled = true;
+                    
+                    // Create payload with required parameters
+                    const payload = {
+                        question: question,
+                        provider_rag: vendor,
+                        model_rag: model
+                    };
+                    
+                    // Add kg_id if available
+                    if (currentKGId) {
+                        payload.kg_id = currentKGId;
+                    }
+                    
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                        
+                    if (!response.ok) {
+                        throw new Error('Error getting response');
+                    }
+                        
+                    const result = await response.json();
+                        
+                    // Enhanced response formatting for new LLM COPILOT format
+                    let formattedResponse = result.response;
+                    
+                    // Handle the new numbered section format with bold and underline
+                    // Convert ## **<u>1. SECTION:</u>** to proper HTML
+                    formattedResponse = formattedResponse.replace(/##\s*\*\*<u>(\d+)\.\s*(.*?):<\/u>\*\*/g, function(match, number, title) {
+                        return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${number}. ${title.toUpperCase()}:</h2>`;
+                    });
+                    
+                    // Handle regular ## headings as numbered bold underlined titles
+                    let sectionCount = 0;
+                    formattedResponse = formattedResponse.replace(/^##\s+(.*)$/gm, function(match, title) {
+                        sectionCount += 1;
+                        return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${sectionCount}. ${title.toUpperCase()}</h2>`;
+                    });
+                    
+                    // Extract and format the detailed reasoning dropdown
+                    const detailsMatch = formattedResponse.match(/<details>([\s\S]*?)<\/details>/);
+                    let detailedReasoning = '';
+                    if (detailsMatch) {
+                        detailedReasoning = detailsMatch[0];
+                        // Remove from main response
+                        formattedResponse = formattedResponse.replace(/<details>[\s\S]*?<\/details>/, '');
+                    }
+                    
+                    // Convert bullet points (•) to proper HTML bullets
+                    formattedResponse = formattedResponse.replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">');
+                    
+                    // Convert line breaks to proper HTML
+                    formattedResponse = formattedResponse.replace(/\n/g, '<br>');
+                    
+                    // Enhanced markdown formatting
+                    formattedResponse = formattedResponse
+                        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
+                        .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>');
+                    
+                    // Handle special formatting for clinical sections
+                    formattedResponse = formattedResponse
+                        .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g, 
+                            '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>')
+                        .replace(/LET ME KNOW IF YOU'D LIKE ME TO (.*?)\./g, 
+                            '<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 16px 0; font-style: italic; color: #1976d2;"><strong>LET ME KNOW IF YOU\'D LIKE ME TO $1.</strong></div>');
+                    
+                    // Combine main response with detailed reasoning
+                    if (detailedReasoning) {
+                        formattedResponse += '<br><br>' + detailedReasoning;
+                    }
+                    
+                    addToChat(`${formattedResponse}`, 'ai');
+                } catch (error) {
+                    addToChat(`Error: ${error.message}`, 'error');
+                } finally {
+                    // Restore button state
+                    sendButton.innerHTML = originalButtonText;
+                    sendButton.disabled = false;
+                }
+            };
+                
             // Add event listener for Enter key
             document.getElementById('question').addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1945,17 +2037,17 @@ window.sendQuestion = async function() {
                     sendQuestion();
                 }
             });
+                
+            // Attach handlers
+            document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
+            document.getElementById('export-kg').addEventListener('click', saveKGToFile);
+            document.getElementById('import-kg').addEventListener('click', loadKGFromFile);
             
-        // Attach handlers
-        document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
-        document.getElementById('export-kg').addEventListener('click', saveKGToFile);
-        document.getElementById('import-kg').addEventListener('click', loadKGFromFile);
-        
-        // Clear chat button functionality
-        document.getElementById('clear-chat-btn').addEventListener('click', function() {
-            document.getElementById('chat-box').innerHTML = '';
-        });
-            
+            // Clear chat button functionality
+            document.getElementById('clear-chat-btn').addEventListener('click', function() {
+                document.getElementById('chat-box').innerHTML = '';
+            });
+                
             // Initialize model dropdowns immediately
             setupModelDropdowns();
             
