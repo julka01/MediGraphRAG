@@ -1,5 +1,0 @@
-Graph RAG is a technique that combines knowledge graphs with retrieval-augmented generation. 
-It uses structured knowledge to enhance AI responses. Key components include:
-- Knowledge Graph: Structured data representation
-- RAG: Retrieval Augmented Generation framework
-- Integration: Combining KG context with language models

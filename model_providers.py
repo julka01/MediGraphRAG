@@ -8,10 +8,40 @@ from huggingface_hub import InferenceClient
 import ollama
 from typing import Dict, Any
 
+from langchain_core.runnables.base import Runnable
+
 class ModelProvider(ABC):
     @abstractmethod
     def generate(self, system_prompt: str, user_prompt: str, model: str, **kwargs) -> str:
         pass
+
+class LangChainRunnableAdapter(Runnable):
+    def __init__(self, provider: ModelProvider, model: str):
+        self.provider = provider
+        self.model = model
+
+    def invoke(self, input, config=None) -> str:
+        # input may be a ChatPromptValue object, access text attribute
+        system_prompt = ""
+        user_prompt = ""
+        if hasattr(input, "get"):
+            system_prompt = input.get("system_prompt", "")
+            user_prompt = input.get("text", "")
+        else:
+            # Try to access attributes for ChatPromptValue
+            system_prompt = getattr(input, "system_prompt", "")
+            user_prompt = getattr(input, "text", "")
+            if not user_prompt and hasattr(input, "text"):
+                user_prompt = input.text
+        return self.provider.generate(system_prompt, user_prompt, self.model)
+    
+    def with_structured_output(self, schema, **kwargs):
+        """Add structured output support for LLMGraphTransformer compatibility"""
+        return self
+    
+    def bind(self, **kwargs):
+        """Add bind method for LangChain compatibility"""
+        return self
 
 class OpenAIProvider(ModelProvider):
     def __init__(self):
@@ -124,8 +154,16 @@ class OpenRouterProvider(ModelProvider):
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
+    
+    def with_structured_output(self, schema, **kwargs):
+        """Add structured output support for LLMGraphTransformer compatibility"""
+        return self
+    
+    def bind(self, **kwargs):
+        """Add bind method for LangChain compatibility"""
+        return self
 
-def get_provider(provider_name: str) -> ModelProvider:
+def get_provider(provider: str, model: str = None, **kwargs) -> ModelProvider:
     providers: Dict[str, Any] = {
         "openai": OpenAIProvider,
         "ollama": OllamaProvider,
@@ -135,8 +173,14 @@ def get_provider(provider_name: str) -> ModelProvider:
         "openrouter": OpenRouterProvider
     }
     
-    provider_class = providers.get(provider_name.lower())
+    provider_class = providers.get(provider.lower())
     if not provider_class:
-        raise ValueError(f"Unsupported provider: {provider_name}")
+        raise ValueError(f"Unsupported provider: {provider}")
     
     return provider_class()
+
+# alias for compatibility
+get_llm_provider = get_provider
+
+# alias for compatibility
+get_llm_provider = get_provider

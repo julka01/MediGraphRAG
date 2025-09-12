@@ -87,8 +87,7 @@ def test_kg_generation():
             kg = creator.generate_knowledge_graph(
                 text=sample_text,
                 llm=llm,
-                ontology=None,  # Use default biomedical ontology
-                max_text_length=2000
+                ontology=None  # Use default biomedical ontology
             )
             
             print(f"✅ Successfully generated KG")
