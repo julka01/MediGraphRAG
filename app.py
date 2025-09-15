@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from model_providers import get_provider as get_llm_provider
+from ontology_guided_kg_creator import OntologyGuidedKGCreator
 
 # Add llm-graph-builder backend to path so `src` package resolves
 backend_root = os.path.join(os.path.dirname(__file__), "llm-graph-builder", "backend")
@@ -170,36 +171,142 @@ async def extract_graph(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat")
-async def chat(body: dict = Body(...)):
+@app.post("/create_ontology_guided_kg")
+async def create_ontology_guided_kg(
+    file: UploadFile = File(...),
+    provider: str = Form("openai"),
+    model: str = Form("gpt-3.5-turbo")
+):
     """
-    Delegate chat to llm-graph-builder QA_RAG (raw graph-based QA).
+    Create ontology-guided knowledge graph with validity checks.
+    Uses biomedical ontology to ensure consistent entity types and relationships.
     """
-    from src.graph_query import get_graphDB_driver
-    from src.QA_integration import QA_RAG
     try:
-        question = body.get("question")
-        docs = body.get("document_names", [])
-        session = body.get("session_id")
-        mode = body.get("mode", "default")
-        provider = body.get("provider_rag", "openrouter")
-        model = body.get("model_rag", "meta-llama/llama-4-maverick:free")
-        if not question:
-            raise HTTPException(status_code=422, detail="Missing question")
-        driver = get_graphDB_driver(
-            os.getenv("NEO4J_URI"),
-            os.getenv("NEO4J_USERNAME"),
-            os.getenv("NEO4J_PASSWORD"),
-            os.getenv("NEO4J_DATABASE")
+        # Read file content
+        data = await file.read()
+        text_content = data.decode('utf-8')
+
+        # Get LLM provider
+        llm = get_llm_provider(provider, model)
+
+        # Initialize ontology-guided KG creator
+        ontology_path = "biomedical_ontology.owl"
+        kg_creator = OntologyGuidedKGCreator(
+            chunk_size=1500,
+            chunk_overlap=200,
+            ontology_path=ontology_path,
+            neo4j_uri=os.getenv("NEO4J_URI"),
+            neo4j_user=os.getenv("NEO4J_USERNAME"),
+            neo4j_password=os.getenv("NEO4J_PASSWORD"),
+            neo4j_database=os.getenv("NEO4J_DATABASE")
         )
-        from model_providers import LangChainRunnableAdapter
-        llm = LangChainRunnableAdapter(get_llm_provider(provider, model), model)
-        result = QA_RAG(driver, llm, question, docs, session, mode)
-        return JSONResponse(content=result)
+
+        # Generate KG with ontology guidance
+        kg = kg_creator.generate_knowledge_graph(text_content, llm, file.filename)
+
+        return JSONResponse(content={
+            "kg_id": str(uuid.uuid4()),
+            "graph_data": kg,
+            "method": "ontology_guided",
+            "ontology_file": ontology_path,
+            "determinism_improvements": [
+                "fixed_chunk_size",
+                "temperature=0_for_all_LLMs",
+                "ontology_constraints_applied"
+            ]
+        })
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Ontology-guided KG creation failed: {str(e)}")
+
+@app.post("/chat")
+async def chat(body: dict = Body(...)):
+    """
+    Enhanced KG-focused RAG chat that ensures responses come from KG alone.
+    """
+    try:
+        question = body.get("question")
+        docs = body.get("document_names", [])
+        session = body.get("session_id", "default_session")
+        mode = body.get("mode", "default")
+        provider = body.get("provider_rag", "openrouter")
+        model = body.get("model_rag", "meta-llama/llama-4-maverick:free")
+
+        if not question:
+            raise HTTPException(status_code=422, detail="Missing question")
+
+        # Use the EnhancedRAGSystem for strict KG-only responses
+        from enhanced_rag_system import EnhancedRAGSystem
+        from model_providers import LangChainRunnableAdapter
+
+        # Create RAG system with direct KG connection
+        rag_system = EnhancedRAGSystem()
+
+        # Get LLM provider
+        llm = LangChainRunnableAdapter(get_llm_provider(provider, model), model)
+
+        # Generate response using KG data only
+        result = rag_system.generate_response(question, llm, docs)
+
+        # Format response to match expected structure
+        if "error" in result:
+            return JSONResponse(content={
+                "session_id": session,
+                "message": f"KG Error: {result['error']}",
+                "info": {
+                    "sources": [],
+                    "model": model,
+                    "nodedetails": [],
+                    "total_tokens": 0,
+                    "response_time": 0,
+                    "mode": mode,
+                    "entities": result.get("entities", []),
+                    "metric_details": {},
+                    "kg_only": True,
+                    "kg_stats": result.get("context", {}).get("kg_stats", {})
+                },
+                "user": "chatbot"
+            })
+
+        # Convert enhanced response to standard format
+        return JSONResponse(content={
+            "session_id": session,
+            "message": result["response"],
+            "info": {
+                "sources": result["sources"],
+                "model": model,
+                "nodedetails": {
+                    "chunkdetails": result.get("context", {}).get("chunks", []),
+                    "entitydetails": result.get("context", {}).get("entities", {}),
+                    "communitydetails": []
+                },
+                "total_tokens": 0,  # TODO: Implement token counting
+                "response_time": 0,
+                "mode": mode,
+                "entities": {
+                    "entityids": result.get("entities", []),
+                    "relationshipids": [r.get("key", "") for r in result.get("relationships", [])]
+                },
+                "metric_details": {
+                    "question": question,
+                    "contexts": [chunk["text"] for chunk in result.get("context", {}).get("chunks", [])],
+                    "answer": result["response"]
+                },
+                "kg_only": True,
+                "chunk_count": result.get("chunk_count", 0),
+                "entity_count": result.get("entity_count", 0),
+                "relationship_count": result.get("relationship_count", 0),
+                "confidence": result.get("confidence", 0.0)
+            },
+            "user": "chatbot"
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"KG-RAG Error: {str(e)}")
 
 @app.get("/models/{provider}")
 def list_models(provider: str):

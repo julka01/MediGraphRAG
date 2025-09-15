@@ -16,16 +16,20 @@ class EnhancedRAGSystem:
     
     def __init__(
         self,
-        neo4j_uri: str = "bolt://localhost:7687",
-        neo4j_user: str = "neo4j",
-        neo4j_password: str = "password",
+        neo4j_uri: str = None,
+        neo4j_user: str = None,
+        neo4j_password: str = None,
         neo4j_database: str = "neo4j",
-        embedding_model: str = "openai"
+        embedding_model: str = "sentence_transformers"
     ):
-        self.neo4j_uri = neo4j_uri
-        self.neo4j_user = neo4j_user
-        self.neo4j_password = neo4j_password
-        self.neo4j_database = neo4j_database
+        # Load Neo4j credentials from environment variables if not provided
+        self.neo4j_uri = neo4j_uri if neo4j_uri is not None else os.getenv("NEO4J_URI")
+        self.neo4j_user = neo4j_user if neo4j_user is not None else os.getenv("NEO4J_USERNAME")
+        self.neo4j_password = neo4j_password if neo4j_password is not None else os.getenv("NEO4J_PASSWORD")
+        self.neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE", "neo4j")
+
+        if not self.neo4j_uri or not self.neo4j_user or not self.neo4j_password:
+            raise ValueError("Neo4j connection parameters not found. Please set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD environment variables.")
         
         # Initialize KG creator for embedding functionality
         self.kg_creator = EnhancedKGCreator(

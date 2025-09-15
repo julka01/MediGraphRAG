@@ -1979,7 +1979,7 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                     const result = await response.json();
                         
                     // Enhanced response formatting for new LLM COPILOT format
-                    let formattedResponse = result.response;
+                    let formattedResponse = result.response || result.message || 'No response generated';
                     
                     // Handle the new numbered section format with bold and underline
                     // Convert ## **<u>1. SECTION:</u>** to proper HTML
