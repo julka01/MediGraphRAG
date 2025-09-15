@@ -1058,7 +1058,7 @@
             let nextId = 1;
             
             // Process nodes with sequential IDs
-            const processedNodes = (graphData.nodes || []).map(node => {
+const processedNodes = (graphData.nodes || []).map(node => {
                 const originalId = node.id;
                 let newId;
                 
@@ -1072,8 +1072,9 @@
                 return {
                     ...node,
                     id: newId,
+                    label: (node.properties && node.properties.name) || (node.labels && node.labels[0]) || String(newId),
                     originalId: originalId, // Keep original ID for reference
-                    title: `Node ID: ${originalId}\nLabel: ${node.label || 'Unknown'}\nClick for details`
+                    title: `Node ID: ${originalId}\nLabels: ${node.labels ? node.labels.join(', ') : 'Unknown'}\nClick for details`
                 };
             });
             
@@ -1680,7 +1681,9 @@
                     const result = await response.json();
                     currentKGId = result.kg_id;
                     initializeGraph(result.graph_data);
-                    addToChat(`Knowledge graph created with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`);
+                    const nodeCount = result.graph_data?.nodes?.length ?? 0;
+const relCount = result.graph_data?.relationships?.length ?? 0;
+addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
                     
                     // Reset file selection
                     fileInput.value = '';
@@ -1772,7 +1775,9 @@
                     statsDiv.style.display = 'block';
                     
                     // Show success message with details
-                    let successMsg = result.message || `Loaded KG from Neo4j with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`;
+                    let nodeCount = result.graph_data?.nodes?.length ?? 0;
+let relCount = result.graph_data?.relationships?.length ?? 0;
+let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes and ${relCount} relationships`;
                     if (stats.sample_mode) {
                         successMsg += ' (Smart Sample)';
                     } else if (stats.complete_import) {
@@ -1914,7 +1919,9 @@
                         currentKGId = result.kg_id;
                         initializeGraph(result.graph_data);
                         
-                        addToChat(`Loaded stored knowledge graph: ${result.filename} with ${result.graph_data.nodes.length} nodes and ${result.graph_data.relationships.length} relationships`, 'ai');
+                        const storedNodeCount = result.graph_data?.nodes?.length ?? 0;
+const storedRelCount = result.graph_data?.relationships?.length ?? 0;
+addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCount} nodes and ${storedRelCount} relationships`, 'ai');
                         showError(`Successfully loaded ${result.filename}`);
                         
                     } finally {
