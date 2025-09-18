@@ -21,19 +21,45 @@ class LangChainRunnableAdapter(Runnable):
         self.model = model
 
     def invoke(self, input, config=None) -> str:
-        # input may be a ChatPromptValue object, access text attribute
+        # Handle ChatPromptTemplate inputs (system and user messages)
+        if isinstance(input, dict):
+            # Direct dict input - extract model name if provided
+            messages = input.get("messages", [])
+            model_name = input.get("model", self.model)
+        elif hasattr(input, "to_messages"):
+            # ChatPromptValue object
+            messages = input.to_messages()
+            model_name = self.model
+        else:
+            # Fallback
+            messages = []
+            model_name = self.model
+
         system_prompt = ""
         user_prompt = ""
-        if hasattr(input, "get"):
-            system_prompt = input.get("system_prompt", "")
-            user_prompt = input.get("text", "")
-        else:
-            # Try to access attributes for ChatPromptValue
-            system_prompt = getattr(input, "system_prompt", "")
-            user_prompt = getattr(input, "text", "")
-            if not user_prompt and hasattr(input, "text"):
-                user_prompt = input.text
-        return self.provider.generate(system_prompt, user_prompt, self.model)
+
+        for message in messages:
+            if hasattr(message, "type") and hasattr(message, "content"):
+                if message.type == "system":
+                    system_prompt = message.content
+                elif message.type == "human":
+                    user_prompt = message.content
+
+        # If no explicit messages found, try simple string input
+        if not system_prompt and not user_prompt:
+            if isinstance(input, dict):
+                user_prompt = input.get("input", input.get("text", input.get("chunk_text", "")))
+            elif hasattr(input, "content"):
+                user_prompt = input.content
+            elif isinstance(input, str):
+                user_prompt = input
+            else:
+                user_prompt = str(input)
+
+        return self.provider.generate(system_prompt, user_prompt, model_name)
+
+    def __class_getitem__(cls, item):
+        return cls
     
     def with_structured_output(self, schema, **kwargs):
         """Add structured output support for LLMGraphTransformer compatibility"""

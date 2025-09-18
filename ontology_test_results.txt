@@ -1,0 +1,6 @@
+Ontology Extraction Test Results
+========================================
+Ontology file: ProstateCancerOntology.owl
+Classes loaded: 633
+Terms found: prostate_cancer ,gleason_score ,psa ,magnetic_resonance_imaging ,active_surveillance ,brachytherapy ,dutasteride
+Terms missing: adt

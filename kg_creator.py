@@ -30,7 +30,8 @@ class ChunkedKGCreator:
         neo4j_uri: str = "bolt://localhost:7687",
         neo4j_user: str = "neo4j",
         neo4j_password: str = "password",
-        neo4j_database: str = "neo4j"
+        neo4j_database: str = "neo4j",
+        embedding_model: str = "sentence_transformers"
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -38,6 +39,7 @@ class ChunkedKGCreator:
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
         self.neo4j_database = neo4j_database
+        self.embedding_model = embedding_model
     
     def _create_neo4j_connection(self):
         """Create Neo4j graph connection"""
@@ -178,7 +180,7 @@ class ChunkedKGCreator:
         
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm) -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
         """
         Generate knowledge graph from text using chunking and the app's chosen LLM
         """

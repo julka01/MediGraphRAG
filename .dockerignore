@@ -50,6 +50,3 @@ env/
 # Ignore coverage files
 .coverage
 htmlcov/
-
-# Ignore memgraph platform files
-memgraph-platform/

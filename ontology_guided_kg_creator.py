@@ -179,7 +179,7 @@ class OntologyGuidedKGCreator:
 
         return formatted
 
-    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm) -> Dict[str, Any]:
+    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
         """
         Extract entities and relationships using LLM with ontology guidance
         """
@@ -187,8 +187,9 @@ class OntologyGuidedKGCreator:
         ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:15]])
         ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:10]])
 
-        extraction_prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""You are an expert medical knowledge graph extraction system.
+        # Create the prompt template as a simple string
+        prompt_template = """
+You are an expert medical knowledge graph extraction system.
 Your task is to extract entities and relationships from medical/scientific text using the provided ontology.
 
 ONTOLOGY CLASSES AVAILABLE:
@@ -207,35 +208,43 @@ INSTRUCTIONS:
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "entities": [
-    {{
-      "id": "exact_entity_name_from_text",
-      "type": "OntologyClass",
-      "properties": {{
-        "name": "exact_entity_name_from_text",
-        "description": "brief medical description"
-      }}
+  "entities": {{
+    "id": "exact_entity_name_from_text",
+    "type": "OntologyClass",
+    "properties": {{
+      "name": "exact_entity_name_from_text",
+      "description": "brief medical description"
     }}
-  ],
-  "relationships": [
-    {{
-      "source": "source_entity_id",
-      "target": "target_entity_id",
-      "type": "ONTOLOGY_RELATIONSHIP",
-      "properties": {{
-        "description": "how they are related in the text"
-      }}
+  }},
+  "relationships": {{
+    "source": "source_entity_id",
+    "target": "target_entity_id",
+    "type": "ONTOLOGY_RELATIONSHIP",
+    "properties": {{
+      "description": "how they are related in the text"
     }}
-  ]
+  }}
 }}
 
-IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
-            ("human", f"Extract medical entities and relationships from this text:\n\n{chunk_text}")
-        ])
+TEXT TO ANALYZE:
+{chunk_text}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
         try:
-            chain = extraction_prompt | llm | StrOutputParser()
-            response = chain.invoke({})
+            # Format the prompt by substituting all variables
+            system_message = prompt_template.format(
+                ontology_classes_text=ontology_classes_text,
+                ontology_relationships_text=ontology_relationships_text,
+                chunk_text=chunk_text
+            )
+
+            # Get the response directly from LLM provider
+            response = llm.generate(system_message, "", "openai/gpt-oss-20b:free")
+
+            # Debug: Log the raw response
+            logging.info(f"Raw LLM response length: {len(response)}")
+            logging.info(f"Raw LLM response preview: {response[:200]}...")
 
             # Clean the response to extract JSON
             response = response.strip()
@@ -257,15 +266,50 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
             # Filter out non-medical entities
             medical_entities = []
             for entity in result.get('entities', []):
+                # Handle both dict and string formats from LLM response
+                if isinstance(entity, str):
+                    # Convert string entity to dict format
+                    entity = {
+                        "id": entity,
+                        "type": self._classify_entity_with_ontology(entity),
+                        "properties": {
+                            "name": entity,
+                            "description": f"{self._classify_entity_with_ontology(entity)}: {entity}"
+                        }
+                    }
                 if self._is_medical_entity(entity):
                     medical_entities.append(entity)
 
             # Filter relationships to only include medical ones
             medical_relationships = []
             entity_ids = {e['id'] for e in medical_entities}
+
+            # Process relationships, handling both dict and string formats
             for rel in result.get('relationships', []):
-                if rel['source'] in entity_ids and rel['target'] in entity_ids:
-                    medical_relationships.append(rel)
+                if isinstance(rel, str):
+                    # Skip string relationships for now (LLM returned malformed data)
+                    continue
+                elif isinstance(rel, dict):
+                    # Verify both source and target exist
+                    if (isinstance(rel.get('source'), str) and
+                        isinstance(rel.get('target'), str) and
+                        rel.get('source', '') in entity_ids and
+                        rel.get('target', '') in entity_ids):
+                        medical_relationships.append(rel)
+                    else:
+                        # Try to create a valid relationship from incomplete data
+                        source = rel.get('source', '')
+                        target = rel.get('target', '')
+                        rel_type = rel.get('type', 'RELATED_TO')
+
+                        # Only add if we have valid source and target
+                        if source and target and source in entity_ids and target in entity_ids:
+                            medical_relationships.append({
+                                'source': source,
+                                'target': target,
+                                'type': rel_type,
+                                'properties': rel.get('properties', {})
+                            })
 
             return {
                 'entities': medical_entities,
@@ -273,8 +317,8 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
             }
 
         except Exception as e:
-            logging.warning(f"LLM extraction failed: {e}, falling back to pattern matching")
-            return self._extract_entities_and_relationships_fallback(chunk_text)
+            logging.error(f"LLM extraction failed: {e}")
+            raise e
 
     def _is_medical_entity(self, entity: Dict[str, Any]) -> bool:
         """
@@ -506,7 +550,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
 
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None) -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
         """
         Generate knowledge graph from text with ontology-guided entity extraction
         """
@@ -522,12 +566,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
 
         for i, chunk in enumerate(chunks):
             logging.info(f"Processing chunk {i+1}/{len(chunks)}")
-            try:
-                chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm)
-            except Exception as e:
-                logging.warning(f"LLM extraction failed for chunk {i}: {e}")
-                chunk_kg = self._extract_entities_and_relationships_fallback(chunk['text'])
-
+            chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm, model_name)
             all_entities.extend(chunk_kg['entities'])
             all_relationships.extend(chunk_kg['relationships'])
 
@@ -694,6 +733,9 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
 
             # Create relationships
             for rel in kg['relationships']:
+                # Filter out 'id' property to avoid duplicate key issues in database
+                properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
+
                 rel_query = f"""
                 MATCH (source:__Entity__ {{id: $source_id}})
                 MATCH (target:__Entity__ {{id: $target_id}})
@@ -703,7 +745,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""),
                 graph.query(rel_query, {
                     "source_id": rel['source'],
                     "target_id": rel['target'],
-                    "properties": rel.get('properties', {})
+                    "properties": properties_filtered
                 })
 
             # Link entities to chunks (for RAG retrieval)

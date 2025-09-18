@@ -997,7 +997,8 @@
         
         <input type="text" id="neo4j-uri" placeholder="Neo4j URI" value="bolt://localhost:7687">
         <input type="text" id="neo4j-user" placeholder="Username" value="neo4j">
-        <input type="password" id="neo4j-password" placeholder="Password">
+        <input type="password" id="neo4j-password" placeholder="Password" style="display: none;">
+        <small style="color: #7f8c8d; font-size: 11px;">Password authentication disabled for demo access</small>
         
         <div style="margin-bottom: 15px;">
             <label style="display: block; margin-bottom: 5px; font-weight: bold;">Import Options:</label>
@@ -1046,6 +1047,8 @@
     <script>
         let network = null;
         let currentKGId = null;
+        let highlightedNodes = new Set(); // Track nodes to highlight from RAG answers
+        let graphData = null; // Store current graph data for re-initialization
         
         function initializeGraph(graphData) {
             const container = document.getElementById('graph-container');
@@ -1069,12 +1072,35 @@ const processedNodes = (graphData.nodes || []).map(node => {
                     nodeIdMap.set(originalId, newId);
                 }
                 
+                // Check if this node is referenced in recent RAG response
+                const isHighlighted = highlightedNodes.has(originalId.toString());
+
                 return {
                     ...node,
                     id: newId,
                     label: (node.properties && node.properties.name) || (node.labels && node.labels[0]) || String(newId),
                     originalId: originalId, // Keep original ID for reference
-                    title: `Node ID: ${originalId}\nLabels: ${node.labels ? node.labels.join(', ') : 'Unknown'}\nClick for details`
+                    title: `Node ID: ${originalId}\nLabels: ${node.labels ? node.labels.join(', ') : 'Unknown'}\nClick for details${isHighlighted ? '\n🎯 Used in answer' : ''}`,
+                    color: isHighlighted ? {
+                        background: '#ff6b35', // Orange highlight for used nodes
+                        border: '#e55a2b',
+                        highlight: {
+                            background: '#ff8c42',
+                            border: '#e55a2b'
+                        },
+                        hover: {
+                            background: '#ffb977',
+                            border: '#ff8c42'
+                        }
+                    } : undefined,
+                    font: isHighlighted ? {
+                        size: 18,
+                        face: 'Tahoma',
+                        color: '#000000',
+                        strokeWidth: 3,
+                        strokeColor: '#ffffff'
+                    } : undefined,
+                    size: isHighlighted ? 35 : 30
                 };
             });
             
@@ -1121,107 +1147,168 @@ const processedNodes = (graphData.nodes || []).map(node => {
             const options = {
                 nodes: {
                     shape: 'dot',
-                    size: 30,
+                    size: 35,
                     font: {
-                        size: 16,
-                        face: 'Tahoma',
-                        color: '#222222',
+                        size: 14,
+                        face: 'Arial',
+                        color: '#000000',
                         strokeWidth: 2,
-                        strokeColor: '#ffffff'
+                        strokeColor: '#ffffff',
+                        align: 'center',
+                        multi: 'html'
                     },
-                    borderWidth: 3,
-                    borderWidthSelected: 5,
+                    borderWidth: 2,
+                    borderWidthSelected: 4,
                     color: {
-                        background: '#a6cee3',
-                        border: '#1f78b4',
+                        background: '#4a90e2',
+                        border: '#2e75d6',
                         highlight: {
-                            background: '#1f78b4',
-                            border: '#a6cee3'
+                            background: '#2e75d6',
+                            border: '#1a5aa3'
                         },
                         hover: {
-                            background: '#b2df8a',
-                            border: '#33a02c'
+                            background: '#6bb6ff',
+                            border: '#4a90e2'
                         }
                     },
                     shadow: {
                         enabled: true,
-                        color: 'rgba(0,0,0,0.3)',
-                        size: 10,
-                        x: 5,
-                        y: 5
-                    }
+                        color: 'rgba(0,0,0,0.15)',
+                        size: 8,
+                        x: 3,
+                        y: 3
+                    },
+                    labelHighlightBold: true,
+                    mass: 1
                 },
                 edges: {
-                    width: 3,
+                    width: 2,
                     color: {
-                        color: '#444444',  // darker gray edge line color as requested
-                        highlight: '#ff7f00',
-                        hover: '#ff7f00',
-                        inherit: false
+                        color: '#666666',
+                        highlight: '#1a5aa3',
+                        hover: '#1a5aa3',
+                        opacity: 0.8
                     },
                     arrows: {
-                        to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
+                        to: {
+                            enabled: true,
+                            scaleFactor: 0.8,
+                            type: 'arrow'
+                        }
                     },
                     font: {
-                        size: 14,
-                        align: 'middle',  // position label between arrow and edge start
+                        size: 12,
+                        align: 'middle',
                         color: '#333333',
-                        strokeWidth: 0,
-                        strokeColor: '#ffffff'
+                        strokeWidth: 1,
+                        strokeColor: '#ffffff',
+                        background: 'rgba(255,255,255,0.9)',
+                        borderWidth: 1,
+                        borderColor: '#cccccc'
                     },
                     smooth: {
                         enabled: true,
-                        type: 'dynamic',
-                        roundness: 0.3
+                        type: 'continuous',
+                        roundness: 0.5,
+                        forceDirection: 'none'
                     },
                     label: {
                         enabled: true,
-                        min: 10,
-                        max: 40,
-                        maxVisible: 100,
                         color: '#333333',
-                        font: 'bold 14px Arial',
-                        background: 'white',
-                        backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                        backgroundColor: 'white',
+                        font: {
+                            size: 12,
+                            align: 'middle',
+                            color: '#333333',
+                            strokeWidth: 1,
+                            strokeColor: '#ffffff',
+                            background: 'rgba(255,255,255,0.9)',
+                            borderWidth: 1,
+                            borderColor: '#cccccc'
+                        },
+                        background: 'rgba(255,255,255,0.9)',
+                        borderWidth: 1,
+                        borderColor: '#cccccc',
                         strokeWidth: 1,
-                        strokeColor: '#888',
-                        xOffset: 0,
-                        yOffset: 0,  // reset offset to center label on edge line
-                        drawBackground: true,
-                        labelHighlightBold: true
+                        strokeColor: '#ffffff'
                     },
                     shadow: {
                         enabled: true,
-                        color: 'rgba(0,0,0,0.2)',
-                        size: 5,
-                        x: 3,
-                        y: 3
-                    }
+                        color: 'rgba(0,0,0,0.1)',
+                        size: 3,
+                        x: 2,
+                        y: 2
+                    },
+                    dashes: false,
+                    selectionWidth: 3
                 },
                 physics: {
-                    stabilization: true,
-                    barnesHut: {
-                        gravitationalConstant: -12000,
-                        springConstant: 0.06,
-                        springLength: 250,
-                        damping: 0.09
+                    enabled: true,
+                    stabilization: {
+                        enabled: true,
+                        iterations: 200,
+                        updateInterval: 25,
+                        onlyDynamicEdges: false,
+                        fit: true
                     },
-                    minVelocity: 0.75
+                    barnesHut: {
+                        gravitationalConstant: -8000,
+                        centralGravity: 0.3,
+                        springLength: 125,
+                        springConstant: 0.08,
+                        damping: 0.15,
+                        avoidOverlap: 0.5
+                    },
+                    minVelocity: 0.5,
+                    maxVelocity: 50,
+                    timestep: 0.5,
+                    adaptiveTimestep: true,
+                    stabilization: {
+                        enabled: true,
+                        iterations: 1000,
+                        updateInterval: 25,
+                        onlyDynamicEdges: false,
+                        fit: true
+                    }
                 },
                 interaction: {
                     hover: true,
-                    tooltipDelay: 150,
+                    hoverConnectedEdges: true,
                     zoomView: true,
                     dragView: true,
                     dragNodes: true,
+                    zoom: {
+                        min: 0.1,
+                        max: 3.0
+                    },
                     multiselect: true,
                     navigationButtons: true,
-                    keyboard: true
+                    keyboard: {
+                        enabled: true,
+                        speed: {
+                            x: 10,
+                            y: 10,
+                            zoom: 0.02
+                        },
+                        bindToWindow: true
+                    },
+                    selectable: true,
+                    selectConnectedEdges: true
                 },
                 layout: {
                     improvedLayout: true,
-                    hierarchical: false
+                    hierarchical: {
+                        enabled: false,
+                        direction: 'UD',
+                        sortMethod: 'directed',
+                        shakeTowards: 'roots'
+                    },
+                    randomSeed: undefined
+                },
+                manipulation: {
+                    enabled: false
+                },
+                configure: {
+                    enabled: false
                 }
             };
             
@@ -1668,7 +1755,7 @@ const processedNodes = (graphData.nodes || []).map(node => {
                         formData.append('ontology', ontologyFile);
                     }
                     
-                    const response = await fetch('/load_kg_from_file', {
+                    const response = await fetch('/create_ontology_guided_kg', {
                         method: 'POST',
                         body: formData
                     });
@@ -1681,6 +1768,7 @@ const processedNodes = (graphData.nodes || []).map(node => {
                     const result = await response.json();
                     currentKGId = result.kg_id;
                     initializeGraph(result.graph_data);
+                    graphData = result.graph_data; // Store graph data for re-initialization
                     const nodeCount = result.graph_data?.nodes?.length ?? 0;
 const relCount = result.graph_data?.relationships?.length ?? 0;
 addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
@@ -1709,10 +1797,12 @@ addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relat
                     
                     const uri = document.getElementById('neo4j-uri').value;
                     const user = document.getElementById('neo4j-user').value;
-                    const password = document.getElementById('neo4j-password').value;
-                    
-                    if (!uri || !user || !password) {
-                        showError('Please fill in all fields');
+                    // For demo access, password is not required
+                    const passwordElement = document.getElementById('neo4j-password');
+                    const password = passwordElement.style.display === 'none' ? '' : passwordElement.value;
+
+                    if (!uri || !user || (passwordElement.style.display !== 'none' && !password)) {
+                        showError('Please fill in all required fields');
                         return;
                     }
                     
@@ -1764,7 +1854,9 @@ addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relat
                     const result = await response.json();
                     currentKGId = result.kg_id;
                     initializeGraph(result.graph_data);
-                    
+                    graphData = result.graph_data; // Store graph data for re-initialization
+                    highlightedNodes.clear(); // Clear highlights for new KG
+
                     // Display detailed loading statistics
                     const stats = result.stats || {};
                     const statsDiv = document.getElementById('neo4j-stats');
@@ -1977,56 +2069,169 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                     }
                         
                     const result = await response.json();
-                        
-                    // Enhanced response formatting for new LLM COPILOT format
+
+                    // Update highlighted nodes from used_entities in response
+                    if (result.info && result.info.entities && result.info.entities.used_entities) {
+                        // Clear previous highlights and set new ones
+                        highlightedNodes.clear();
+                        result.info.entities.used_entities.forEach(entity => {
+                            highlightedNodes.add(entity.id.toString());
+                        });
+
+                        // Re-initialize graph to show highlights if we have a graph loaded
+                        if (currentKGId && graphData) {
+                            initializeGraph(graphData);
+                        }
+                    }
+
+                    // Enhanced response formatting for new RAG structured format
                     let formattedResponse = result.response || result.message || 'No response generated';
-                    
-                    // Handle the new numbered section format with bold and underline
-                    // Convert ## **<u>1. SECTION:</u>** to proper HTML
-                    formattedResponse = formattedResponse.replace(/##\s*\*\*<u>(\d+)\.\s*(.*?):<\/u>\*\*/g, function(match, number, title) {
-                        return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${number}. ${title.toUpperCase()}:</h2>`;
-                    });
-                    
-                    // Handle regular ## headings as numbered bold underlined titles
-                    let sectionCount = 0;
-                    formattedResponse = formattedResponse.replace(/^##\s+(.*)$/gm, function(match, title) {
-                        sectionCount += 1;
-                        return `<h2 style="font-weight: bold; text-decoration: underline; color: #1976d2; margin: 16px 0 8px 0;">${sectionCount}. ${title.toUpperCase()}</h2>`;
-                    });
-                    
-                    // Extract and format the detailed reasoning dropdown
-                    const detailsMatch = formattedResponse.match(/<details>([\s\S]*?)<\/details>/);
-                    let detailedReasoning = '';
-                    if (detailsMatch) {
-                        detailedReasoning = detailsMatch[0];
-                        // Remove from main response
-                        formattedResponse = formattedResponse.replace(/<details>[\s\S]*?<\/details>/, '');
+
+                    // Parse the structured response into sections
+                    let sections = {
+                        recommendation: '',
+                        reasoning: '',
+                        evidence: '',
+                        nextSteps: ''
+                    };
+                    let hasConditionalContent = false;
+                    let sectionContent = '';
+
+                    // Split response by **sections
+                    let currentSection = '';
+                    const lines = formattedResponse.split('\n');
+                    let i = 0;
+
+                    while (i < lines.length) {
+                        const line = lines[i].trim();
+
+                        // Check for section headers
+                        if (line.toUpperCase().includes('RECOMMENDATION/SUMMARY') && line.includes('**')) {
+                            currentSection = 'recommendation';
+                            hasConditionalContent = true;
+                            i += 2; // Skip header and empty line
+                            continue;
+                        } else if (line.toUpperCase().includes('REASONING PATH') && line.includes('**')) {
+                            currentSection = 'reasoning';
+                            sectionContent = '';
+                            i += 2;
+                            continue;
+                        } else if (line.toUpperCase().includes('COMBINED EVIDENCE') && line.includes('**')) {
+                            currentSection = 'evidence';
+                            sections.reasoning = sectionContent; // Save previous section
+                            sectionContent = '';
+                            i += 2;
+                            continue;
+                        } else if (line.toUpperCase().includes('NEXT STEPS') && line.includes('**')) {
+                            currentSection = 'nextSteps';
+                            sections.evidence = sectionContent; // Save previous section
+                            hasConditionalContent = true;
+                            i += 2;
+                            continue;
+                        }
+
+                        // Add content to current section
+                        if (currentSection) {
+                            sectionContent += line + '\n';
+                        }
+                        i++;
                     }
-                    
-                    // Convert bullet points (•) to proper HTML bullets
-                    formattedResponse = formattedResponse.replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">');
-                    
-                    // Convert line breaks to proper HTML
-                    formattedResponse = formattedResponse.replace(/\n/g, '<br>');
-                    
-                    // Enhanced markdown formatting
-                    formattedResponse = formattedResponse
-                        .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
-                        .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
-                        .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>');
-                    
-                    // Handle special formatting for clinical sections
-                    formattedResponse = formattedResponse
-                        .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g, 
-                            '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>')
-                        .replace(/LET ME KNOW IF YOU'D LIKE ME TO (.*?)\./g, 
-                            '<div style="background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 16px 0; font-style: italic; color: #1976d2;"><strong>LET ME KNOW IF YOU\'D LIKE ME TO $1.</strong></div>');
-                    
-                    // Combine main response with detailed reasoning
-                    if (detailedReasoning) {
-                        formattedResponse += '<br><br>' + detailedReasoning;
+
+                    // Handle any remaining content
+                    if (sectionContent && !sections.evidence) {
+                        sections.evidence = sections.reasoning || sectionContent;
+                        sections.reasoning = '';
                     }
-                    
+                    if (sectionContent && sections.evidence === sections.reasoning) {
+                        sections.evidence = sectionContent;
+                    }
+
+                    // Format sections
+                    let formattedSections = [];
+
+                    // Recommendation/Summary (only if exists)
+                    if (sections.recommendation.trim()) {
+                        formattedSections.push(`
+                            <div class="response-section recommendation-section">
+                                <button class="section-toggle" onclick="toggleSection(this)">▶ RECOMMENDATION/SUMMARY</button>
+                                <div class="section-content collapsed">
+                                    ${formatMarkdown(sections.recommendation)}
+                                </div>
+                            </div>
+                        `);
+                    }
+
+                    // Reasoning Path (always present, but now collapsible)
+                    if (sections.reasoning.trim()) {
+                        formattedSections.push(`
+                            <div class="response-section reasoning-section">
+                                <button class="section-toggle" onclick="toggleSection(this)">▶ REASONING PATH</button>
+                                <div class="section-content collapsed">
+                                    ${formatReasoningPath(sections.reasoning)}
+                                </div>
+                            </div>
+                        `);
+                    }
+
+                    // Combined Evidence (always present)
+                    if (sections.evidence.trim()) {
+                        formattedSections.push(`
+                            <div class="response-section evidence-section">
+                                <button class="section-toggle expanded">▼ COMBINED EVIDENCE</button>
+                                <div class="section-content expanded">
+                                    ${formatMarkdown(sections.evidence)}
+                                </div>
+                            </div>
+                        `);
+                    }
+
+                    // Next Steps (only if exists)
+                    if (sections.nextSteps.trim()) {
+                        formattedSections.push(`
+                            <div class="response-section next-steps-section">
+                                <button class="section-toggle" onclick="toggleSection(this)">▶ NEXT STEPS</button>
+                                <div class="section-content collapsed">
+                                    ${formatMarkdown(sections.nextSteps)}
+                                </div>
+                            </div>
+                        `);
+                    }
+
+                    // If no sections were parsed, fall back to original formatting
+                    if (formattedSections.length === 0) {
+                        formattedSections.push(`
+                            <div class="response-section full-response">
+                                ${formatMarkdown(formattedResponse)}
+                            </div>
+                        `);
+                    }
+
+                    formattedResponse = formattedSections.join('<br>');
+
+                    // Helper function to format reasoning path with arrows
+                    function formatReasoningPath(text) {
+                        return text
+                            .replace(/\n/g, '<br>')
+                            .replace(/[→—>⇒]/g, '<span class="reason-arrow">→</span>')
+                            .replace(/\b(triggers|yields|reveals|leads to|results in)\b/gi, '<span class="reason-connector">$1</span>');
+                    }
+
+                    // Helper function to format markdown content
+                    function formatMarkdown(text) {
+                        return text
+                            .replace(/\n/g, '<br>')
+                            .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
+                            .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
+                            .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>')
+                            // Make node references clickable: "Entity Name (ID:actual_id)" -> clickable link
+                            .replace(/([^\(]+)\(ID:([^)]+)\)/g, '<span class="node-link" onclick="highlightNode(\'$2\')" style="color: #e74c3c; cursor: pointer; text-decoration: underline; font-weight: 600;" title="Click to highlight in KG">$1</span>')
+                            .replace(/[•·]/g, '<br>• ')
+                            .replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">')
+                            .replace(/(\n|^)(\d+)\.\s+/gm, '$1$2. ')
+                            .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g,
+                                '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>');
+                    }
+
                     addToChat(`${formattedResponse}`, 'ai');
                 } catch (error) {
                     addToChat(`Error: ${error.message}`, 'error');
@@ -2074,13 +2279,103 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
             window.toggleReasoningSteps = function() {
                 const reasoningStepsContent = document.getElementById('reasoning-steps-content');
                 const toggleButton = document.querySelector('.reasoning-steps-toggle');
-                
+
                 if (reasoningStepsContent.style.display === 'none') {
                     reasoningStepsContent.style.display = 'block';
                     toggleButton.textContent = 'Hide Reasoning Steps';
                 } else {
                     reasoningStepsContent.style.display = 'none';
                     toggleButton.textContent = 'Show Reasoning Steps';
+                }
+            };
+
+            // Function to toggle response sections
+            window.toggleSection = function(button) {
+                const sectionContent = button.nextElementSibling;
+                const isExpanded = sectionContent.classList.contains('expanded');
+
+                if (isExpanded) {
+                    sectionContent.classList.remove('expanded');
+                    sectionContent.classList.add('collapsed');
+                    button.textContent = button.textContent.replace('▼', '▶');
+                    button.classList.remove('expanded');
+                } else {
+                    sectionContent.classList.remove('collapsed');
+                    sectionContent.classList.add('expanded');
+                    button.textContent = button.textContent.replace('▶', '▼');
+                    button.classList.add('expanded');
+                }
+            };
+
+            // Function to highlight node in KG visualization
+            window.highlightNode = function(nodeId) {
+                if (!network) {
+                    console.warn('No network available to highlight node');
+                    return;
+                }
+
+                try {
+                    // Find the sequential node ID from the original ID
+                    const nodes = network.body.nodes;
+                    let targetNodeId = null;
+
+                    for (let node of nodes) {
+                        if (node.options.originalId === nodeId) {
+                            targetNodeId = node.id;
+                            break;
+                        }
+                    }
+
+                    if (targetNodeId === null) {
+                        console.warn(`Node with ID ${nodeId} not found in current visualization`);
+                        return;
+                    }
+
+                    // Select and focus on the node
+                    network.selectNodes([targetNodeId]);
+
+                    // Move the view to center on the node with smooth animation
+                    network.moveTo({
+                        position: {
+                            x: network.getPositions([targetNodeId])[targetNodeId].x,
+                            y: network.getPositions([targetNodeId])[targetNodeId].y
+                        },
+                        scale: 1.5, // Zoom in slightly to focus attention
+                        animation: { duration: 800, easingFunction: 'easeInOutQuad' }
+                    });
+
+                    // Highlight with pulsating effect
+                    const nodeDataset = network.body.nodes[targetNodeId];
+                    if (nodeDataset) {
+                        // Temporarily increase size for emphasis
+                        const originalSize = nodeDataset.options.size;
+                        nodeDataset.setOptions({
+                            size: originalSize * 1.8,
+                            color: {
+                                background: '#ff4757',
+                                border: '#ff3742',
+                                highlight: { background: '#ff4757', border: '#ff3742' }
+                            }
+                        });
+
+                        // Reset after animation
+                        setTimeout(() => {
+                            nodeDataset.setOptions({
+                                size: originalSize,
+                                color: {
+                                    background: '#ff6b35',
+                                    border: '#e55a2b'
+                                }
+                            });
+                        }, 2000);
+                    }
+
+                    // Show notification
+                    showError(`Node "${nodeId}" highlighted in the knowledge graph`);
+
+                } catch (error) {
+                    console.error('Error highlighting node:', error);
+                    showError(`Could not highlight node: ${error.message}`);
                 }
             };
         });
