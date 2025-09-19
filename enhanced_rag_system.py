@@ -37,9 +37,10 @@ class EnhancedRAGSystem:
 
 CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
 
-1. **RECOMMENDATION/SUMMARY** (Only include if user asks for recommendation, advice, or guidance)
-   - Provide specific, actionable recommendations based on the information found
-   - If no specific recommendations are appropriate, omit this section entirely
+1. **RECOMMENDATION/SUMMARY** (Always include this)
+   - Provide a summary of the key findings and important information from the knowledge graph
+   - Include key insights, important relationships, and relevant context
+   - Be concise but comprehensive in highlighting what matters most
 
 2. **REASONING PATH** (Always include this - step-by-step logical progression)
    - Finding 1 → Triggers or yields or reveals → Finding 2 → etc.
@@ -64,7 +65,7 @@ NODE ID REQUIREMENTS:
 - NEVER use placeholder IDs like "ID:X", "ID:Y", "ID:Z", or "ID:actual_number"
 - Only reference entities explicitly provided in the context below
 
-IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2 and 3, but only include sections 1 and 4 when appropriate for the user's intent. Be topic-agnostic - this format works for any domain.
+IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2 and 4, but only include sections 1 and 3 when appropriate for the user's intent. Be topic-agnostic - this format works for any domain.
 
 Context Information:
 {context}

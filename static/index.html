@@ -783,6 +783,54 @@
             margin-bottom: 0;
         }
         
+        /* Section Toggle Styling */
+        .response-section {
+            margin-bottom: 16px;
+        }
+
+        .section-toggle {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-bottom: 8px;
+            transition: background-color 0.3s ease;
+            display: block;
+            width: 100%;
+            text-align: left;
+        }
+
+        .section-toggle:hover {
+            background: #2980b9;
+        }
+
+        .section-content {
+            overflow: hidden;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin-top: 0;
+            margin-bottom: 0;
+            opacity: 0;
+        }
+
+        .section-content.expanded {
+            max-height: 2000px; /* Large enough for most content */
+            padding-top: 12px;
+            padding-bottom: 12px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            opacity: 1;
+        }
+
         /* Reasoning Steps Styling */
         .reasoning-steps-toggle {
             background: #3498db;
@@ -795,11 +843,11 @@
             margin-top: 10px;
             transition: background-color 0.3s ease;
         }
-        
+
         .reasoning-steps-toggle:hover {
             background: #2980b9;
         }
-        
+
         .reasoning-steps-content {
             background: #f4f4f4;
             border-left: 4px solid #3498db;
@@ -1147,168 +1195,107 @@ const processedNodes = (graphData.nodes || []).map(node => {
             const options = {
                 nodes: {
                     shape: 'dot',
-                    size: 35,
+                    size: 30,
                     font: {
-                        size: 14,
-                        face: 'Arial',
-                        color: '#000000',
+                        size: 16,
+                        face: 'Tahoma',
+                        color: '#222222',
                         strokeWidth: 2,
-                        strokeColor: '#ffffff',
-                        align: 'center',
-                        multi: 'html'
+                        strokeColor: '#ffffff'
                     },
-                    borderWidth: 2,
-                    borderWidthSelected: 4,
+                    borderWidth: 3,
+                    borderWidthSelected: 5,
                     color: {
-                        background: '#4a90e2',
-                        border: '#2e75d6',
+                        background: '#a6cee3',
+                        border: '#1f78b4',
                         highlight: {
-                            background: '#2e75d6',
-                            border: '#1a5aa3'
+                            background: '#1f78b4',
+                            border: '#a6cee3'
                         },
                         hover: {
-                            background: '#6bb6ff',
-                            border: '#4a90e2'
+                            background: '#b2df8a',
+                            border: '#33a02c'
                         }
                     },
                     shadow: {
                         enabled: true,
-                        color: 'rgba(0,0,0,0.15)',
-                        size: 8,
-                        x: 3,
-                        y: 3
-                    },
-                    labelHighlightBold: true,
-                    mass: 1
+                        color: 'rgba(0,0,0,0.3)',
+                        size: 10,
+                        x: 5,
+                        y: 5
+                    }
                 },
                 edges: {
-                    width: 2,
+                    width: 3,
                     color: {
-                        color: '#666666',
-                        highlight: '#1a5aa3',
-                        hover: '#1a5aa3',
-                        opacity: 0.8
+                        color: '#444444',  // darker gray edge line color as requested
+                        highlight: '#ff7f00',
+                        hover: '#ff7f00',
+                        inherit: false
                     },
                     arrows: {
-                        to: {
-                            enabled: true,
-                            scaleFactor: 0.8,
-                            type: 'arrow'
-                        }
+                        to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
                     },
                     font: {
-                        size: 12,
-                        align: 'middle',
+                        size: 14,
+                        align: 'middle',  // position label between arrow and edge start
                         color: '#333333',
-                        strokeWidth: 1,
-                        strokeColor: '#ffffff',
-                        background: 'rgba(255,255,255,0.9)',
-                        borderWidth: 1,
-                        borderColor: '#cccccc'
+                        strokeWidth: 0,
+                        strokeColor: '#ffffff'
                     },
                     smooth: {
                         enabled: true,
-                        type: 'continuous',
-                        roundness: 0.5,
-                        forceDirection: 'none'
+                        type: 'dynamic',
+                        roundness: 0.3
                     },
                     label: {
                         enabled: true,
+                        min: 10,
+                        max: 40,
+                        maxVisible: 100,
                         color: '#333333',
-                        font: {
-                            size: 12,
-                            align: 'middle',
-                            color: '#333333',
-                            strokeWidth: 1,
-                            strokeColor: '#ffffff',
-                            background: 'rgba(255,255,255,0.9)',
-                            borderWidth: 1,
-                            borderColor: '#cccccc'
-                        },
-                        background: 'rgba(255,255,255,0.9)',
-                        borderWidth: 1,
-                        borderColor: '#cccccc',
+                        font: 'bold 14px Arial',
+                        background: 'white',
+                        backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                        backgroundColor: 'white',
                         strokeWidth: 1,
-                        strokeColor: '#ffffff'
+                        strokeColor: '#888',
+                        xOffset: 0,
+                        yOffset: 0,  // reset offset to center label on edge line
+                        drawBackground: true,
+                        labelHighlightBold: true
                     },
                     shadow: {
                         enabled: true,
-                        color: 'rgba(0,0,0,0.1)',
-                        size: 3,
-                        x: 2,
-                        y: 2
-                    },
-                    dashes: false,
-                    selectionWidth: 3
+                        color: 'rgba(0,0,0,0.2)',
+                        size: 5,
+                        x: 3,
+                        y: 3
+                    }
                 },
                 physics: {
-                    enabled: true,
-                    stabilization: {
-                        enabled: true,
-                        iterations: 200,
-                        updateInterval: 25,
-                        onlyDynamicEdges: false,
-                        fit: true
-                    },
+                    stabilization: true,
                     barnesHut: {
-                        gravitationalConstant: -8000,
-                        centralGravity: 0.3,
-                        springLength: 125,
-                        springConstant: 0.08,
-                        damping: 0.15,
-                        avoidOverlap: 0.5
+                        gravitationalConstant: -12000,
+                        springConstant: 0.06,
+                        springLength: 250,
+                        damping: 0.09
                     },
-                    minVelocity: 0.5,
-                    maxVelocity: 50,
-                    timestep: 0.5,
-                    adaptiveTimestep: true,
-                    stabilization: {
-                        enabled: true,
-                        iterations: 1000,
-                        updateInterval: 25,
-                        onlyDynamicEdges: false,
-                        fit: true
-                    }
+                    minVelocity: 0.75
                 },
                 interaction: {
                     hover: true,
-                    hoverConnectedEdges: true,
+                    tooltipDelay: 150,
                     zoomView: true,
                     dragView: true,
                     dragNodes: true,
-                    zoom: {
-                        min: 0.1,
-                        max: 3.0
-                    },
                     multiselect: true,
                     navigationButtons: true,
-                    keyboard: {
-                        enabled: true,
-                        speed: {
-                            x: 10,
-                            y: 10,
-                            zoom: 0.02
-                        },
-                        bindToWindow: true
-                    },
-                    selectable: true,
-                    selectConnectedEdges: true
+                    keyboard: true
                 },
                 layout: {
                     improvedLayout: true,
-                    hierarchical: {
-                        enabled: false,
-                        direction: 'UD',
-                        sortMethod: 'directed',
-                        shakeTowards: 'roots'
-                    },
-                    randomSeed: undefined
-                },
-                manipulation: {
-                    enabled: false
-                },
-                configure: {
-                    enabled: false
+                    hierarchical: false
                 }
             };
             
@@ -2087,93 +2074,77 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                     // Enhanced response formatting for new RAG structured format
                     let formattedResponse = result.response || result.message || 'No response generated';
 
-                    // Parse the structured response into sections
+                    // Parse the structured response into sections (simple line-by-line parsing)
                     let sections = {
                         recommendation: '',
                         reasoning: '',
                         evidence: '',
                         nextSteps: ''
                     };
-                    let hasConditionalContent = false;
-                    let sectionContent = '';
 
-                    // Split response by **sections
-                    let currentSection = '';
                     const lines = formattedResponse.split('\n');
-                    let i = 0;
+                    let currentSection = '';
+                    let currentContent = [];
 
-                    while (i < lines.length) {
+                    for (let i = 0; i < lines.length; i++) {
                         const line = lines[i].trim();
 
-                        // Check for section headers
-                        if (line.toUpperCase().includes('RECOMMENDATION/SUMMARY') && line.includes('**')) {
+                        // Check for section headers (case-insensitive)
+                        if (line.toUpperCase().includes('RECOMMENDATION/SUMMARY') && line.includes('#')) {
+                            // Save previous section before starting new one
+                            if (currentSection && currentContent.length > 0) {
+                                sections[currentSection] = currentContent.join('\n').trim();
+                                currentContent = [];
+                            }
                             currentSection = 'recommendation';
-                            hasConditionalContent = true;
-                            i += 2; // Skip header and empty line
-                            continue;
-                        } else if (line.toUpperCase().includes('REASONING PATH') && line.includes('**')) {
+                        } else if (line.toUpperCase().includes('REASONING PATH') && line.includes('#')) {
+                            // Save previous section
+                            if (currentSection && currentContent.length > 0) {
+                                sections[currentSection] = currentContent.join('\n').trim();
+                                currentContent = [];
+                            }
                             currentSection = 'reasoning';
-                            sectionContent = '';
-                            i += 2;
-                            continue;
-                        } else if (line.toUpperCase().includes('COMBINED EVIDENCE') && line.includes('**')) {
+                        } else if (line.toUpperCase().includes('COMBINED EVIDENCE') && line.includes('#')) {
+                            // Save previous section
+                            if (currentSection && currentContent.length > 0) {
+                                sections[currentSection] = currentContent.join('\n').trim();
+                                currentContent = [];
+                            }
                             currentSection = 'evidence';
-                            sections.reasoning = sectionContent; // Save previous section
-                            sectionContent = '';
-                            i += 2;
-                            continue;
-                        } else if (line.toUpperCase().includes('NEXT STEPS') && line.includes('**')) {
+                        } else if (line.toUpperCase().includes('NEXT STEPS') && line.includes('#')) {
+                            // Save previous section
+                            if (currentSection && currentContent.length > 0) {
+                                sections[currentSection] = currentContent.join('\n').trim();
+                                currentContent = [];
+                            }
                             currentSection = 'nextSteps';
-                            sections.evidence = sectionContent; // Save previous section
-                            hasConditionalContent = true;
-                            i += 2;
-                            continue;
+                        } else if (currentSection && line) {
+                            // Add non-empty lines to current section content
+                            currentContent.push(line);
                         }
-
-                        // Add content to current section
-                        if (currentSection) {
-                            sectionContent += line + '\n';
-                        }
-                        i++;
                     }
 
-                    // Handle any remaining content
-                    if (sectionContent && !sections.evidence) {
-                        sections.evidence = sections.reasoning || sectionContent;
-                        sections.reasoning = '';
-                    }
-                    if (sectionContent && sections.evidence === sections.reasoning) {
-                        sections.evidence = sectionContent;
+                    // Save the last section
+                    if (currentSection && currentContent.length > 0) {
+                        sections[currentSection] = currentContent.join('\n').trim();
                     }
 
-                    // Format sections
+                    // Format sections in desired order: Summary, Combined Evidence, Next Steps, Reasoning Path (at bottom)
                     let formattedSections = [];
 
-                    // Recommendation/Summary (only if exists)
+                    // Recommendation/Summary (first, when present)
                     if (sections.recommendation.trim()) {
                         formattedSections.push(`
                             <div class="response-section recommendation-section">
-                                <button class="section-toggle" onclick="toggleSection(this)">▶ RECOMMENDATION/SUMMARY</button>
-                                <div class="section-content collapsed">
+                                <button class="section-toggle expanded">▼ RECOMMENDATION/SUMMARY</button>
+                                <div class="section-content expanded">
                                     ${formatMarkdown(sections.recommendation)}
                                 </div>
                             </div>
                         `);
                     }
 
-                    // Reasoning Path (always present, but now collapsible)
-                    if (sections.reasoning.trim()) {
-                        formattedSections.push(`
-                            <div class="response-section reasoning-section">
-                                <button class="section-toggle" onclick="toggleSection(this)">▶ REASONING PATH</button>
-                                <div class="section-content collapsed">
-                                    ${formatReasoningPath(sections.reasoning)}
-                                </div>
-                            </div>
-                        `);
-                    }
-
-                    // Combined Evidence (always present)
+                    // Combined Evidence (always present, second)
                     if (sections.evidence.trim()) {
                         formattedSections.push(`
                             <div class="response-section evidence-section">
@@ -2185,13 +2156,25 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                         `);
                     }
 
-                    // Next Steps (only if exists)
+                    // Next Steps (third, when present)
                     if (sections.nextSteps.trim()) {
                         formattedSections.push(`
                             <div class="response-section next-steps-section">
                                 <button class="section-toggle" onclick="toggleSection(this)">▶ NEXT STEPS</button>
                                 <div class="section-content collapsed">
                                     ${formatMarkdown(sections.nextSteps)}
+                                </div>
+                            </div>
+                        `);
+                    }
+
+                    // Reasoning Path (always present, at bottom, collapsible)
+                    if (sections.reasoning.trim()) {
+                        formattedSections.push(`
+                            <div class="response-section reasoning-section">
+                                <button class="section-toggle" onclick="toggleSection(this)">▶ REASONING PATH</button>
+                                <div class="section-content collapsed">
+                                    ${formatReasoningPath(sections.reasoning)}
                                 </div>
                             </div>
                         `);
@@ -2223,8 +2206,6 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                             .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
                             .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
                             .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>')
-                            // Make node references clickable: "Entity Name (ID:actual_id)" -> clickable link
-                            .replace(/([^\(]+)\(ID:([^)]+)\)/g, '<span class="node-link" onclick="highlightNode(\'$2\')" style="color: #e74c3c; cursor: pointer; text-decoration: underline; font-weight: 600;" title="Click to highlight in KG">$1</span>')
                             .replace(/[•·]/g, '<br>• ')
                             .replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">')
                             .replace(/(\n|^)(\d+)\.\s+/gm, '$1$2. ')
@@ -2304,78 +2285,6 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
                     sectionContent.classList.add('expanded');
                     button.textContent = button.textContent.replace('▶', '▼');
                     button.classList.add('expanded');
-                }
-            };
-
-            // Function to highlight node in KG visualization
-            window.highlightNode = function(nodeId) {
-                if (!network) {
-                    console.warn('No network available to highlight node');
-                    return;
-                }
-
-                try {
-                    // Find the sequential node ID from the original ID
-                    const nodes = network.body.nodes;
-                    let targetNodeId = null;
-
-                    for (let node of nodes) {
-                        if (node.options.originalId === nodeId) {
-                            targetNodeId = node.id;
-                            break;
-                        }
-                    }
-
-                    if (targetNodeId === null) {
-                        console.warn(`Node with ID ${nodeId} not found in current visualization`);
-                        return;
-                    }
-
-                    // Select and focus on the node
-                    network.selectNodes([targetNodeId]);
-
-                    // Move the view to center on the node with smooth animation
-                    network.moveTo({
-                        position: {
-                            x: network.getPositions([targetNodeId])[targetNodeId].x,
-                            y: network.getPositions([targetNodeId])[targetNodeId].y
-                        },
-                        scale: 1.5, // Zoom in slightly to focus attention
-                        animation: { duration: 800, easingFunction: 'easeInOutQuad' }
-                    });
-
-                    // Highlight with pulsating effect
-                    const nodeDataset = network.body.nodes[targetNodeId];
-                    if (nodeDataset) {
-                        // Temporarily increase size for emphasis
-                        const originalSize = nodeDataset.options.size;
-                        nodeDataset.setOptions({
-                            size: originalSize * 1.8,
-                            color: {
-                                background: '#ff4757',
-                                border: '#ff3742',
-                                highlight: { background: '#ff4757', border: '#ff3742' }
-                            }
-                        });
-
-                        // Reset after animation
-                        setTimeout(() => {
-                            nodeDataset.setOptions({
-                                size: originalSize,
-                                color: {
-                                    background: '#ff6b35',
-                                    border: '#e55a2b'
-                                }
-                            });
-                        }, 2000);
-                    }
-
-                    // Show notification
-                    showError(`Node "${nodeId}" highlighted in the knowledge graph`);
-
-                } catch (error) {
-                    console.error('Error highlighting node:', error);
-                    showError(`Could not highlight node: ${error.message}`);
                 }
             };
         });
