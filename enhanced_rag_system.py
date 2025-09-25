@@ -567,51 +567,66 @@ User Query: {question}"""),
     def _extract_used_entities(self, response: str, context_entities: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Extract entities that are actually mentioned in the LLM response
+        Uses multiple strategies to identify entity references
         """
         used_entities = []
 
         try:
-            # Debug: Check for problematic entities
-            for entity_id, entity_info in context_entities.items():
-                if entity_id == "Version" or "Version" in str(entity_info):
-                    logging.warning(f"Found problematic entity: {entity_id} -> {entity_info}")
+            response_lower = response.lower()
 
-            # Extract all entity IDs mentioned in the response using regex pattern
-            # Looking for patterns like: Entity Name (ID:actual_id_from_context)
-            entity_id_pattern = r'\(ID:([^)]+)\)'
-            mentioned_ids = re.findall(entity_id_pattern, response)
-
-            # Also check for direct element IDs that match our context
             for entity_id, entity_info in context_entities.items():
+                entity_name = entity_info.get('description', entity_info.get('id', '')).lower()
+                entity_type = entity_info.get('type', '').lower()
                 element_id = entity_info.get('element_id', '')
 
                 # Check if this entity is mentioned in various ways
                 mentioned = False
 
-                # Check if the entity ID is mentioned
-                if entity_id in response:
+                # 1. Direct entity ID or name mention in response
+                if entity_id.lower() in response_lower:
                     mentioned = True
 
-                # Check if the element ID is mentioned
-                if element_id and element_id in response:
+                # 2. Entity name/description in response (case insensitive)
+                elif entity_name and entity_name in response_lower:
                     mentioned = True
 
-                # Check if extracted IDs from regex match
+                # 3. Entity type in response (more lenient)
+                elif entity_type and len(entity_type) > 2 and entity_type in response_lower:
+                    # Only if the entity name is also somewhat related
+                    entity_words = set(entity_name.split())
+                    response_words = set(response_lower.split())
+                    if len(entity_words.intersection(response_words)) > 0:
+                        mentioned = True
+
+                # 4. Element ID mentioned
+                elif element_id and element_id in response:
+                    mentioned = True
+
+                # 5. Extract all ID references from response using regex
+                # Looking for patterns like: Entity Name (ID:actual_id_from_context)
+                entity_id_pattern = r'\(ID:([^)]+)\)'
+                mentioned_ids = re.findall(entity_id_pattern, response)
                 if element_id in mentioned_ids or entity_id in mentioned_ids:
                     mentioned = True
-
-
 
                 if mentioned:
                     used_entities.append({
                         "id": entity_id,
-                        "element_id": entity_info.get("element_id", ""),
+                        "element_id": element_id,
                         "type": entity_info.get("type", "Unknown"),
                         "description": entity_info.get("description", "")
                     })
 
-            logging.info(f"Extracted {len(used_entities)} used entities from response")
-            return used_entities
+            # Remove duplicates based on entity_id
+            seen_ids = set()
+            unique_used_entities = []
+            for entity in used_entities:
+                if entity['id'] not in seen_ids:
+                    seen_ids.add(entity['id'])
+                    unique_used_entities.append(entity)
+
+            logging.info(f"Extracted {len(unique_used_entities)} used entities from response")
+            return unique_used_entities
 
         except Exception as e:
             logging.error(f"Error extracting used entities: {e}")

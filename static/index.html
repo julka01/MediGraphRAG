@@ -2723,10 +2723,28 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                         highlightedNodes.clear();
                         result.info.entities.used_entities.forEach(entity => {
                             highlightedNodes.add(entity.id.toString());
+                            // Also add element_id if present as fallback
+                            if (entity.element_id) {
+                                highlightedNodes.add(entity.element_id.toString());
+                            }
                         });
 
-                        // Re-initialize graph to show highlights if we have a graph loaded
-                        if (currentKGId && graphData) {
+                        // If no highlights found, show all nodes (fallback to full graph)
+                        if (highlightedNodes.size === 0) {
+                            // Re-initialize graph to show all nodes when no specific entities are found
+                            if (graphData) {
+                                initializeGraph(graphData);
+                            }
+                        } else {
+                            // Re-initialize graph to show highlights if we have a graph loaded
+                            if (currentKGId && graphData) {
+                                initializeGraph(graphData);
+                            }
+                        }
+                    } else {
+                        // No used_entities in response, show all nodes
+                        highlightedNodes.clear();
+                        if (graphData) {
                             initializeGraph(graphData);
                         }
                     }
