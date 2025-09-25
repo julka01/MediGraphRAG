@@ -2,6 +2,7 @@ import json
 import re
 import hashlib
 import xml.etree.ElementTree as ET
+import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 from langchain_core.prompts import ChatPromptTemplate
@@ -12,12 +13,10 @@ from langchain_text_splitters import TokenTextSplitter
 import os
 import sys
 import logging
+import time
 
-# Add llm-graph-builder paths
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend/src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend'))
-
-from shared import common_fn
+# Import from local kg_utils
+from kg_utils.common_functions import load_embedding_model
 
 class OntologyGuidedKGCreator:
     """
@@ -33,7 +32,7 @@ class OntologyGuidedKGCreator:
         neo4j_user: str = "neo4j",
         neo4j_password: str = "password",
         neo4j_database: str = "neo4j",
-        embedding_model: str = "openai",
+        embedding_model: str = "sentence_transformers",
         ontology_path: str = None
     ):
         self.chunk_size = chunk_size
@@ -46,7 +45,7 @@ class OntologyGuidedKGCreator:
         self.ontology_path = ontology_path
 
         # Initialize embedding model
-        self.embedding_function, self.embedding_dimension = common_fn.load_embedding_model(embedding_model)
+        self.embedding_function, self.embedding_dimension = load_embedding_model(embedding_model)
         logging.info(f"Initialized embedding model: {embedding_model}, dimension: {self.embedding_dimension}")
 
         # Load ontology if provided
@@ -56,7 +55,11 @@ class OntologyGuidedKGCreator:
             self._load_ontology(ontology_path)
             logging.info(f"Loaded ontology: {len(self.ontology_classes)} classes, {len(self.ontology_relationships)} relationships")
         else:
-            logging.warning(f"Ontology file not found: {ontology_path}")
+            if ontology_path:
+                logging.warning(f"Ontology file not found: {ontology_path}")
+            else:
+                logging.info("No ontology provided - using basic LLM entity extraction")
+            # No ontology - use empty lists (will fall back to pattern matching)
 
     def _load_ontology(self, ontology_path: str):
         """
@@ -102,43 +105,27 @@ class OntologyGuidedKGCreator:
 
         except Exception as e:
             logging.error(f"Error loading ontology: {e}")
-            # Fallback to basic medical ontology
-            self._create_basic_medical_ontology()
+            raise e
 
-    def _create_basic_medical_ontology(self):
-        """
-        Create a basic medical ontology as fallback
-        """
-        self.ontology_classes = [
-            {'id': 'Disease', 'uri': 'medical:Disease', 'label': 'Disease'},
-            {'id': 'Treatment', 'uri': 'medical:Treatment', 'label': 'Treatment'},
-            {'id': 'Drug', 'uri': 'medical:Drug', 'label': 'Drug'},
-            {'id': 'Symptom', 'uri': 'medical:Symptom', 'label': 'Symptom'},
-            {'id': 'Patient', 'uri': 'medical:Patient', 'label': 'Patient'},
-            {'id': 'Physician', 'uri': 'medical:Physician', 'label': 'Physician'},
-            {'id': 'Hospital', 'uri': 'medical:Hospital', 'label': 'Hospital'},
-            {'id': 'MedicalProcedure', 'uri': 'medical:MedicalProcedure', 'label': 'Medical Procedure'},
-            {'id': 'MedicalDevice', 'uri': 'medical:MedicalDevice', 'label': 'Medical Device'},
-            {'id': 'Anatomy', 'uri': 'medical:Anatomy', 'label': 'Anatomy'}
-        ]
 
-        self.ontology_relationships = [
-            {'id': 'treats', 'uri': 'medical:treats', 'label': 'Treats'},
-            {'id': 'causes', 'uri': 'medical:causes', 'label': 'Causes'},
-            {'id': 'hasSymptom', 'uri': 'medical:hasSymptom', 'label': 'Has Symptom'},
-            {'id': 'prescribes', 'uri': 'medical:prescribes', 'label': 'Prescribes'},
-            {'id': 'diagnoses', 'uri': 'medical:diagnoses', 'label': 'Diagnoses'},
-            {'id': 'locatedIn', 'uri': 'medical:locatedIn', 'label': 'Located In'},
-            {'id': 'partOf', 'uri': 'medical:partOf', 'label': 'Part Of'},
-            {'id': 'affects', 'uri': 'medical:affects', 'label': 'Affects'}
-        ]
 
     def _create_neo4j_connection(self):
         """Create Neo4j graph connection"""
+        # Ensure password is not None - use environment variable as fallback
+        password = self.neo4j_password
+        if password is None or password == "":
+            password = os.getenv("NEO4J_PASSWORD", "password")
+
+        # Set environment variables to ensure LangChain Neo4jGraph can read them
+        os.environ["NEO4J_URI"] = self.neo4j_uri
+        os.environ["NEO4J_USERNAME"] = self.neo4j_user
+        os.environ["NEO4J_PASSWORD"] = password
+        os.environ["NEO4J_DATABASE"] = self.neo4j_database
+
         return Neo4jGraph(
             url=self.neo4j_uri,
             username=self.neo4j_user,
-            password=self.neo4j_password,
+            password=password,
             database=self.neo4j_database
         )
 
@@ -181,14 +168,17 @@ class OntologyGuidedKGCreator:
 
     def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
         """
-        Extract entities and relationships using LLM with ontology guidance
+        Extract entities and relationships using LLM with ontology guidance (if ontology available) or natural LLM detection
         """
-        # Create ontology context for the prompt
-        ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:15]])
-        ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:10]])
+        # Check if ontology is available
+        has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
 
-        # Create the prompt template as a simple string
-        prompt_template = """
+        if has_ontology:
+            # Ontology-guided extraction
+            ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:50]])
+            ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:30]])
+
+            system_message = f"""
 You are an expert medical knowledge graph extraction system.
 Your task is to extract entities and relationships from medical/scientific text using the provided ontology.
 
@@ -208,22 +198,68 @@ INSTRUCTIONS:
 
 Return ONLY a valid JSON object in this exact format:
 {{
-  "entities": {{
-    "id": "exact_entity_name_from_text",
-    "type": "OntologyClass",
-    "properties": {{
-      "name": "exact_entity_name_from_text",
-      "description": "brief medical description"
+  "entities": [
+    {{
+      "id": "exact_entity_name_from_text",
+      "type": "OntologyClass",
+      "properties": {{
+        "name": "exact_entity_name_from_text",
+        "description": "brief medical description"
+      }}
     }}
-  }},
-  "relationships": {{
-    "source": "source_entity_id",
-    "target": "target_entity_id",
-    "type": "ONTOLOGY_RELATIONSHIP",
-    "properties": {{
-      "description": "how they are related in the text"
+  ],
+  "relationships": [
+    {{
+      "source": "source_entity_id",
+      "target": "target_entity_id",
+      "type": "ONTOLOGY_RELATIONSHIP",
+      "properties": {{
+        "description": "how they are related in the text"
+      }}
     }}
-  }}
+  ]
+}}
+
+TEXT TO ANALYZE:
+{chunk_text}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
+        else:
+            # No ontology - natural LLM detection with no filtering
+            system_message = f"""
+You are an expert knowledge graph extraction system.
+Your task is to extract entities and relationships from text naturally and comprehensively.
+
+INSTRUCTIONS:
+1. Extract ALL significant entities and concepts from the text
+2. No restrictions on entity types - extract anything that could be part of a knowledge graph
+3. Create relationships between ANY entities that are meaningfully related in the text
+4. Use descriptive relationship types that best capture how entities interact
+5. Be comprehensive - detect as many nodes and relationships as naturally appear
+6. Include both technical and non-technical concepts if contextually relevant
+
+Return ONLY a valid JSON object in this exact format:
+{{
+  "entities": [
+    {{
+      "id": "exact_entity_name_from_text",
+      "type": "EntityType",
+      "properties": {{
+        "name": "exact_entity_name_from_text",
+        "description": "contextual description"
+      }}
+    }}
+  ],
+  "relationships": [
+    {{
+      "source": "source_entity_id",
+      "target": "target_entity_id",
+      "type": "RELATIONSHIP_TYPE",
+      "properties": {{
+        "description": "how they are related in the text"
+      }}
+    }}
+  ]
 }}
 
 TEXT TO ANALYZE:
@@ -232,15 +268,16 @@ TEXT TO ANALYZE:
 IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
         try:
-            # Format the prompt by substituting all variables
-            system_message = prompt_template.format(
-                ontology_classes_text=ontology_classes_text,
-                ontology_relationships_text=ontology_relationships_text,
-                chunk_text=chunk_text
-            )
 
-            # Get the response directly from LLM provider
-            response = llm.generate(system_message, "", "openai/gpt-oss-20b:free")
+            # Get the response directly from LLM provider with timeout handling
+            try:
+                response = llm.generate(system_message, "", model_name)
+            except Exception as timeout_error:
+                if "timeout" in str(timeout_error).lower() or "read operation timed out" in str(timeout_error).lower():
+                    logging.warning(f"LLM request timed out for chunk. Returning empty result to continue processing.")
+                    return {'entities': [], 'relationships': []}
+                else:
+                    raise timeout_error
 
             # Debug: Log the raw response
             logging.info(f"Raw LLM response length: {len(response)}")
@@ -256,12 +293,56 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 response = response[:-3]
             response = response.strip()
 
-            # Parse JSON response
-            result = json.loads(response)
+            # Try to extract JSON from response - handle cases where LLM returns malformed JSON
+            json_start = response.find('{')
+            if json_start == -1:
+                logging.warning(f"No JSON start found in response: {response[:200]}... Returning empty result.")
+                return {'entities': [], 'relationships': []}
+
+            # Try to find the complete JSON object by looking for balanced braces
+            brace_count = 0
+            json_end = json_start
+            in_string = False
+            escape_next = False
+
+            for i, char in enumerate(response[json_start:], json_start):
+                if escape_next:
+                    escape_next = False
+                    continue
+
+                if char == '\\':
+                    escape_next = True
+                    continue
+
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            # Found the matching closing brace
+                            json_end = i + 1
+                            break
+
+            if brace_count == 0 and json_end > json_start:
+                json_content = response[json_start:json_end]
+                try:
+                    result = json.loads(json_content)
+                except json.JSONDecodeError as e:
+                    logging.warning(f"JSON parsing error: {e}. Content: {json_content[:300]}... Returning empty result.")
+                    return {'entities': [], 'relationships': []}
+            else:
+                logging.warning(f"Incomplete JSON in response (brace_count={brace_count}): {response[json_start:json_start+300]}... Returning empty result.")
+                return {'entities': [], 'relationships': []}
 
             # Validate the result has the expected structure
             if not isinstance(result, dict) or 'entities' not in result or 'relationships' not in result:
-                raise ValueError("Invalid response structure")
+                logging.warning(f"Invalid response structure. Returning empty result.")
+                return {'entities': [], 'relationships': []}
 
             # Filter out non-medical entities
             medical_entities = []
@@ -318,124 +399,19 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
         except Exception as e:
             logging.error(f"LLM extraction failed: {e}")
-            raise e
+            # Return empty result instead of failing completely
+            return {'entities': [], 'relationships': []}
 
     def _is_medical_entity(self, entity: Dict[str, Any]) -> bool:
         """
-        Check if an entity is medically relevant
+        Check if an entity is medically relevant - relaxed constraints
         """
-        entity_text = entity.get('id', '').lower()
-        entity_type = entity.get('type', '').lower()
+        # Relaxed: Allow all entities extracted by LLM, trusting the ontology guidance and prompt instructions
+        return True
 
-        # Check if entity type is from our ontology
-        for cls in self.ontology_classes:
-            if cls['id'].lower() == entity_type:
-                return True
 
-        # Check for medical keywords in the entity text
-        medical_keywords = [
-            'cancer', 'disease', 'treatment', 'therapy', 'drug', 'medication',
-            'symptom', 'diagnosis', 'patient', 'physician', 'doctor', 'hospital',
-            'clinic', 'surgery', 'procedure', 'tumor', 'disorder', 'syndrome',
-            'clinical', 'medical', 'health', 'care', 'therapy', 'medicine'
-        ]
 
-        return any(keyword in entity_text for keyword in medical_keywords)
 
-    def _extract_entities_and_relationships_fallback(self, chunk_text: str) -> Dict[str, Any]:
-        """
-        Fallback entity extraction using pattern matching with ontology guidance
-        """
-        entities = []
-        relationships = []
-
-        # Extract potential entities (capitalized words/phrases)
-        entity_patterns = [
-            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b',  # Capitalized phrases
-            r'\b[A-Z]{2,}\b',  # Acronyms
-        ]
-
-        found_entities = set()
-        for pattern in entity_patterns:
-            matches = re.findall(pattern, chunk_text)
-            for match in matches:
-                if len(match) > 2 and match not in ['The', 'This', 'That', 'And', 'But', 'For', 'With', 'From', 'Into', 'Upon']:
-                    found_entities.add(match)
-
-        # Filter for medical relevance and convert to entity format
-        medical_entities = []
-        for entity_text in found_entities:
-            # Check if entity is medically relevant
-            if self._is_medical_entity_fallback(entity_text):
-                entity_type = self._classify_entity_with_ontology(entity_text)
-
-                # Generate embedding for entity
-                try:
-                    entity_embedding = self.embedding_function.embed_query(entity_text)
-                except Exception as e:
-                    logging.warning(f"Failed to generate embedding for entity {entity_text}: {e}")
-                    entity_embedding = None
-
-                medical_entities.append({
-                    "id": entity_text,
-                    "type": entity_type,
-                    "properties": {
-                        "name": entity_text,
-                        "description": f"{entity_type}: {entity_text}"
-                    },
-                    "embedding": entity_embedding
-                })
-
-        entities.extend(medical_entities)
-
-        # Create relationships ONLY between medical entities that are semantically related
-        for i in range(len(medical_entities) - 1):
-            source_entity = medical_entities[i]
-            target_entity = medical_entities[i + 1]
-
-            # Only create relationships between entities that could be medically related
-            if self._entities_can_be_related(source_entity['type'], target_entity['type']):
-                rel_type = self._classify_relationship_with_ontology(source_entity['id'], target_entity['id'])
-                relationships.append({
-                    "source": source_entity['id'],
-                    "target": target_entity['id'],
-                    "type": rel_type,
-                    "properties": {"description": f"{rel_type} relationship between {source_entity['type']} and {target_entity['type']}"}
-                })
-
-        return {
-            "entities": entities,
-            "relationships": relationships
-        }
-
-    def _is_medical_entity_fallback(self, entity_text: str) -> bool:
-        """
-        Check if an entity is medically relevant for fallback extraction
-        """
-        entity_lower = entity_text.lower()
-
-        # Skip common non-medical words
-        skip_words = [
-            'guidelines', 'recommendations', 'committee', 'association', 'society',
-            'university', 'institute', 'center', 'department', 'section', 'chapter',
-            'table', 'figure', 'page', 'volume', 'issue', 'edition', 'update',
-            'limited', 'text', 'update', 'march', 'european', 'american', 'international'
-        ]
-
-        if any(word in entity_lower for word in skip_words):
-            return False
-
-        # Check for medical keywords
-        medical_keywords = [
-            'cancer', 'disease', 'treatment', 'therapy', 'drug', 'medication',
-            'symptom', 'diagnosis', 'patient', 'physician', 'doctor', 'hospital',
-            'clinic', 'surgery', 'procedure', 'tumor', 'disorder', 'syndrome',
-            'clinical', 'medical', 'health', 'care', 'therapy', 'medicine',
-            'prostate', 'breast', 'lung', 'liver', 'kidney', 'heart', 'brain',
-            'bone', 'blood', 'skin', 'lung', 'stomach', 'colon', 'pancreas'
-        ]
-
-        return any(keyword in entity_lower for keyword in medical_keywords)
 
     def _entities_can_be_related(self, source_type: str, target_type: str) -> bool:
         """
@@ -509,19 +485,33 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
         # Default relationship
         return 'RELATED_TO'
 
+    def _generate_entity_id(self, entity: Dict[str, Any]) -> str:
+        """
+        Generate a UUID-based entity ID to prevent duplicates
+        """
+        # Create a unique seed based on entity type and normalized name
+        unique_seed = f"{entity['type']}_{entity['id'].lower().strip()}"
+        # Generate UUID5 (name-based) for deterministic but unique IDs
+        return str(uuid.uuid5(uuid.NAMESPACE_OID, unique_seed))
+
     def _harmonize_entities(self, all_entities: List[Dict]) -> List[Dict]:
         """
-        Harmonize entities across chunks to avoid duplicates
+        Harmonize entities across chunks to avoid duplicates using UUID-based IDs
         """
         entity_map = {}
         harmonized_entities = []
 
         for entity in all_entities:
-            entity_key = f"{entity['type']}:{entity['id'].lower()}"
+            # Use normalized key for deduplication
+            entity_key = f"{entity['type']}:{entity['id'].lower().strip()}"
 
             if entity_key not in entity_map:
-                entity_map[entity_key] = entity
-                harmonized_entities.append(entity)
+                # Generate UUID-based ID for the entity
+                entity_uuid = self._generate_entity_id(entity)
+                entity_copy = entity.copy()
+                entity_copy['uuid'] = entity_uuid  # Store UUID for later use
+                entity_map[entity_key] = entity_copy
+                harmonized_entities.append(entity_copy)
             else:
                 # Merge properties and keep the best embedding
                 existing_entity = entity_map[entity_key]
@@ -536,73 +526,132 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
     def _harmonize_relationships(self, all_relationships: List[Dict], entity_map: Dict) -> List[Dict]:
         """
-        Harmonize relationships across chunks
+        Harmonize relationships across chunks and map to UUID-based entity IDs
         """
         harmonized_relationships = []
         seen_relationships = set()
 
-        for rel in all_relationships:
-            rel_key = f"{rel['source']}:{rel['type']}:{rel['target']}"
+        # Create reverse mapping from original ID to UUID
+        original_to_uuid = {}
+        for entity in entity_map.values():
+            original_to_uuid[entity['id']] = entity['uuid']
 
-            if rel_key not in seen_relationships:
-                harmonized_relationships.append(rel)
-                seen_relationships.add(rel_key)
+        for rel in all_relationships:
+            # Map source and target to UUIDs
+            source_uuid = original_to_uuid.get(rel['source'])
+            target_uuid = original_to_uuid.get(rel['target'])
+
+            if source_uuid and target_uuid:
+                # Create new relationship with UUID-based IDs
+                uuid_rel = rel.copy()
+                uuid_rel['source'] = source_uuid
+                uuid_rel['target'] = target_uuid
+
+                rel_key = f"{source_uuid}:{rel['type']}:{target_uuid}"
+
+                if rel_key not in seen_relationships:
+                    harmonized_relationships.append(uuid_rel)
+                    seen_relationships.add(rel_key)
 
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free", max_chunks: int = None, kg_name: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text with ontology-guided entity extraction
+
+        Args:
+            text: Input text to process
+            llm: LLM provider instance
+            file_name: Optional filename for storage
+            model_name: LLM model name
+            max_chunks: Maximum number of chunks to process (for large documents)
         """
         logging.info("Starting ontology-guided knowledge graph generation")
+
+        # Determine if ontology is available
+        has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
+        extraction_method = "ontology_guided_llm" if has_ontology else "natural_llm"
+        logging.info(f"Extraction method: {extraction_method}")
 
         # Step 1: Chunk the text
         chunks = self._chunk_text(text)
         logging.info(f"Created {len(chunks)} chunks")
 
+        # Limit chunks if specified (for very large documents)
+        if max_chunks and len(chunks) > max_chunks:
+            logging.warning(f"Limiting processing to {max_chunks} chunks out of {len(chunks)} total")
+            chunks = chunks[:max_chunks]
+
         # Step 2: Extract entities and relationships from each chunk
         all_entities = []
         all_relationships = []
+        processed_chunks = 0
+        failed_chunks = 0
 
         for i, chunk in enumerate(chunks):
-            logging.info(f"Processing chunk {i+1}/{len(chunks)}")
-            chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm, model_name)
-            all_entities.extend(chunk_kg['entities'])
-            all_relationships.extend(chunk_kg['relationships'])
+            try:
+                logging.info(f"Processing chunk {i+1}/{len(chunks)}")
+                chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm, model_name)
+
+                if chunk_kg['entities'] or chunk_kg['relationships']:
+                    all_entities.extend(chunk_kg['entities'])
+                    all_relationships.extend(chunk_kg['relationships'])
+                    processed_chunks += 1
+                    logging.info(f"✓ Chunk {i+1} processed: {len(chunk_kg['entities'])} entities, {len(chunk_kg['relationships'])} relationships")
+                else:
+                    logging.warning(f"⚠ Chunk {i+1} returned no entities/relationships")
+                    failed_chunks += 1
+
+
+            except Exception as e:
+                logging.error(f"❌ Failed to process chunk {i+1}: {e}")
+                failed_chunks += 1
+                continue
+
+            # Add small delay between chunks to avoid rate limiting
+            if i < len(chunks) - 1:  # Don't delay after the last chunk
+                time.sleep(1.0)  # 1 second delay between API calls
+
+        logging.info(f"Processing complete: {processed_chunks} successful, {failed_chunks} failed")
 
         # Step 3: Harmonize entities and relationships
         harmonized_entities = self._harmonize_entities(all_entities)
-        entity_map = {entity['id']: entity for entity in harmonized_entities}
+        # Create entity map using UUIDs for relationships
+        entity_map = {entity['uuid']: entity for entity in harmonized_entities}
         harmonized_relationships = self._harmonize_relationships(all_relationships, entity_map)
 
         logging.info(f"Harmonized to {len(harmonized_entities)} entities and {len(harmonized_relationships)} relationships")
 
         # Step 4: Format the final knowledge graph
+        # Use UUID-based IDs to prevent duplicates
+        kg_prefix = f"{kg_name}_" if kg_name else ""
+
         kg = {
             "nodes": [
                 {
-                    "id": entity['id'],
+                    "id": f"{kg_prefix}{entity['uuid']}",
                     "label": entity['type'],
                     "properties": {
                         "name": entity['id'],
                         "type": entity['type'],
+                        "original_id": entity['id'],  # Keep original ID for reference
                         **entity.get('properties', {})
                     },
                     "embedding": entity.get('embedding'),
                     "color": self._get_node_color(entity['type']),
                     "size": 30,
                     "font": {"size": 14, "color": "#333333"},
-                    "title": f"Entity: {entity['id']}\nType: {entity['type']}\nClick for details"
+                    "title": f"Entity: {entity['id']}\nType: {entity['type']}\nKG: {kg_name or 'default'}\nClick for details"
                 }
                 for entity in harmonized_entities
             ],
             "relationships": [
                 {
-                    "id": f"rel_{idx}",
-                    "from": rel['source'],
-                    "to": rel['target'],
-                    "source": rel['source'],
-                    "target": rel['target'],
+                    "id": f"{kg_prefix}rel_{rel['source']}_{rel['type']}_{rel['target']}_{idx}",
+                    "from": f"{kg_prefix}{rel['source']}",
+                    "to": f"{kg_prefix}{rel['target']}",
+                    "source": f"{kg_prefix}{rel['source']}",
+                    "target": f"{kg_prefix}{rel['target']}",
                     "type": rel['type'],
                     "label": rel['type'],
                     "properties": rel.get('properties', {}),
@@ -623,7 +672,8 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 "embedding_dimension": self.embedding_dimension,
                 "ontology_classes": len(self.ontology_classes),
                 "ontology_relationships": len(self.ontology_relationships),
-                "extraction_method": "ontology_guided_llm",
+                "extraction_method": "ontology_guided_llm" if has_ontology else "natural_llm",
+                "kg_name": kg_name,
                 "created_at": datetime.now().isoformat(),
                 "visualization_ready": True,
                 "file_name": file_name
@@ -659,7 +709,15 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
         Store the knowledge graph in Neo4j database with proper embedding support
         """
         try:
-            graph = self._create_neo4j_connection()
+            # Try to create Neo4j connection - handle APOC issues gracefully
+            try:
+                graph = self._create_neo4j_connection()
+            except Exception as conn_error:
+                if "APOC" in str(conn_error) or "apoc" in str(conn_error):
+                    logging.warning(f"APOC not available, skipping advanced KG storage: {conn_error}")
+                    return False
+                else:
+                    raise conn_error
 
             # Create document node
             doc_query = """
@@ -736,10 +794,13 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 # Filter out 'id' property to avoid duplicate key issues in database
                 properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
 
+                # Sanitize relationship type to replace spaces with underscores for valid Cypher
+                sanitized_rel_type = rel['type'].replace(' ', '_').replace('-', '_').upper()
+
                 rel_query = f"""
                 MATCH (source:__Entity__ {{id: $source_id}})
                 MATCH (target:__Entity__ {{id: $target_id}})
-                MERGE (source)-[r:{rel['type']}]->(target)
+                MERGE (source)-[r:{sanitized_rel_type}]->(target)
                 SET r += $properties
                 """
                 graph.query(rel_query, {
@@ -778,9 +839,30 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
     def _create_vector_indexes(self, graph):
         """
-        Create vector indexes for RAG functionality
+        Create vector indexes and unique constraints for RAG functionality
         """
         try:
+            # Create unique constraint for entity IDs to prevent duplicates
+            entity_constraint_query = """
+            CREATE CONSTRAINT unique_entity_id IF NOT EXISTS
+            FOR (e:__Entity__) REQUIRE e.id IS UNIQUE
+            """
+            graph.query(entity_constraint_query)
+
+            # Create unique constraint for chunk IDs
+            chunk_constraint_query = """
+            CREATE CONSTRAINT unique_chunk_id IF NOT EXISTS
+            FOR (c:Chunk) REQUIRE c.id IS UNIQUE
+            """
+            graph.query(chunk_constraint_query)
+
+            # Create unique constraint for document filenames
+            doc_constraint_query = """
+            CREATE CONSTRAINT unique_document_filename IF NOT EXISTS
+            FOR (d:Document) REQUIRE d.fileName IS UNIQUE
+            """
+            graph.query(doc_constraint_query)
+
             # Create vector index for chunks
             chunk_index_query = f"""
             CREATE VECTOR INDEX vector IF NOT EXISTS
@@ -814,10 +896,10 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
             """
             graph.query(keyword_index_query)
 
-            logging.info("Created vector and keyword indexes for RAG")
+            logging.info("Created constraints, vector and keyword indexes for RAG")
 
         except Exception as e:
-            logging.warning(f"Error creating indexes (may already exist): {e}")
+            logging.warning(f"Error creating constraints/indexes (may already exist): {e}")
 
     def get_rag_context(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """

@@ -295,7 +295,7 @@ async def chat(body: dict = Body(...)):
         session = body.get("session_id", "default_session")
         mode = body.get("mode", "default")
         provider = body.get("provider_rag", "openrouter")
-        model = body.get("model_rag", "meta-llama/llama-4-maverick:free")
+        model = body.get("model_rag", "openai/gpt-oss-20b:free")
 
         if not question:
             raise HTTPException(status_code=422, detail="Missing question")

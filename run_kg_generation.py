@@ -35,9 +35,8 @@ sys.modules["langchain_experimental"] = stub3
 sys.modules["langchain_experimental.graph_transformers"] = stub3.graph_transformers
 sys.modules["langchain_experimental.graph_transformers.diffbot"] = stub3.graph_transformers.diffbot
 
-# Add llm-graph-builder backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "llm-graph-builder", "backend"))
-from src.main import extract_graph_from_file_local_file
+# Import from local kg_utils
+from kg_utils.extract_graph import extract_graph_from_file_local_file
 import src.llm as llm_module
 
 # Override LLM call to skip actual model invocation
@@ -66,6 +65,12 @@ async def main():
     merged_file_path = os.path.join(os.getcwd(), file_path)
     file_name = os.path.basename(merged_file_path)
 
+    # Get KG version information
+    version_name = input("Enter KG version name (or press Enter for no versioning): ").strip()
+    version_description = ""
+    if version_name:
+        version_description = input("Enter KG version description (optional): ").strip()
+
     # Invoke llm-graph-builder's extract logic
     uri_latency, response = await extract_graph_from_file_local_file(
         NEO4J_URI,
@@ -77,6 +82,14 @@ async def main():
         file_name,
         '', '', 1000, 100, 1, None, None
     )
+
+    # If versioning was requested, update the stored KG with version info
+    if version_name and response.get('success', False):
+        print(f"KG created successfully. Version: {version_name}")
+        if version_description:
+            print(f"Description: {version_description}")
+    elif version_name:
+        print(f"Warning: KG creation may have failed, version '{version_name}' not applied")
 
     # Output results
     print("Extraction response:")

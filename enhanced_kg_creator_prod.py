@@ -14,21 +14,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Add llm-graph-builder paths
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend/src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend'))
-
-try:
-    from shared.common_fn import load_embedding_model
-except ImportError:
-    # Fallback without llm-graph-builder
-    from sentence_transformers import SentenceTransformer
-
-    def load_embedding_model(embedding_model: str = "sentence-transformers"):
-        """Simple embedding model loader"""
-        if embedding_model == "sentence-transformers":
-            model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-            return lambda x: model.encode(x).tolist(), model.get_sentence_embedding_dimension()
+# Import from local kg_utils
+from kg_utils.common_functions import load_embedding_model
 
 
 class EnhancedKGCreatorProd:
@@ -45,7 +32,7 @@ class EnhancedKGCreatorProd:
         neo4j_user: str = None,
         neo4j_password: str = None,
         neo4j_database: str = None,
-        embedding_model: str = "openai"
+        embedding_model: str = "sentence_transformers"
     ):
         # Use environment variables if not provided
         self.chunk_size = chunk_size
@@ -56,14 +43,7 @@ class EnhancedKGCreatorProd:
         self.neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE", "neo4j")
 
         # Initialize embedding model
-        try:
-            self.embedding_function, self.embedding_dimension = load_embedding_model(embedding_model)
-        except:
-            # Fallback to sentence transformers
-            from sentence_transformers import SentenceTransformer
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
-            self.embedding_function = lambda x: self.model.encode(x).tolist()
-            self.embedding_dimension = self.model.get_sentence_embedding_dimension()
+        self.embedding_function, self.embedding_dimension = load_embedding_model(embedding_model)
 
         logging.info(f"✅ Initialized embedding model with dimension {self.embedding_dimension}")
 
@@ -95,7 +75,16 @@ class EnhancedKGCreatorProd:
             end_pos = start_pos + len(chunk_text)
 
             try:
-                chunk_embedding = self.embedding_function(chunk_text)
+                # Handle different embedding function types
+                if hasattr(self.embedding_function, 'embed_query'):
+                    chunk_embedding = self.embedding_function.embed_query(chunk_text)
+                elif hasattr(self.embedding_function, 'encode'):
+                    chunk_embedding = self.embedding_function.encode(chunk_text)
+                elif callable(self.embedding_function):
+                    chunk_embedding = self.embedding_function(chunk_text)
+                else:
+                    logging.warning(f"Unsupported embedding function type: {type(self.embedding_function)}")
+                    chunk_embedding = None
             except Exception as e:
                 logging.warning(f"Failed to generate embedding for chunk {idx}: {e}")
                 chunk_embedding = None

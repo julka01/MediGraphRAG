@@ -10,9 +10,8 @@ import os
 import sys
 import logging
 
-# Add llm-graph-builder paths
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend/src'))
-from shared.common_fn import load_embedding_model
+# Import from local kg_utils
+from kg_utils.common_functions import load_embedding_model
 
 class EnhancedKGCreator:
     """
@@ -27,7 +26,7 @@ class EnhancedKGCreator:
         neo4j_user: str = os.getenv("NEO4J_USERNAME", "neo4j"),
         neo4j_password: str = os.getenv("NEO4J_PASSWORD", "awhKHbIyHJZPAIuGhHpL9omIXw8Vupnnm_35XSDN2yg"),
         neo4j_database: str = os.getenv("NEO4J_DATABASE", "neo4j"),
-        embedding_model: str = "openai"
+        embedding_model: str = os.getenv("EMBEDDING_PROVIDER", "openai")
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap

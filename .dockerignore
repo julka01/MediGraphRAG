@@ -13,6 +13,8 @@ test_*
 *.owl
 *.txt
 !requirements.txt
+!requirements-prod.txt
+!requirements-frozen.txt
 
 # Ignore documentation and summary files
 BUG_FIXES_SUMMARY.md

@@ -34,7 +34,24 @@ All dependencies are specified in `requirements.txt` with pinned versions for re
 
 ## Installation
 
-### Option 1: Local Development Setup (Recommended)
+### Recommended: Hybrid Development Setup
+
+**Best for development and testing** - Local Python app with Dockerized Neo4j database.
+
+#### Quick Start:
+```bash
+# 1. Install Python dependencies
+pip install -r requirements-prod.txt
+
+# 2. Start Neo4j database
+docker compose up -d neo4j
+
+# 3. Configure your .env file with API keys
+# 4. Start the application
+python start_server.py
+```
+
+#### Detailed Setup:
 
 1. **Clone the repository**:
 ```bash
@@ -51,37 +68,41 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 3. **Install dependencies**:
 ```bash
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -r requirements-prod.txt
 ```
 
-4. **Create environment configuration**:
-```bash
-cp .env.example .env  # Copy the example configuration file
-```
-
-5. **Configure your `.env` file**:
+4. **Configure your `.env` file** with your API keys:
 ```env
-# AI Provider API Keys
+# AI Provider API Keys (configure at least one)
 OPENAI_API_KEY=your-openai-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
 GEMINI_API_KEY=your-gemini-api-key
 HF_API_TOKEN=your-huggingface-api-token
 DEEPSEEK_API_KEY=your-deepseek-api-key
 
-# Database Configuration
+# Database Configuration (Neo4j with no auth)
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
-NEO4J_PASSWORD=your-neo4j-password
+NEO4J_PASSWORD=
+NEO4J_DATABASE=neo4j
+
+# Model Configuration
+EMBEDDING_MODEL=sentence_transformers
+LLM_MODEL_CONFIG_gpt-3.5-turbo=gpt-3.5-turbo,your-openai-key
+LLM_MODEL_CONFIG_meta_llama_llama_4_maverick_free=meta-llama/llama-4-maverick:free,your-openrouter-key,https://openrouter.ai/api/v1
 
 # Optional: Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
 ```
 
-6. **Set up Neo4j database** (if running locally):
-   - Install Neo4j Desktop or use Docker
-   - Create a database with the credentials from your `.env` file
+5. **Start Neo4j database using Docker**:
+```bash
+docker compose up -d neo4j
+```
+This starts Neo4j with no authentication required.
 
-7. **For Ollama (local models)**, install and download models on your host machine:
+6. **For Ollama (local models)**, install and download models on your host machine:
 ```bash
 # Install Ollama (visit https://ollama.ai for installation instructions)
 ollama pull llama2
@@ -89,7 +110,12 @@ ollama pull deepseek-coder
 ollama pull llama3.1:8b
 ```
 
-### Option 2: Docker Compose 
+7. **Start the application**:
+```bash
+python start_server.py
+```
+
+### Option 2: Docker Compose (Full Stack)
 
 1. **Clone the repository**:
 ```bash
@@ -97,33 +123,31 @@ git clone <repository-url>
 cd tool-2025-kg-rag
 ```
 
-2. **Create environment configuration**:
+2. **Configure your `.env` file** with API keys as shown above.
+
+3. **Start all services**:
 ```bash
-cp .env.example .env  # Copy the example configuration file
-```
-
-3. **Configure your `.env` file**:
-```env
-# AI Provider API Keys
-OPENAI_API_KEY=your-openai-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
-GEMINI_API_KEY=your-gemini-api-key
-HF_API_TOKEN=your-huggingface-api-token
-DEEPSEEK_API_KEY=your-deepseek-api-key
-
-# Neo4j Password (required for Docker setup)
-NEO4J_PASSWORD=your-secure-password
-```
-
-4. **Start the application**:
-```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 This will start:
-- The KG-RAG application on http://localhost:8000
+- The KG-RAG application on http://localhost:8004
 - Neo4j database on http://localhost:7474 (browser interface)
 - All necessary services with proper networking and persistence
+
+**Note**: The application runs on port 8004, not 8000 as mentioned in some older documentation.
+
+### Docker Limitations
+
+While Docker deployment is possible, the current setup has some limitations:
+
+- **Frontend Build Issues**: The React frontend requires Node.js/npm which isn't included in the current Dockerfile
+- **Version Warnings**: Docker Compose shows deprecation warnings for the `version` field
+- **Network Configuration**: Requires changing `NEO4J_URI` from `localhost` to `neo4j` for container networking
+- **Build Time**: Full container builds take significantly longer than local development
+- **Debugging**: Harder to debug issues inside containers vs local development
+
+For these reasons, the hybrid setup (local Python + Docker Neo4j) is recommended for development and testing.
 
 ### Option 3: Standalone Docker Container
 
@@ -133,10 +157,10 @@ For a single container deployment (without Neo4j):
 # Build the image
 docker build -t kg-rag-app .
 
-# Run the container
+# Run the container (requires separate Neo4j instance)
 docker run -d \
   --name kg-rag-container \
-  -p 8000:8000 \
+  -p 8004:8004 \
   --env-file .env \
   kg-rag-app
 ```
@@ -234,7 +258,7 @@ The system includes biomedical ontology support for enhanced knowledge extractio
    ```
 
 3. **Port conflicts**:
-   - Ensure ports 8000 and 7474 are available
+   - Ensure ports 8004 (app) and 7474 (Neo4j) are available
    - Modify port mappings in `docker-compose.yml` if needed
 
 ### Performance Optimization
@@ -248,15 +272,24 @@ The system includes biomedical ontology support for enhanced knowledge extractio
 
 ### Project Structure
 ```
-├── app.py                 # Main FastAPI application
-├── improved_kg_creator.py # Enhanced KG creation logic
-├── kg_loader.py          # Knowledge graph loading utilities
-├── model_providers.py    # AI model provider configurations
-├── requirements.txt      # Python dependencies
-├── Dockerfile           # Container configuration
-├── docker-compose.yml   # Multi-service deployment
-├── biomedical_ontology.owl # Biomedical ontology definitions
-└── static/              # Web interface files
+├── app.py                          # Main FastAPI application
+├── ontology_guided_kg_creator.py   # Ontology-guided KG creation with LLM
+├── enhanced_kg_creator_prod.py     # Production KG creator
+├── enhanced_rag_system.py          # RAG system for KG queries
+├── model_providers.py              # AI model provider configurations
+├── start_server.py                 # Application startup script
+├── requirements-prod.txt           # Production Python dependencies
+├── requirements.txt                # Development dependencies
+├── Dockerfile                      # Container configuration
+├── docker-compose.yml              # Multi-service deployment
+├── biomedical_ontology.owl         # Biomedical ontology definitions
+├── ProstateCancerOntology.owl      # Prostate cancer specific ontology
+├── llm-graph-builder/              # LLM Graph Builder submodule
+│   ├── backend/                    # Backend services
+│   └── frontend/                   # React frontend
+├── shared/                         # Shared utilities
+├── static/                         # Static web files
+└── test/                           # Test files
 ```
 
 ### Contributing

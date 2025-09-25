@@ -243,11 +243,151 @@
             font-weight: 600;
         }
 
+        /* Graph Controls and Legend */
+        .graph-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .graph-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 12px;
+            align-items: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .graph-tools {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        #node-search {
+            padding: 6px 30px 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 200px;
+        }
+
+        .search-icon {
+            position: absolute;
+            right: 8px;
+            color: #666;
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        .filter-btn {
+            padding: 6px 10px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .filter-btn:hover {
+            background: #2980b9;
+        }
+
         #graph-container {
             flex: 1;
             border: 1px solid #ddd;
             border-radius: 6px;
             overflow: hidden;
+            position: relative;
+        }
+
+        /* Filter Panel positioned relative to kg-view */
+        .filter-panel {
+            position: absolute;
+            top: 80px; /* Position below the graph header */
+            right: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 1000;
+            min-width: 200px;
+            display: none;
+        }
+
+        .filter-panel h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #2c3e50;
+        }
+
+        .filter-group {
+            margin-bottom: 10px;
+        }
+
+        .filter-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            color: #555;
+        }
+
+        .filter-checkbox {
+            margin-right: 6px;
+        }
+
+        .filter-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .filter-actions button {
+            flex: 1;
+            padding: 6px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .apply-filters {
+            background: #27ae60;
+            color: white;
+        }
+
+        .reset-filters {
+            background: #95a5a6;
+            color: white;
         }
 
         .graph-controls {
@@ -950,6 +1090,16 @@
                     <option value="gpt-4">GPT-4</option>
                 </select>
             </div>
+
+            <div class="control-group">
+                <label for="embedding-model">Embedding Model:</label>
+                <select id="embedding-model">
+                    <option value="sentence_transformers">Sentence Transformers (Default)</option>
+                    <option value="openai">OpenAI Embeddings</option>
+                    <option value="vertexai">Google Vertex AI</option>
+                    <option value="titan">AWS Titan</option>
+                </select>
+            </div>
             
             <div class="action-buttons">
                 <button class="btn-primary" id="load-file">Select File</button>
@@ -1009,7 +1159,42 @@
             <!-- KG View -->
             <div id="kg-view">
                 <h2>Knowledge Graph</h2>
-                <div id="graph-container"></div>
+                <div class="graph-header">
+                    <div class="graph-legend" id="graph-legend">
+                        <!-- Legend items will be populated dynamically -->
+                    </div>
+                    <div class="graph-tools">
+                        <div class="search-container">
+                            <input type="text" id="node-search" placeholder="Search nodes...">
+                            <span class="search-icon">🔍</span>
+                        </div>
+                        <button class="filter-btn" id="filter-btn">Filters</button>
+                        <button class="zoom-btn" id="export-png">📷 PNG</button>
+                        <button class="zoom-btn" id="export-svg">📄 SVG</button>
+                    </div>
+                </div>
+                <div id="graph-container" style="position: relative;">
+                </div>
+                <!-- Filter Panel -->
+                <div class="filter-panel" id="filter-panel">
+                    <h4>Graph Filters</h4>
+                    <div class="filter-group">
+                        <label>Node Types:</label>
+                        <div id="node-type-filters">
+                            <!-- Node type checkboxes will be populated dynamically -->
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Relationship Types:</label>
+                        <div id="relationship-type-filters">
+                            <!-- Relationship type checkboxes will be populated dynamically -->
+                        </div>
+                    </div>
+                    <div class="filter-actions">
+                        <button class="apply-filters" id="apply-filters">Apply</button>
+                        <button class="reset-filters" id="reset-filters">Reset</button>
+                    </div>
+                </div>
                 <div class="graph-controls">
                     <button class="zoom-btn" id="save-to-neo4j-btn">Save to Neo4j</button>
                     <button class="zoom-btn" id="export-kg">Export KG</button>
@@ -1097,210 +1282,503 @@
         let currentKGId = null;
         let highlightedNodes = new Set(); // Track nodes to highlight from RAG answers
         let graphData = null; // Store current graph data for re-initialization
+        let globalNodeIdCounter = Date.now(); // Global counter for unique node IDs across all graphs
+        let nodeTypeColors = {}; // Store color mapping for node types
+        let relationshipTypeColors = {}; // Store color mapping for relationship types
+        let currentFilters = { nodeTypes: new Set(), relationshipTypes: new Set() }; // Current active filters
+        let uniqueIdCounter = 0; // Persistent counter for truly unique IDs
         
-        function initializeGraph(graphData) {
-            const container = document.getElementById('graph-container');
-            if (network) {
-                network.destroy();
-            }
-            
-            // Create a mapping from original Neo4j IDs to sequential IDs to avoid conflicts
-            const nodeIdMap = new Map();
-            let nextId = 1;
-            
-            // Process nodes with sequential IDs
-const processedNodes = (graphData.nodes || []).map(node => {
-                const originalId = node.id;
-                let newId;
-                
-                if (nodeIdMap.has(originalId)) {
-                    newId = nodeIdMap.get(originalId);
-                } else {
-                    newId = nextId++;
-                    nodeIdMap.set(originalId, newId);
-                }
-                
-                // Check if this node is referenced in recent RAG response
-                const isHighlighted = highlightedNodes.has(originalId.toString());
+        // Generate colors for node types
+        function generateNodeTypeColors(nodeTypes) {
+            const colors = [
+                '#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99', '#e31a1c',
+                '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a', '#ffff99', '#b15928',
+                '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
+                '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd', '#ccebc5', '#ffed6f'
+            ];
 
-                return {
-                    ...node,
-                    id: newId,
-                    label: (node.properties && node.properties.name) || (node.labels && node.labels[0]) || String(newId),
-                    originalId: originalId, // Keep original ID for reference
-                    title: `Node ID: ${originalId}\nLabels: ${node.labels ? node.labels.join(', ') : 'Unknown'}\nClick for details${isHighlighted ? '\n🎯 Used in answer' : ''}`,
-                    color: isHighlighted ? {
-                        background: '#ff6b35', // Orange highlight for used nodes
-                        border: '#e55a2b',
-                        highlight: {
-                            background: '#ff8c42',
-                            border: '#e55a2b'
-                        },
-                        hover: {
-                            background: '#ffb977',
-                            border: '#ff8c42'
-                        }
-                    } : undefined,
-                    font: isHighlighted ? {
-                        size: 18,
-                        face: 'Tahoma',
-                        color: '#000000',
-                        strokeWidth: 3,
-                        strokeColor: '#ffffff'
-                    } : undefined,
-                    size: isHighlighted ? 35 : 30
-                };
+            const colorMap = {};
+            nodeTypes.forEach((type, index) => {
+                colorMap[type] = colors[index % colors.length];
             });
-            
-            // Process relationships with mapped IDs
-            const processedEdges = (graphData.relationships || []).map((rel, index) => {
-                const fromId = nodeIdMap.get(rel.from || rel.start || rel.source);
-                const toId = nodeIdMap.get(rel.to || rel.end || rel.target);
-                
-                // Only create edge if both nodes exist
-                if (fromId && toId) {
-                    return {
-                        id: `edge_${index}`, // Use sequential edge IDs
-                        from: fromId,
-                        to: toId,
-                        label: rel.type || '',
-                        originalId: rel.id,
-                        arrows: 'to',
-                        font: { 
-                            align: 'middle',
-                            background: 'white',
-                            backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                            strokeWidth: 1,
-                            strokeColor: '#888',
-                            color: '#333333',
-                            size: 14,
-                            vadjust: -10
-                        },
-                        color: {
-                            color: '#444444',
-                            highlight: '#ff7f00',
-                            hover: '#ff7f00'
-                        },
-                        title: `Relationship: ${rel.type || 'Unknown'}\nOriginal ID: ${rel.id}`
-                    };
+            return colorMap;
+        }
+
+        // Generate colors for relationship types
+        function generateRelationshipTypeColors(relationshipTypes) {
+            const colors = [
+                '#444444', '#666666', '#888888', '#aaaaaa', '#cccccc',
+                '#2c3e50', '#34495e', '#7f8c8d', '#95a5a6', '#bdc3c7'
+            ];
+
+            const colorMap = {};
+            relationshipTypes.forEach((type, index) => {
+                colorMap[type] = colors[index % colors.length];
+            });
+            return colorMap;
+        }
+
+        // Update legend display
+        function updateLegend(nodeTypes, relationshipTypes) {
+            const legendContainer = document.getElementById('graph-legend');
+            legendContainer.innerHTML = '';
+
+            // Add node type legends
+            Object.entries(nodeTypes).forEach(([type, color]) => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+                legendItem.innerHTML = `
+                    <div class="legend-color" style="background-color: ${color};"></div>
+                    <span>${type}</span>
+                `;
+                legendContainer.appendChild(legendItem);
+            });
+
+            // Add relationship type legends if space allows
+            if (Object.keys(nodeTypes).length <= 6) {
+                Object.entries(relationshipTypes).slice(0, 3).forEach(([type, color]) => {
+                    const legendItem = document.createElement('div');
+                    legendItem.className = 'legend-item';
+                    legendItem.innerHTML = `
+                        <div class="legend-color" style="background-color: ${color}; border: 2px solid ${color};"></div>
+                        <span>${type}</span>
+                    `;
+                    legendContainer.appendChild(legendItem);
+                });
+            }
+        }
+
+        // Update filter panel
+        function updateFilterPanel(nodeTypes, relationshipTypes) {
+            const nodeTypeFilters = document.getElementById('node-type-filters');
+            const relationshipTypeFilters = document.getElementById('relationship-type-filters');
+
+            nodeTypeFilters.innerHTML = '';
+            relationshipTypeFilters.innerHTML = '';
+
+            // Add node type filters
+            Object.keys(nodeTypes).forEach(type => {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `node-${type}`;
+                checkbox.className = 'filter-checkbox';
+                checkbox.checked = true;
+                checkbox.addEventListener('change', () => applyFilters());
+
+                const label = document.createElement('label');
+                label.htmlFor = `node-${type}`;
+                label.textContent = type;
+
+                const div = document.createElement('div');
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                nodeTypeFilters.appendChild(div);
+            });
+
+            // Add relationship type filters
+            Object.keys(relationshipTypes).forEach(type => {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `rel-${type}`;
+                checkbox.className = 'filter-checkbox';
+                checkbox.checked = true;
+                checkbox.addEventListener('change', () => applyFilters());
+
+                const label = document.createElement('label');
+                label.htmlFor = `rel-${type}`;
+                label.textContent = type;
+
+                const div = document.createElement('div');
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                relationshipTypeFilters.appendChild(div);
+            });
+        }
+
+        // Apply current filters
+        function applyFilters() {
+            if (!network || !graphData) return;
+
+            const nodeTypeCheckboxes = document.querySelectorAll('#node-type-filters input[type="checkbox"]');
+            const relationshipTypeCheckboxes = document.querySelectorAll('#relationship-type-filters input[type="checkbox"]');
+
+            // Update current filters
+            currentFilters.nodeTypes.clear();
+            currentFilters.relationshipTypes.clear();
+
+            nodeTypeCheckboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const type = checkbox.id.replace('node-', '');
+                    currentFilters.nodeTypes.add(type);
                 }
-                return null;
-            }).filter(edge => edge !== null);
-            
-            console.log(`Processed ${processedNodes.length} nodes and ${processedEdges.length} edges`);
-            
-            const nodes = new vis.DataSet(processedNodes);
-            const edges = new vis.DataSet(processedEdges);
-            
-            const options = {
-                nodes: {
-                    shape: 'dot',
-                    size: 30,
-                    font: {
-                        size: 16,
-                        face: 'Tahoma',
-                        color: '#222222',
-                        strokeWidth: 2,
-                        strokeColor: '#ffffff'
-                    },
-                    borderWidth: 3,
-                    borderWidthSelected: 5,
-                    color: {
-                        background: '#a6cee3',
-                        border: '#1f78b4',
-                        highlight: {
-                            background: '#1f78b4',
-                            border: '#a6cee3'
+            });
+
+            relationshipTypeCheckboxes.forEach(checkbox => {
+                if (checkbox.checked) {
+                    const type = checkbox.id.replace('rel-', '');
+                    currentFilters.relationshipTypes.add(type);
+                }
+            });
+
+            // Re-initialize graph with filters
+            initializeGraph(graphData);
+        }
+
+        // Search functionality
+        function performSearch(searchTerm) {
+            if (!network) return;
+
+            const nodes = network.body.data.nodes;
+            const allNodes = nodes.get();
+
+            if (!searchTerm.trim()) {
+                // Clear search - show all nodes
+                allNodes.forEach(node => {
+                    nodes.update({ id: node.id, hidden: false });
+                });
+                return;
+            }
+
+            const searchLower = searchTerm.toLowerCase();
+            allNodes.forEach(node => {
+                const nodeText = (node.label || '').toLowerCase();
+                const propertiesText = JSON.stringify(node.properties || {}).toLowerCase();
+                const isMatch = nodeText.includes(searchLower) || propertiesText.includes(searchLower);
+                nodes.update({ id: node.id, hidden: !isMatch });
+            });
+        }
+
+        function initializeGraph(graphData, mergeMode = false) {
+            console.log('Initializing graph with data:', graphData);
+            console.log('Merge mode:', mergeMode);
+            console.log('Current uniqueIdCounter:', uniqueIdCounter);
+
+            const container = document.getElementById('graph-container');
+
+            // If not in merge mode, completely clear any existing network and data
+            if (!mergeMode) {
+                if (network) {
+                    try {
+                        network.destroy();
+                        network = null;
+                    } catch (e) {
+                        console.warn('Error destroying network:', e);
+                        network = null;
+                    }
+                }
+
+                // Clear any existing data in the container and force a clean DOM
+                container.innerHTML = '';
+                container.style.width = '100%';
+                container.style.height = '100%';
+
+                // Force a clean slate by recreating the container element
+                const parent = container.parentNode;
+                const newContainer = container.cloneNode(false);
+                parent.replaceChild(newContainer, container);
+                const finalContainer = document.getElementById('graph-container');
+            }
+
+            // Analyze node and relationship types
+            const nodeTypes = new Set();
+            const relationshipTypes = new Set();
+
+            (graphData.nodes || []).forEach(node => {
+                if (node.labels && node.labels.length > 0) {
+                    node.labels.forEach(label => nodeTypes.add(label));
+                } else {
+                    nodeTypes.add('Unknown');
+                }
+            });
+
+            (graphData.relationships || []).forEach(rel => {
+                if (rel.type) {
+                    relationshipTypes.add(rel.type);
+                } else {
+                    relationshipTypes.add('Unknown');
+                }
+            });
+
+            // Generate colors for types (only if not in merge mode)
+            if (!mergeMode) {
+                nodeTypeColors = generateNodeTypeColors(Array.from(nodeTypes));
+                relationshipTypeColors = generateRelationshipTypeColors(Array.from(relationshipTypes));
+                updateLegend(nodeTypeColors, relationshipTypeColors);
+                updateFilterPanel(nodeTypeColors, relationshipTypeColors);
+            }
+
+            // Create a mapping from original Neo4j IDs to unique sequential IDs to avoid conflicts
+            const nodeIdMap = new Map();
+
+            // Process nodes with sequential IDs, filtering to only referenced nodes if highlightedNodes is not empty
+            const processedNodes = (graphData.nodes || [])
+                .filter(node => {
+                    // If no RAG query has been made yet (highlightedNodes empty), show all nodes
+                    if (highlightedNodes.size === 0) {
+                        return true;
+                    }
+
+                    // Check if this node was referenced in the RAG response
+                    // For entity nodes, check properties.id; for others, check the neo4j node id
+                    const nodeIdentifier = (node.properties && (node.properties.id || node.properties.name)) || node.id.toString();
+
+                    // Also check against element_id if available from properties
+                    const nodeElementId = node.properties && node.properties.element_id;
+
+                    return highlightedNodes.has(nodeIdentifier) ||
+                           (nodeElementId && highlightedNodes.has(nodeElementId)) ||
+                           highlightedNodes.has(node.id.toString());
+                })
+                .filter(node => {
+                    // Apply current filters
+                    if (currentFilters.nodeTypes.size > 0) {
+                        const nodeType = node.labels && node.labels.length > 0 ? node.labels[0] : 'Unknown';
+                        return currentFilters.nodeTypes.has(nodeType);
+                    }
+                    return true;
+                })
+                .map(node => {
+                    const originalId = node.id;
+                    let newId;
+
+                    if (nodeIdMap.has(originalId)) {
+                        newId = nodeIdMap.get(originalId);
+                    } else {
+                        newId = uniqueIdCounter++; // Use persistent counter for truly unique IDs
+                        nodeIdMap.set(originalId, newId);
+                    }
+
+                    // Determine node type and color
+                    const nodeType = node.labels && node.labels.length > 0 ? node.labels[0] : 'Unknown';
+                    const nodeColor = nodeTypeColors[nodeType] || '#a6cee3';
+
+                    return {
+                        ...node,
+                        id: newId,
+                        label: (node.properties && node.properties.name) || (node.labels && node.labels[0]) || String(newId),
+                        originalId: originalId, // Keep original ID for reference
+                        title: `Node ID: ${originalId}\nType: ${nodeType}\nLabels: ${node.labels ? node.labels.join(', ') : 'Unknown'}\nClick for details`,
+                        color: {
+                            background: nodeColor,
+                            border: '#2c3e50',
+                            highlight: {
+                                background: '#ff7f00',
+                                border: '#e67e22'
+                            },
+                            hover: {
+                                background: '#f39c12',
+                                border: '#e67e22'
+                            }
                         },
-                        hover: {
-                            background: '#b2df8a',
-                            border: '#33a02c'
+                        font: {
+                            size: 14,
+                            face: 'Tahoma',
+                            color: '#222222',
+                            strokeWidth: 2,
+                            strokeColor: '#ffffff'
+                        },
+                        size: 25,
+                        shape: 'dot'
+                    };
+                });
+
+            // Process relationships with mapped IDs, filtering to only include relationships between referenced nodes
+            const processedEdges = (graphData.relationships || [])
+                .filter(rel => {
+                    const sourceNodeId = rel.from || rel.start || rel.source;
+                    const targetNodeId = rel.to || rel.end || rel.target;
+
+                    // If no RAG query has been made yet, don't filter relationships
+                    if (highlightedNodes.size === 0) {
+                        return true;
+                    }
+
+                    // Only include relationships where both source and target nodes are referenced
+                    if (!sourceNodeId || !targetNodeId) {
+                        return false;
+                    }
+
+                    // Find the matched node objects to get their identifiers
+                    const sourceNode = processedNodes.find(n => n.originalId === sourceNodeId);
+                    const targetNode = processedNodes.find(n => n.originalId === targetNodeId);
+
+                    // Only include relationships where both source and target nodes are in the filtered set
+                    return sourceNode && targetNode;
+                })
+                .filter(rel => {
+                    // Apply current filters
+                    if (currentFilters.relationshipTypes.size > 0) {
+                        const relType = rel.type || 'Unknown';
+                        return currentFilters.relationshipTypes.has(relType);
+                    }
+                    return true;
+                })
+                .map(rel => {
+                    const fromId = nodeIdMap.get(rel.from || rel.start || rel.source);
+                    const toId = nodeIdMap.get(rel.to || rel.end || rel.target);
+
+                    // Only create edge if both nodes exist and are in the filtered set
+                    if (fromId && toId) {
+                        const relType = rel.type || 'Unknown';
+                        const edgeColor = relationshipTypeColors[relType] || '#444444';
+
+                        return {
+                            id: uniqueIdCounter++, // Use persistent counter for truly unique edge IDs
+                            from: fromId,
+                            to: toId,
+                            label: relType,
+                            originalId: rel.id,
+                            arrows: 'to',
+                            font: {
+                                align: 'middle',
+                                background: 'white',
+                                backgroundPadding: {top:2, right:6, bottom:2, left:6},
+                                strokeWidth: 1,
+                                strokeColor: '#888',
+                                color: '#333333',
+                                size: 12,
+                                vadjust: -10
+                            },
+                            color: {
+                                color: edgeColor,
+                                highlight: '#ff7f00',
+                                hover: '#ff7f00'
+                            },
+                            title: `Relationship: ${relType}\nOriginal ID: ${rel.id}`,
+                            width: 2
+                        };
+                    }
+                    return null;
+                }).filter(edge => edge !== null);
+
+            console.log(`Processed ${processedNodes.length} nodes and ${processedEdges.length} edges`);
+
+            if (mergeMode && network) {
+                // Merge mode: Add new nodes and edges to existing graph
+                console.log('Merging with existing graph...');
+
+                // Get existing node IDs to avoid conflicts
+                const existingNodeIds = new Set();
+                network.body.data.nodes.get().forEach(node => existingNodeIds.add(node.id));
+
+                // Filter out nodes that already exist
+                const newNodesOnly = processedNodes.filter(node => !existingNodeIds.has(node.id));
+                console.log(`Filtered ${processedNodes.length - newNodesOnly.length} duplicate nodes, adding ${newNodesOnly.length} new nodes`);
+
+                // Add new nodes only
+                if (newNodesOnly.length > 0) {
+                    try {
+                        network.body.data.nodes.add(newNodesOnly);
+                        console.log(`Added ${newNodesOnly.length} new nodes`);
+                    } catch (e) {
+                        console.error('Error adding nodes in merge mode:', e);
+                    }
+                }
+
+                // Get existing edge IDs to avoid conflicts
+                const existingEdgeIds = new Set();
+                network.body.data.edges.get().forEach(edge => existingEdgeIds.add(edge.id));
+
+                // Filter out edges that already exist
+                const newEdgesOnly = processedEdges.filter(edge => !existingEdgeIds.has(edge.id));
+                console.log(`Filtered ${processedEdges.length - newEdgesOnly.length} duplicate edges, adding ${newEdgesOnly.length} new edges`);
+
+                // Add new edges only
+                if (newEdgesOnly.length > 0) {
+                    try {
+                        network.body.data.edges.add(newEdgesOnly);
+                        console.log(`Added ${newEdgesOnly.length} new edges`);
+                    } catch (e) {
+                        console.error('Error adding edges in merge mode:', e);
+                    }
+                }
+
+                // Update stored graph data
+                if (!graphData) graphData = { nodes: [], relationships: [] };
+                graphData.nodes = [...(graphData.nodes || []), ...newNodesOnly];
+                graphData.relationships = [...(graphData.relationships || []), ...newEdgesOnly];
+
+            } else {
+                // Replace mode: Create new graph
+                console.log('Creating new graph...');
+                const nodes = new vis.DataSet(processedNodes);
+                const edges = new vis.DataSet(processedEdges);
+
+                const options = {
+                    nodes: {
+                        shape: 'dot',
+                        size: 25,
+                        font: {
+                            size: 14,
+                            face: 'Tahoma',
+                            color: '#222222',
+                            strokeWidth: 2,
+                            strokeColor: '#ffffff'
+                        },
+                        borderWidth: 2,
+                        borderWidthSelected: 4,
+                        shadow: {
+                            enabled: true,
+                            color: 'rgba(0,0,0,0.2)',
+                            size: 8,
+                            x: 3,
+                            y: 3
                         }
                     },
-                    shadow: {
-                        enabled: true,
-                        color: 'rgba(0,0,0,0.3)',
-                        size: 10,
-                        x: 5,
-                        y: 5
+                    edges: {
+                        width: 2,
+                        arrows: {
+                            to: { enabled: true, scaleFactor: 0.7, type: 'arrow' }
+                        },
+                        font: {
+                            size: 12,
+                            align: 'middle',
+                            color: '#333333',
+                            strokeWidth: 0,
+                            strokeColor: '#ffffff'
+                        },
+                        smooth: {
+                            enabled: true,
+                            type: 'dynamic',
+                            roundness: 0.3
+                        },
+                        shadow: {
+                            enabled: true,
+                            color: 'rgba(0,0,0,0.1)',
+                            size: 3,
+                            x: 2,
+                            y: 2
+                        }
+                    },
+                    physics: {
+                        stabilization: true,
+                        barnesHut: {
+                            gravitationalConstant: -10000,
+                            springConstant: 0.08,
+                            springLength: 200,
+                            damping: 0.09
+                        },
+                        minVelocity: 0.75
+                    },
+                    interaction: {
+                        hover: true,
+                        tooltipDelay: 150,
+                        zoomView: true,
+                        dragView: true,
+                        dragNodes: true,
+                        multiselect: true,
+                        navigationButtons: true,
+                        keyboard: true
+                    },
+                    layout: {
+                        improvedLayout: true,
+                        hierarchical: false
                     }
-                },
-                edges: {
-                    width: 3,
-                    color: {
-                        color: '#444444',  // darker gray edge line color as requested
-                        highlight: '#ff7f00',
-                        hover: '#ff7f00',
-                        inherit: false
-                    },
-                    arrows: {
-                        to: { enabled: true, scaleFactor: 0.7, type: 'arrow', color: '#333333' } // dark arrow color
-                    },
-                    font: {
-                        size: 14,
-                        align: 'middle',  // position label between arrow and edge start
-                        color: '#333333',
-                        strokeWidth: 0,
-                        strokeColor: '#ffffff'
-                    },
-                    smooth: {
-                        enabled: true,
-                        type: 'dynamic',
-                        roundness: 0.3
-                    },
-                    label: {
-                        enabled: true,
-                        min: 10,
-                        max: 40,
-                        maxVisible: 100,
-                        color: '#333333',
-                        font: 'bold 14px Arial',
-                        background: 'white',
-                        backgroundPadding: {top:2, right:6, bottom:2, left:6},
-                        backgroundColor: 'white',
-                        strokeWidth: 1,
-                        strokeColor: '#888',
-                        xOffset: 0,
-                        yOffset: 0,  // reset offset to center label on edge line
-                        drawBackground: true,
-                        labelHighlightBold: true
-                    },
-                    shadow: {
-                        enabled: true,
-                        color: 'rgba(0,0,0,0.2)',
-                        size: 5,
-                        x: 3,
-                        y: 3
-                    }
-                },
-                physics: {
-                    stabilization: true,
-                    barnesHut: {
-                        gravitationalConstant: -12000,
-                        springConstant: 0.06,
-                        springLength: 250,
-                        damping: 0.09
-                    },
-                    minVelocity: 0.75
-                },
-                interaction: {
-                    hover: true,
-                    tooltipDelay: 150,
-                    zoomView: true,
-                    dragView: true,
-                    dragNodes: true,
-                    multiselect: true,
-                    navigationButtons: true,
-                    keyboard: true
-                },
-                layout: {
-                    improvedLayout: true,
-                    hierarchical: false
-                }
-            };
-            
-            network = new vis.Network(container, { nodes, edges }, options);
-            
+                };
+
+                network = new vis.Network(container, { nodes, edges }, options);
+            }
+
             // Add click event listener for nodes to show info overlay
             network.on("click", function (params) {
                 const infoOverlayId = 'node-info-overlay';
@@ -1309,7 +1787,7 @@ const processedNodes = (graphData.nodes || []).map(node => {
                 if (existingOverlay) {
                     existingOverlay.remove();
                 }
-                
+
                 if (params.nodes.length > 0) {
                     const nodeId = params.nodes[0];
                     const node = nodes.get(nodeId);
@@ -1323,20 +1801,25 @@ const processedNodes = (graphData.nodes || []).map(node => {
                         overlay.style.borderRadius = '8px';
                         overlay.style.padding = '10px';
                         overlay.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                        overlay.style.maxWidth = '300px';
+                        overlay.style.maxWidth = '350px';
                         overlay.style.zIndex = 10000;
                         overlay.style.fontSize = '14px';
                         overlay.style.color = '#333';
                         overlay.style.overflowY = 'auto';
-                        overlay.style.maxHeight = '200px';
-                        
+                        overlay.style.maxHeight = '250px';
+
                         // Position overlay near clicked node
                         const canvasPos = network.canvasToDOM({x: params.pointer.canvas.x, y: params.pointer.canvas.y});
                         overlay.style.left = `${canvasPos.x + 10}px`;
                         overlay.style.top = `${canvasPos.y + 10}px`;
-                        
+
                         // Build info content
-                        let infoHtml = `<strong>Node ID:</strong> ${node.id}<br><strong>Label:</strong> ${node.label}<br><strong>Properties:</strong><br><ul>`;
+                        const nodeType = node.labels && node.labels.length > 0 ? node.labels[0] : 'Unknown';
+                        let infoHtml = `<strong>Node ID:</strong> ${node.originalId}<br>`;
+                        infoHtml += `<strong>Type:</strong> ${nodeType}<br>`;
+                        infoHtml += `<strong>Label:</strong> ${node.label}<br>`;
+                        infoHtml += `<strong>Properties:</strong><br><ul>`;
+
                         if (node.properties) {
                             for (const [key, value] of Object.entries(node.properties)) {
                                 infoHtml += `<li><strong>${key}:</strong> ${value}</li>`;
@@ -1345,7 +1828,7 @@ const processedNodes = (graphData.nodes || []).map(node => {
                             infoHtml += "<li>No additional properties.</li>";
                         }
                         infoHtml += '</ul>';
-                        
+
                         // Add close button
                         const closeBtn = document.createElement('button');
                         closeBtn.textContent = 'Close';
@@ -1359,17 +1842,17 @@ const processedNodes = (graphData.nodes || []).map(node => {
                         closeBtn.addEventListener('click', () => {
                             overlay.remove();
                         });
-                        
+
                         overlay.innerHTML = infoHtml;
                         overlay.appendChild(closeBtn);
-                        
+
                         // Append overlay to graph container
                         const container = document.getElementById('graph-container');
                         container.appendChild(overlay);
                     }
                 }
             });
-            
+
             // Zoom functionality
             document.getElementById('zoom-in').addEventListener('click', function() {
                 network.moveTo({
@@ -1377,14 +1860,14 @@ const processedNodes = (graphData.nodes || []).map(node => {
                     animation: true
                 });
             });
-            
+
             document.getElementById('zoom-out').addEventListener('click', function() {
                 network.moveTo({
                     scale: network.getScale() * 0.8,
                     animation: true
                 });
             });
-            
+
             document.getElementById('reset-zoom').addEventListener('click', function() {
                 network.fit({
                     animation: true
@@ -1444,13 +1927,13 @@ const processedNodes = (graphData.nodes || []).map(node => {
                 document.getElementById('error-popup').classList.add('hidden');
             });
             
-            // Initialize empty graph
-            initializeGraph({
-                nodes: [
-                    { id: 1, label: 'Load a KG', color: '#3498db', shape: 'diamond' }
-                ],
-                relationships: []
-            });
+            // Don't initialize with placeholder graph - start clean
+            // initializeGraph({
+            //     nodes: [
+            //         { id: 1, label: 'Load a KG', color: '#3498db', shape: 'diamond' }
+            //     ],
+            //     relationships: []
+            // });
 
             // Fetch and pre-fill Neo4j credentials
             fetch('/neo4j/default_credentials')
@@ -1733,11 +2216,13 @@ const processedNodes = (graphData.nodes || []).map(node => {
                     
                     const provider = document.getElementById('kg-provider').value;
                     const model = document.getElementById('kg-model').value;
-                    
+                    const embeddingModel = document.getElementById('embedding-model').value;
+
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('provider', provider);
                     formData.append('model', model);
+                    formData.append('embedding_model', embeddingModel);
                     if (ontologyFile) {
                         formData.append('ontology', ontologyFile);
                     }
@@ -1754,11 +2239,63 @@ const processedNodes = (graphData.nodes || []).map(node => {
                     
                     const result = await response.json();
                     currentKGId = result.kg_id;
-                    initializeGraph(result.graph_data);
-                    graphData = result.graph_data; // Store graph data for re-initialization
-                    const nodeCount = result.graph_data?.nodes?.length ?? 0;
-const relCount = result.graph_data?.relationships?.length ?? 0;
-addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
+                    console.log('KG creation result:', result);
+                    console.log('Graph data:', result.graph_data);
+
+                    // Check if we should merge with existing graph or create new one
+                    const mergeMode = network !== null && graphData !== null;
+                    console.log('Merge mode:', mergeMode);
+
+                    initializeGraph(result.graph_data, mergeMode);
+
+                    // Update stored graph data for merging
+                    if (mergeMode) {
+                        // Merge new data with existing data
+                        const existingNodes = graphData.nodes || [];
+                        const existingRelationships = graphData.relationships || [];
+                        const newNodes = result.graph_data.nodes || [];
+                        const newRelationships = result.graph_data.relationships || [];
+
+                        // Create a set of existing node IDs for deduplication
+                        const existingNodeIds = new Set(existingNodes.map(n => n.id));
+
+                        // Add only new nodes that don't already exist
+                        const uniqueNewNodes = newNodes.filter(node => !existingNodeIds.has(node.id));
+
+                        // Merge the data
+                        graphData = {
+                            nodes: [...existingNodes, ...uniqueNewNodes],
+                            relationships: [...existingRelationships, ...newRelationships]
+                        };
+
+                        const newNodeCount = uniqueNewNodes.length;
+                        const newRelCount = newRelationships.length;
+                        addToChat(`Knowledge graph expanded with ${newNodeCount} new nodes and ${newRelCount} new relationships (total: ${graphData.nodes.length} nodes, ${graphData.relationships.length} relationships)`);
+                    } else {
+                        // First graph creation
+                        graphData = result.graph_data; // Store graph data for re-initialization
+                        const nodeCount = result.graph_data?.nodes?.length ?? 0;
+                        const relCount = result.graph_data?.relationships?.length ?? 0;
+                        addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
+                    }
+
+                    // Add test node to verify graph is working
+                    setTimeout(() => {
+                        if(network) {
+                            try {
+                                const testNode = {id: 999999, label: 'TEST NODE - Graph Working', color: {background: '#ff0000'}};
+                                network.body.data.nodes.add(testNode);
+                                console.log('Test node added successfully');
+                                addToChat('Test node added to verify graph functionality', 'ai');
+                            } catch(e) {
+                                console.error('Failed to add test node:', e);
+                                addToChat(`Error adding test node: ${e.message}`, 'error');
+                            }
+                        } else {
+                            console.error('Network is null after KG creation');
+                            addToChat('Network is null - graph initialization failed', 'error');
+                        }
+                    }, 1000);
                     
                     // Reset file selection
                     fileInput.value = '';
@@ -2255,7 +2792,74 @@ addToChat(`Loaded stored knowledge graph: ${result.filename} with ${storedNodeCo
             
             // Attach create KG handler
             attachCreateKGHandler();
-            
+
+            // Search functionality
+            document.getElementById('node-search').addEventListener('input', function(e) {
+                performSearch(e.target.value);
+            });
+
+            // Filter panel toggle
+            document.getElementById('filter-btn').addEventListener('click', function() {
+                const filterPanel = document.getElementById('filter-panel');
+                filterPanel.style.display = filterPanel.style.display === 'none' ? 'block' : 'none';
+            });
+
+            // Apply filters
+            document.getElementById('apply-filters').addEventListener('click', function() {
+                applyFilters();
+                document.getElementById('filter-panel').style.display = 'none';
+            });
+
+            // Reset filters
+            document.getElementById('reset-filters').addEventListener('click', function() {
+                // Reset all checkboxes to checked
+                const checkboxes = document.querySelectorAll('#filter-panel input[type="checkbox"]');
+                checkboxes.forEach(checkbox => checkbox.checked = true);
+
+                // Clear current filters
+                currentFilters.nodeTypes.clear();
+                currentFilters.relationshipTypes.clear();
+
+                // Re-initialize graph
+                if (graphData) {
+                    initializeGraph(graphData);
+                }
+
+                document.getElementById('filter-panel').style.display = 'none';
+            });
+
+            // Export PNG functionality
+            document.getElementById('export-png').addEventListener('click', function() {
+                if (!network) {
+                    showError('No graph to export');
+                    return;
+                }
+
+                try {
+                    // Use html2canvas or similar for PNG export
+                    // For now, show a placeholder message
+                    showError('PNG export functionality coming soon');
+                } catch (error) {
+                    showError('Failed to export PNG: ' + error.message);
+                }
+            });
+
+            // Export SVG functionality
+            document.getElementById('export-svg').addEventListener('click', function() {
+                if (!network) {
+                    showError('No graph to export');
+                    return;
+                }
+
+                try {
+                    // Use vis-network's built-in export or custom SVG generation
+                    // For now, show a placeholder message
+                    showError('SVG export functionality coming soon');
+                } catch (error) {
+                    showError('Failed to export SVG: ' + error.message);
+                }
+            });
+
             // Function to toggle reasoning steps
             window.toggleReasoningSteps = function() {
                 const reasoningStepsContent = document.getElementById('reasoning-steps-content');

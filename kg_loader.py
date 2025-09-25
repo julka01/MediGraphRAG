@@ -418,8 +418,8 @@ class KGLoader:
         return entities, supernodes, relationships
         
     def save_to_neo4j(self, uri: str, user: str, password: str, graph_data: Dict, clear_database: bool = False) -> Dict:
-        """Save knowledge graph to Neo4j database with supernode support
-        
+        """Save knowledge graph to Neo4j database with supernode support and duplicate handling
+
         Args:
             uri: Neo4j connection URI
             user: Neo4j username
@@ -430,54 +430,92 @@ class KGLoader:
         try:
             # Use password directly without escaping
             driver = GraphDatabase.driver(uri, auth=(user, password))
-            
+
             with driver.session() as session:
                 # Clear existing data only if requested
                 if clear_database:
                     session.run("MATCH (n) DETACH DELETE n")
                     print("Cleared existing database data")
-                
+
                 node_map = {}
-                
-                # Create all nodes (entities and supernodes)
+
+                # Create all nodes (entities and supernodes) using MERGE to avoid duplicates
                 all_nodes = graph_data.get("nodes", []) + graph_data.get("supernodes", [])
                 for node in all_nodes:
                     # Sanitize labels: replace spaces with underscores
                     labels = node.get("label", "Node").replace(" ", "_")
                     properties = {k: v for k, v in node.get("properties", {}).items()}
+
+                    # Use MERGE based on a unique identifier
+                    # If node has an 'id' property, use that, otherwise use a combination of properties
+                    if 'id' in properties:
+                        unique_key = 'id'
+                        unique_value = properties['id']
+                    elif 'name' in properties:
+                        unique_key = 'name'
+                        unique_value = properties['name']
+                    else:
+                        # Create a hash of all properties as a unique identifier
+                        import hashlib
+                        prop_str = json.dumps(properties, sort_keys=True)
+                        unique_value = hashlib.md5(prop_str.encode()).hexdigest()[:8]
+                        unique_key = 'unique_hash'
+                        properties['unique_hash'] = unique_value
+
+                    # Use MERGE to create if doesn't exist, or match if it does
+                    merge_clause = f"MERGE (n:{labels} {{{unique_key}: $unique_value}})"
+                    set_clause = "SET n += $properties"
+
                     result = session.run(
-                        f"CREATE (n:{labels} $properties) RETURN elementId(n) as node_id",
+                        f"{merge_clause} {set_clause} RETURN elementId(n) as node_id",
+                        unique_value=unique_value,
                         properties=properties
                     )
                     node_id = result.single()["node_id"]
-                    node_map[node["id"]] = node_id
-                
-                # Create relationships using the node_map to reference nodes
+                    node_map[node["id"]] = node_id  # Map our KG node ID to Neo4j node ID
+
+                # Create relationships using the node_map, also with MERGE to avoid duplicates
                 for rel in graph_data.get("relationships", []):
                     # Use the original node IDs to look up Neo4j internal IDs
                     start_neo4j_id = node_map.get(rel["from"])
                     end_neo4j_id = node_map.get(rel["to"])
-                    
+
                     if start_neo4j_id is not None and end_neo4j_id is not None:
+                        # MERGE relationships based on the relationship type and connected nodes
+                        rel_properties = rel.get("properties", {})
+
+                        # Add a relationship ID if provided
+                        if 'id' in rel:
+                            rel_id_value = rel['id']
+                            rel_properties['rel_id'] = rel_id_value
+                        else:
+                            # Use a combination of node IDs and type as unique identifier
+                            rel_id_value = f"{rel['from']}_{rel['to']}_{rel['type']}"
+                            rel_properties['rel_id'] = rel_id_value
+
+                        merge_clause = f"MERGE (a)-[r:{rel['type']} {{rel_id: $rel_id}}]->(b)"
+
                         session.run(
                             "MATCH (a), (b) WHERE elementId(a) = $start_neo4j_id AND elementId(b) = $end_neo4j_id "
-                            "CREATE (a)-[r:%s $properties]->(b)" % rel['type'],
+                            + merge_clause + " "
+                            + ("SET r += $properties" if rel_properties else ""),
                             start_neo4j_id=start_neo4j_id,
                             end_neo4j_id=end_neo4j_id,
-                            properties=rel.get("properties", {})
+                            rel_id=rel_id_value,
+                            properties=rel_properties
                         )
                     else:
-                        print(f"Warning: Could not find nodes for relationship {rel['id']} "
+                        print(f"Warning: Could not find nodes for relationship {rel.get('id', 'unknown')} "
                               f"({rel['from']} -> {rel['to']})")
-                
+
                 return {
-                    "status": "success", 
-                    "message": "Knowledge graph saved to Neo4j",
+                    "status": "success",
+                    "message": "Knowledge graph saved to Neo4j (duplicates handled)",
                     "clear_database": clear_database,
-                    "nodes_created": len(all_nodes),
-                    "relationships_created": len(graph_data.get("relationships", []))
+                    "nodes_processed": len(all_nodes),
+                    "relationships_processed": len(graph_data.get("relationships", []))
                 }
-                
+
         except Exception as e:
             # Capture full error details for debugging
             error_details = {

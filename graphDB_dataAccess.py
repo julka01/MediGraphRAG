@@ -3,10 +3,12 @@ import os
 import time
 from neo4j.exceptions import TransientError
 from langchain_neo4j import Neo4jGraph
-from shared.common_fn import create_gcs_bucket_folder_name_hashed, delete_uploaded_local_file, load_embedding_model
-from shared.constants import BUCKET_UPLOAD,NODEREL_COUNT_QUERY_WITH_COMMUNITY, NODEREL_COUNT_QUERY_WITHOUT_COMMUNITY
-from entities.source_node import sourceNode
-from shared.constants import MAX_COMMUNITY_LEVELS
+import sys
+import os
+# Import from local kg_utils
+from kg_utils.common_functions import create_gcs_bucket_folder_name_hashed, delete_uploaded_local_file, load_embedding_model
+from kg_utils.constants import BUCKET_UPLOAD, NODEREL_COUNT_QUERY_WITH_COMMUNITY, NODEREL_COUNT_QUERY_WITHOUT_COMMUNITY, MAX_COMMUNITY_LEVELS
+from kg_utils.source_node import sourceNode
 import json
 from dotenv import load_dotenv
 
@@ -37,26 +39,27 @@ class graphDBdataAccess:
             logging.error(f"Error in updating document node status as failed: {error_message}")
             raise Exception(error_message)
         
-    def create_source_node(self, obj_source_node:sourceNode):
+    def create_source_node(self, obj_source_node:sourceNode, kg_name: str = None):
         try:
             job_status = "New"
             logging.info(f"creating source node if does not exist in database {self.graph._database}")
             self.graph.query("""MERGE(d:Document {fileName :$fn}) SET d.fileSize = $fs, d.fileType = $ft ,
-                            d.status = $st, d.url = $url, d.awsAccessKeyId = $awsacc_key_id, 
-                            d.fileSource = $f_source, d.createdAt = $c_at, d.updatedAt = $u_at, 
-                            d.processingTime = $pt, d.errorMessage = $e_message, d.nodeCount= $n_count, 
-                            d.relationshipCount = $r_count, d.model= $model, d.gcsBucket=$gcs_bucket, 
+                            d.status = $st, d.url = $url, d.awsAccessKeyId = $awsacc_key_id,
+                            d.fileSource = $f_source, d.createdAt = $c_at, d.updatedAt = $u_at,
+                            d.processingTime = $pt, d.errorMessage = $e_message, d.nodeCount= $n_count,
+                            d.relationshipCount = $r_count, d.model= $model, d.gcsBucket=$gcs_bucket,
                             d.gcsBucketFolder= $gcs_bucket_folder, d.language= $language,d.gcsProjectId= $gcs_project_id,
                             d.is_cancelled=False, d.total_chunks=0, d.processed_chunk=0,
                             d.access_token=$access_token,
                             d.chunkNodeCount=$chunkNodeCount,d.chunkRelCount=$chunkRelCount,
                             d.entityNodeCount=$entityNodeCount,d.entityEntityRelCount=$entityEntityRelCount,
-                            d.communityNodeCount=$communityNodeCount,d.communityRelCount=$communityRelCount""",
-                            {"fn":obj_source_node.file_name, "fs":obj_source_node.file_size, "ft":obj_source_node.file_type, "st":job_status, 
+                            d.communityNodeCount=$communityNodeCount,d.communityRelCount=$communityRelCount,
+                            d.kgName = $kg_name""",
+                            {"fn":obj_source_node.file_name, "fs":obj_source_node.file_size, "ft":obj_source_node.file_type, "st":job_status,
                             "url":obj_source_node.url,
                             "awsacc_key_id":obj_source_node.awsAccessKeyId, "f_source":obj_source_node.file_source, "c_at":obj_source_node.created_at,
                             "u_at":obj_source_node.created_at, "pt":0, "e_message":'', "n_count":0, "r_count":0, "model":obj_source_node.model,
-                            "gcs_bucket": obj_source_node.gcsBucket, "gcs_bucket_folder": obj_source_node.gcsBucketFolder, 
+                            "gcs_bucket": obj_source_node.gcsBucket, "gcs_bucket_folder": obj_source_node.gcsBucketFolder,
                             "language":obj_source_node.language, "gcs_project_id":obj_source_node.gcsProjectId,
                             "access_token":obj_source_node.access_token,
                             "chunkNodeCount":obj_source_node.chunkNodeCount,
@@ -64,7 +67,8 @@ class graphDBdataAccess:
                             "entityNodeCount":obj_source_node.entityNodeCount,
                             "entityEntityRelCount":obj_source_node.entityEntityRelCount,
                             "communityNodeCount":obj_source_node.communityNodeCount,
-                            "communityRelCount":obj_source_node.communityRelCount
+                            "communityRelCount":obj_source_node.communityRelCount,
+                            "kg_name": kg_name
                             },session_params={"database":self.graph._database})
         except Exception as e:
             error_message = str(e)
@@ -578,8 +582,114 @@ class graphDBdataAccess:
     def get_websource_url(self,file_name):
         logging.info("Checking if same title with different URL exist in db ")
         query = """
-                MATCH(d:Document {fileName : $file_name}) WHERE d.fileSource = "web-url" 
+                MATCH(d:Document {fileName : $file_name}) WHERE d.fileSource = "web-url"
                 RETURN d.url AS url
                 """
         param = {"file_name" : file_name}
         return self.execute_query(query, param)
+
+    def get_kg_list(self):
+        """
+        Get list of all knowledge graphs in the database
+        """
+        logging.info("Get existing KG list from graph")
+        query = """
+        MATCH(d:Document)
+        WHERE d.fileName IS NOT NULL AND d.kgName IS NOT NULL
+        RETURN DISTINCT d.kgName AS kgName,
+               count(d) AS documentCount,
+               max(d.updatedAt) AS lastUpdated
+        ORDER BY d.kgName
+        """
+        result = self.graph.query(query,session_params={"database":self.graph._database})
+        return [entry for entry in result]
+
+    def get_source_list_by_kg(self, kg_name: str):
+        """
+        Get list of sources for a specific knowledge graph
+        """
+        logging.info(f"Get existing files list for KG: {kg_name}")
+        query = """
+        MATCH(d:Document)
+        WHERE d.fileName IS NOT NULL AND d.kgName = $kg_name
+        RETURN d ORDER BY d.updatedAt DESC
+        """
+        param = {"kg_name": kg_name}
+        result = self.graph.query(query, param, session_params={"database":self.graph._database})
+        list_of_json_objects = [entry['d'] for entry in result]
+        return list_of_json_objects
+
+    def delete_kg(self, kg_name: str, delete_entities: bool = True):
+        """
+        Delete an entire knowledge graph and all its documents
+        """
+        logging.info(f"Deleting KG: {kg_name}")
+
+        # Get all documents in this KG
+        docs_query = """
+        MATCH(d:Document {kgName: $kg_name})
+        RETURN d.fileName AS fileName, d.fileSource AS fileSource
+        """
+        param = {"kg_name": kg_name}
+        docs_result = self.execute_query(docs_query, param)
+
+        if not docs_result:
+            logging.info(f"No documents found for KG: {kg_name}")
+            return 0
+
+        # Extract filenames and source types
+        filenames = [doc['fileName'] for doc in docs_result]
+        source_types = [doc['fileSource'] or "None" for doc in docs_result]
+
+        # Use existing delete_file_from_graph method
+        # We need to mock the parameters it expects
+        import tempfile
+        import os
+
+        # Create temporary directory for merged_dir parameter
+        with tempfile.TemporaryDirectory() as temp_dir:
+            deleted_count = self.delete_file_from_graph(
+                filenames=json.dumps(filenames),
+                source_types=json.dumps(source_types),
+                deleteEntities=str(delete_entities).lower(),
+                merged_dir=temp_dir,
+                uri="mock_uri"  # This won't be used for non-GCS files
+            )
+
+        logging.info(f"Deleted KG '{kg_name}' with {deleted_count} documents")
+        return deleted_count
+
+    def get_kg_stats(self, kg_name: str = None):
+        """
+        Get statistics for a specific KG or all KGs
+        """
+        if kg_name:
+            query = """
+            MATCH(d:Document {kgName: $kg_name})
+            RETURN
+                $kg_name AS kgName,
+                count(d) AS documentCount,
+                sum(d.nodeCount) AS totalNodes,
+                sum(d.relationshipCount) AS totalRelationships,
+                sum(d.chunkNodeCount) AS chunkNodes,
+                sum(d.entityNodeCount) AS entityNodes,
+                sum(d.communityNodeCount) AS communityNodes
+            """
+            param = {"kg_name": kg_name}
+        else:
+            query = """
+            MATCH(d:Document)
+            WHERE d.kgName IS NOT NULL
+            RETURN
+                d.kgName AS kgName,
+                count(d) AS documentCount,
+                sum(d.nodeCount) AS totalNodes,
+                sum(d.relationshipCount) AS totalRelationships,
+                sum(d.chunkNodeCount) AS chunkNodes,
+                sum(d.entityNodeCount) AS entityNodes,
+                sum(d.communityNodeCount) AS communityNodes
+            ORDER BY kgName
+            """
+
+        result = self.execute_query(query, param if kg_name else None)
+        return [entry for entry in result]

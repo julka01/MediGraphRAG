@@ -2,20 +2,19 @@ import json
 import re
 import hashlib
 import importlib
+import uuid
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.docstore.document import Document
-from langchain_neo4j import Neo4jGraph
+from neo4j import GraphDatabase
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend/src'))
-sys.path.append(os.path.join(os.path.dirname(__file__), 'llm-graph-builder/backend'))
-
-from create_chunks import CreateChunksofDocument
+# Import from local kg_utils
+from kg_utils.create_chunks import CreateChunksofDocument
 
 class ChunkedKGCreator:
     """
@@ -42,12 +41,10 @@ class ChunkedKGCreator:
         self.embedding_model = embedding_model
     
     def _create_neo4j_connection(self):
-        """Create Neo4j graph connection"""
-        return Neo4jGraph(
-            url=self.neo4j_uri,
-            username=self.neo4j_user,
-            password=self.neo4j_password,
-            database=self.neo4j_database
+        """Create Neo4j driver connection"""
+        return GraphDatabase.driver(
+            self.neo4j_uri,
+            auth=(self.neo4j_user, self.neo4j_password)
         )
    
     def _chunk_text(self, text: str) -> List[Dict[str, Any]]:
@@ -180,54 +177,64 @@ class ChunkedKGCreator:
         
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free", kg_name: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text using chunking and the app's chosen LLM
         """
         # Step 1: Chunk the text using llm-graph-builder's logic
         chunks = self._chunk_text(text)
-        
-        # Step 2: Extract entities and relationships from each chunk
+
+        # Step 2: Extract entities and relationships from each chunk, tracking chunk-entity associations
         all_entities = []
         all_relationships = []
-        
+        chunk_entity_map = {}  # Track which entities came from which chunks
+
         for chunk in chunks:
             chunk_kg = self._extract_entities_and_relationships(chunk['text'], llm)
+
+            # Store chunk-entity associations for provenance
+            chunk_entities = [entity['id'] for entity in chunk_kg['entities']]
+            chunk_entity_map[chunk['chunk_id']] = chunk_entities
+
             all_entities.extend(chunk_kg['entities'])
             all_relationships.extend(chunk_kg['relationships'])
-        
+
         # Step 3: Harmonize entities and relationships across chunks
         harmonized_entities = self._harmonize_entities(all_entities)
-        
+
         # Create entity map for relationship harmonization
         entity_map = {entity['id']: entity for entity in harmonized_entities}
         harmonized_relationships = self._harmonize_relationships(all_relationships, entity_map)
-        
+
         # Step 4: Format the final knowledge graph with detailed Neo4j-compatible structure
+        # Make IDs unique per KG to avoid conflicts in visualization
+        kg_prefix = f"{kg_name}_" if kg_name else ""
+
         kg = {
             "nodes": [
                 {
-                    "id": entity['id'],
+                    "id": f"{kg_prefix}{entity['id']}",
                     "label": entity['type'],
                     "properties": {
                         "name": entity['id'],
                         "type": entity['type'],
+                        "original_id": entity['id'],  # Keep original ID for reference
                         **entity.get('properties', {})
                     },
                     "color": self._get_node_color(entity['type']),
                     "size": 30,
                     "font": {"size": 14, "color": "#333333"},
-                    "title": f"Entity: {entity['id']}\nType: {entity['type']}\nClick for details"
+                    "title": f"Entity: {entity['id']}\nType: {entity['type']}\nKG: {kg_name or 'default'}\nClick for details"
                 }
                 for entity in harmonized_entities
             ],
             "relationships": [
                 {
-                    "id": f"rel_{idx}",
-                    "from": rel['source'],
-                    "to": rel['target'],
-                    "source": rel['source'],
-                    "target": rel['target'],
+                    "id": f"{kg_prefix}rel_{idx}",
+                    "from": f"{kg_prefix}{rel['source']}",
+                    "to": f"{kg_prefix}{rel['target']}",
+                    "source": f"{kg_prefix}{rel['source']}",
+                    "target": f"{kg_prefix}{rel['target']}",
                     "type": rel['type'],
                     "label": rel['type'],
                     "properties": rel.get('properties', {}),
@@ -238,17 +245,19 @@ class ChunkedKGCreator:
                 for idx, rel in enumerate(harmonized_relationships)
             ],
             "chunks": chunks,
+            "chunk_entity_map": chunk_entity_map,  # Store provenance mapping for entity-chunk links
             "metadata": {
                 "total_chunks": len(chunks),
                 "total_entities": len(harmonized_entities),
                 "total_relationships": len(harmonized_relationships),
                 "chunk_size": self.chunk_size,
                 "chunk_overlap": self.chunk_overlap,
+                "kg_name": kg_name,
                 "created_at": datetime.now().isoformat(),
                 "visualization_ready": True
             }
         }
-        
+
         return kg
 
     def _get_node_color(self, entity_type: str) -> str:
@@ -266,49 +275,92 @@ class ChunkedKGCreator:
         }
         return color_map.get(entity_type, "#a6cee3")
 
-    def store_knowledge_graph(self, kg: Dict[str, Any], file_name: str = None) -> bool:
+    def store_knowledge_graph(self, kg: Dict[str, Any], file_name: str = None, version_name: str = None, version_description: str = None, kg_name: str = None) -> bool:
         """
-        Store the knowledge graph in Neo4j database
+        Store the knowledge graph in Neo4j database with optional version tracking
         """
+        driver = None
+        session = None
         try:
-            graph = self._create_neo4j_connection()
-            
+            driver = self._create_neo4j_connection()
+            session = driver.session(database=self.neo4j_database)
+
+            # Create KG version node if version_name is provided
+            version_id = None
+            if version_name:
+                version_id = str(uuid.uuid4())
+                version_query = """
+                CREATE (v:KGVersion {
+                    id: $version_id,
+                    name: $version_name,
+                    description: $version_description,
+                    created: datetime()
+                })
+                """
+                session.run(version_query, {
+                    "version_id": version_id,
+                    "version_name": version_name,
+                    "version_description": version_description or f"KG version: {version_name}"
+                })
+
             # Create document node if file_name is provided
             if file_name:
                 doc_query = """
                 MERGE (d:Document {fileName: $fileName})
                 SET d.createdAt = datetime()
                 """
-                graph.query(doc_query, {"fileName": file_name})
-            
+                session.run(doc_query, {"fileName": file_name})
+
             # Create entity nodes
             for node in kg['nodes']:
                 node_query = f"""
                 MERGE (n:{node['label']} {{id: $id}})
                 SET n += $properties
                 """
-                graph.query(node_query, {
+                session.run(node_query, {
                     "id": node['id'],
                     "properties": node.get('properties', {})
                 })
-            
+
+                # Link entity to version if version_id is provided
+                if version_id:
+                    version_link_query = """
+                    MATCH (n {id: $node_id})
+                    MATCH (v:KGVersion {id: $version_id})
+                    MERGE (v)-[:CONTAINS_ENTITY]->(n)
+                    """
+                    session.run(version_link_query, {
+                        "node_id": node['id'],
+                        "version_id": version_id
+                    })
+
             # Create relationships
             for rel in kg['relationships']:
+                # Sanitize relationship type to replace spaces with underscores for valid Cypher
+                sanitized_rel_type = rel['type'].replace(' ', '_').replace('-', '_').upper()
+
                 rel_query = f"""
                 MATCH (source {{id: $source_id}})
                 MATCH (target {{id: $target_id}})
-                MERGE (source)-[r:{rel['type']}]->(target)
+                MERGE (source)-[r:{sanitized_rel_type}]->(target)
                 SET r += $properties
                 """
-                graph.query(rel_query, {
+                session.run(rel_query, {
                     "source_id": rel['source'],
                     "target_id": rel['target'],
                     "properties": rel.get('properties', {})
                 })
-            
+
+                # Note: Relationship versioning is complex in graph databases
+                # For now, we only version entities. Relationships are shared across versions.
+
             # Create chunk nodes and relationships
+            chunk_id_map = {}  # Map chunk_id to actual chunk hash for MENTIONS links
+
             for chunk in kg['chunks']:
                 chunk_id = hashlib.sha1(chunk['text'].encode()).hexdigest()
+                chunk_id_map[chunk['chunk_id']] = chunk_id  # Store mapping for entity linking
+
                 chunk_query = """
                 MERGE (c:Chunk {id: $chunk_id})
                 SET c.text = $text,
@@ -316,14 +368,14 @@ class ChunkedKGCreator:
                     c.start_pos = $start_pos,
                     c.end_pos = $end_pos
                 """
-                graph.query(chunk_query, {
+                session.run(chunk_query, {
                     "chunk_id": chunk_id,
                     "text": chunk['text'],
                     "position": chunk['chunk_id'],
                     "start_pos": chunk['start_pos'],
                     "end_pos": chunk['end_pos']
                 })
-                
+
                 # Link chunk to document if file_name is provided
                 if file_name:
                     chunk_doc_query = """
@@ -331,13 +383,40 @@ class ChunkedKGCreator:
                     MATCH (d:Document {fileName: $fileName})
                     MERGE (c)-[:PART_OF]->(d)
                     """
-                    graph.query(chunk_doc_query, {
+                    session.run(chunk_doc_query, {
                         "chunk_id": chunk_id,
                         "fileName": file_name
                     })
-            
+
+            # Create MENTIONS relationships between chunks and entities
+            # Check if chunk_entity_map exists (for backwards compatibility)
+            if 'chunk_entity_map' in kg:
+                kg_prefix = f"{kg_name}_" if kg_name else ""
+
+                for chunk_idx, entity_ids in kg['chunk_entity_map'].items():
+                    if chunk_idx in chunk_id_map:
+                        chunk_hash = chunk_id_map[chunk_idx]
+
+                        for entity_id in entity_ids:
+                            entity_full_id = f"{kg_prefix}{entity_id}"
+
+                            mention_query = """
+                            MATCH (c:Chunk {id: $chunk_id})
+                            MATCH (e {id: $entity_id})
+                            MERGE (c)-[:MENTIONS]->(e)
+                            """
+                            session.run(mention_query, {
+                                "chunk_id": chunk_hash,
+                                "entity_id": entity_full_id
+                            })
+
             return True
-            
+
         except Exception as e:
             print(f"Error storing knowledge graph: {e}")
             return False
+        finally:
+            if session:
+                session.close()
+            if driver:
+                driver.close()

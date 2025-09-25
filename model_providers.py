@@ -208,5 +208,75 @@ def get_provider(provider: str, model: str = None, **kwargs) -> ModelProvider:
 # alias for compatibility
 get_llm_provider = get_provider
 
+def get_embedding_model(provider="huggingface"):
+    """Get an embedding model from different providers
+
+    Args:
+        provider: Provider to use ('huggingface', 'openai', 'vertexai')
+
+    Returns:
+        LangChain embedding model
+    """
+    if provider == "huggingface":
+        try:
+            # Try to import from the correct package first
+            try:
+                from langchain_huggingface import HuggingFaceEmbeddings
+            except ImportError:
+                try:
+                    from langchain_community.embeddings import HuggingFaceEmbeddings
+                except ImportError:
+                    try:
+                        from langchain.embeddings import HuggingFaceEmbeddings
+                    except ImportError:
+                        print("❌ No compatible HuggingFace embeddings package found")
+                        raise
+
+            print("✓ Importing HuggingFaceEmbeddings...")
+            embedder = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/all-mpnet-base-v2",
+                model_kwargs={'device': 'cpu'},  # Use CPU by default for compatibility
+                encode_kwargs={'normalize_embeddings': True}
+            )
+            print("✓ HuggingFaceEmbeddings initialized successfully")
+            return embedder
+        except Exception as e:
+            print(f"❌ HuggingFace initialization failed: {e}")
+            raise ImportError("huggingface embeddings not available. Install with: pip install sentence-transformers transformers torch")
+    elif provider == "openai":
+        from langchain.embeddings import OpenAIEmbeddings
+        return OpenAIEmbeddings()
+    elif provider == "vertexai":
+        from langchain_google_vertexai import VertexAIEmbeddings
+        return VertexAIEmbeddings(model_name="textembedding-gecko")
+    else:
+        raise ValueError(f"Unsupported embedding provider: {provider}. Choose from 'huggingface', 'openai', 'vertexai'")
+
+def get_embedding_method(provider_name=None):
+    """Get the configured embedding method from environment
+
+    Args:
+        provider_name: Optional provider override ('huggingface', 'openai', 'vertexai')
+
+    Returns:
+        tuple: (provider_name, embedding_model)
+    """
+    if provider_name is None:
+        provider = os.getenv("EMBEDDING_PROVIDER", "huggingface")  # Default to huggingface
+    else:
+        provider = provider_name
+
+    try:
+        embedder = get_embedding_model(provider)
+        return provider, embedder
+    except Exception as e:
+        print(f"Failed to initialize {provider} embeddings, falling back to OpenAI: {e}")
+        # Fallback to OpenAI if HuggingFace fails
+        try:
+            embedder = get_embedding_model("openai")
+            return "openai", embedder
+        except Exception as e2:
+            raise RuntimeError(f"Failed to initialize any embedding model. OpenAI error: {e2}")
+
 # alias for compatibility
 get_llm_provider = get_provider

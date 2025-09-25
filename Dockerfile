@@ -10,25 +10,32 @@ ENV PYTHONPATH=/app
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libxml2-dev \
-    libxslt1-dev \
     curl \
-    wget \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install Ollama (CPU version)
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# Install Ollama (CPU version) with retry
+RUN for i in {1..3}; do \
+        if curl -fsSL https://ollama.com/install.sh | sh; then \
+            break; \
+        else \
+            echo "Ollama installation failed, retrying in 5 seconds..."; \
+            sleep 5; \
+        fi; \
+    done && \
+    if ! command -v ollama >/dev/null 2>&1; then \
+        echo "Ollama installation failed after retries"; \
+        exit 1; \
+    fi
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY requirements-prod.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -r requirements-prod.txt \
     && pip cache purge
 
 # Copy application files
