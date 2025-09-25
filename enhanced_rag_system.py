@@ -8,6 +8,8 @@ from datetime import datetime
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_neo4j import Neo4jGraph
+from sentence_transformers import SentenceTransformer
+from model_providers import get_embedding_method
 
 class EnhancedRAGSystem:
     """
@@ -31,9 +33,9 @@ class EnhancedRAGSystem:
         if not self.neo4j_uri or not self.neo4j_user or not self.neo4j_password:
             raise ValueError("Neo4j connection parameters not found. Please set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD environment variables.")
 
-        # Enhanced RAG prompt template with generic reasoning paths
+        # Enhanced RAG prompt template with detailed node traversal
         self.rag_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an AI assistant that provides structured responses with reasoning paths. All responses must follow the same format but content adapts to the user's query intent.
+            ("system", """You are an AI assistant that provides structured responses with detailed node traversal from the knowledge graph. All responses must follow the same format but content adapts to the user's query intent.
 
 CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
 
@@ -42,20 +44,27 @@ CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
    - Include key insights, important relationships, and relevant context
    - Be concise but comprehensive in highlighting what matters most
 
-2. **REASONING PATH** (Always include this - step-by-step logical progression)
+2. **NODE TRAVERSAL PATH** (Always include this - detailed graph traversal)
+   - Show the complete path through the knowledge graph nodes and relationships used to derive the answer
+   - Format: Start Node Name (ID:start_node_id) → Relationship Type [rel_id] → End Node Name (ID:end_node_id)
+   - Reference actual node and relationship IDs from the provided context
+   - Include traversal depth and how each connection was discovered (text similarity/vector search)
+   - Explain which chunks and entities were retrieved via vector similarity search
+   - Show scores/confidence for each traversal step when available
+
+3. **REASONING PATH** (Always include this - logical progression)
    - Finding 1 → Triggers or yields or reveals → Finding 2 → etc.
    - Show how each piece of evidence connects to the next
-   - Trace logical relationships and dependencies
    - Use actual node IDs when referencing entities from the knowledge graph
    - Format entity references as: "Entity Name (ID:actual_id_from_context)"
    - Explain confidence level if evidence is weak
 
-3. **COMBINED EVIDENCE** (Always include this)
+4. **COMBINED EVIDENCE** (Always include this)
    - Synthesize all relevant information into coherent evidence base
    - Show how different findings support or contradict each other
-   - Highlight key relationships and patterns
+   - Highlight key relationships and patterns identified during traversal
 
-4. **NEXT STEPS** (Only include if user asks for next steps, actions, or follow-up guidance)
+5. **NEXT STEPS** (Only include if user asks for next steps, actions, or follow-up guidance)
    - Suggest specific next actions based on the analysis
    - Provide actionable recommendations for implementation
    - If no specific next steps are appropriate, omit this section entirely
@@ -63,9 +72,14 @@ CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
 NODE ID REQUIREMENTS:
 - When referencing entities from knowledge graph, ALWAYS use their actual node IDs from context
 - NEVER use placeholder IDs like "ID:X", "ID:Y", "ID:Z", or "ID:actual_number"
-- Only reference entities explicitly provided in the context below
+- Show relationship traversal as: Node1 (ID:id1) → RELATIONSHIP_TYPE [rel_id] → Node2 (ID:id2)
 
-IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2 and 4, but only include sections 1 and 3 when appropriate for the user's intent. Be topic-agnostic - this format works for any domain.
+VECTOR SEARCH DETAILS:
+- Include vector similarity scores for chunks/entities retrieved
+- Show which vector index (chunk vs entity) was used for retrieval
+- Reference element IDs from vector search results
+
+IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2, 3, and 4, but only include sections 1 and 5 when appropriate for the user's intent.
 
 Context Information:
 {context}
@@ -118,178 +132,16 @@ User Query: {question}"""),
             return self._vector_similarity_search(graph, query, top_k, document_names)
 
         except Exception as e:
-            logging.error(f"Error getting RAG context with vector search: {e}")
-            # Fall back to text search if vector search fails
-            logging.info("Vector search failed, falling back to text search")
-            try:
-                return self._fallback_text_search(graph, query, top_k, document_names)
-            except Exception as fallback_error:
-                logging.error(f"Text search also failed: {fallback_error}")
-                return {
-                    "query": query,
-                    "chunks": [],
-                    "entities": {},
-                    "relationships": [],
-                    "documents": [],
-                    "total_score": 0,
-                    "entity_count": 0,
-                    "relationship_count": 0,
-                    "error": f"Both vector and text search failed: {str(e)}, {str(fallback_error)}"
-                }
-            except Exception as e:
-                logging.error(f"Failed to generate query embedding: {e}")
-                return self._fallback_text_search(graph, query, top_k, document_names)
-            
-            # Try vector search
-            try:
-                if document_names:
-                    search_query = """
-                    CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
-                    YIELD node AS chunk, score
-                    MATCH (chunk)-[:PART_OF]->(d:Document)
-                    WHERE d.fileName IN $document_names
-                    OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:__Entity__)
-                    OPTIONAL MATCH (e)-[r]-(related:__Entity__)
-                    WHERE (related)<-[:HAS_ENTITY]-()-[:PART_OF]->(d)
-                    WITH chunk, score, d, 
-                         collect(DISTINCT e) AS chunk_entities,
-                         collect(DISTINCT {entity: e, relationship: r, related: related}) AS entity_relationships
-                    RETURN 
-                        chunk.text AS text,
-                        chunk.id AS chunk_id,
-                        elementId(chunk) AS chunk_element_id,
-                        score,
-                        d.fileName AS document,
-                        [entity IN chunk_entities WHERE entity IS NOT NULL | {
-                            id: entity.id, 
-                            element_id: elementId(entity),
-                            type: coalesce(entity.type, 'Unknown'), 
-                            description: coalesce(entity.description, '')
-                        }] AS entities,
-                        [rel IN entity_relationships WHERE rel.relationship IS NOT NULL | {
-                            source: rel.entity.id,
-                            source_element_id: elementId(rel.entity),
-                            target: rel.related.id,
-                            target_element_id: elementId(rel.related),
-                            relationship_type: type(rel.relationship),
-                            relationship_element_id: elementId(rel.relationship)
-                        }] AS relationships
-                    ORDER BY score DESC
-                    """
-                    params = {
-                        "top_k": top_k,
-                        "query_vector": query_embedding
-                    }
-                    params = {
-                        "top_k": top_k,
-                        "query_vector": query_embedding,
-                        "document_names": document_names
-                    }
-                else:
-                    search_query = """
-                    CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
-                    YIELD node AS chunk, score
-                    MATCH (chunk)-[:PART_OF]->(d:Document)
-                    OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:__Entity__)
-                    OPTIONAL MATCH (e)-[r]-(related:__Entity__)
-                    WITH chunk, score, d, 
-                         collect(DISTINCT e) AS chunk_entities,
-                         collect(DISTINCT {entity: e, relationship: r, related: related}) AS entity_relationships
-                    RETURN 
-                        chunk.text AS text,
-                        chunk.id AS chunk_id,
-                        elementId(chunk) AS chunk_element_id,
-                        score,
-                        d.fileName AS document,
-                        [entity IN chunk_entities WHERE entity IS NOT NULL | {
-                            id: entity.id, 
-                            element_id: elementId(entity),
-                            type: coalesce(entity.type, 'Unknown'), 
-                            description: coalesce(entity.description, '')
-                        }] AS entities,
-                        [rel IN entity_relationships WHERE rel.relationship IS NOT NULL | {
-                            source: rel.entity.id,
-                            source_element_id: elementId(rel.entity),
-                            target: rel.related.id,
-                            target_element_id: elementId(rel.related),
-                            relationship_type: type(rel.relationship),
-                            relationship_element_id: elementId(rel.relationship)
-                        }] AS relationships
-                    ORDER BY score DESC
-                    """
-                    params = {
-                        "top_k": top_k,
-                        "query_vector": query_embedding
-                    }
-                
-                results = graph.query(search_query, params)
-            except Exception as e:
-                logging.warning(f"Vector search failed: {e}, falling back to text search")
-                return self._fallback_text_search(graph, query, top_k, document_names)
-            
-            context = {
+            logging.error(f"Error getting RAG context: {e}")
+            return {
                 "query": query,
                 "chunks": [],
                 "entities": {},
                 "relationships": [],
-                "documents": set(),
-                "total_score": 0
-            }
-            
-            for result in results:
-                chunk_info = {
-                    "text": result["text"],
-                    "chunk_id": result["chunk_id"],
-                    "chunk_element_id": result["chunk_element_id"],
-                    "score": result["score"],
-                    "document": result["document"],
-                    "entities": result["entities"]
-                }
-                context["chunks"].append(chunk_info)
-                context["documents"].add(result["document"])
-                context["total_score"] += result["score"]
-                
-                # Collect unique entities with their element IDs
-                for entity in result["entities"]:
-                    entity_id = entity["id"]
-                    if entity_id not in context["entities"]:
-                        context["entities"][entity_id] = {
-                            "id": entity_id,
-                            "element_id": entity["element_id"],
-                            "type": entity["type"],
-                            "description": entity["description"],
-                            "mentioned_in_chunks": []
-                        }
-                    context["entities"][entity_id]["mentioned_in_chunks"].append(result["chunk_id"])
-                
-                # Collect relationships
-                for rel in result["relationships"]:
-                    rel_key = f"{rel['source']}-{rel['relationship_type']}-{rel['target']}"
-                    if not any(r.get('key') == rel_key for r in context["relationships"]):
-                        context["relationships"].append({
-                            "key": rel_key,
-                            "source": rel["source"],
-                            "source_element_id": rel["source_element_id"],
-                            "target": rel["target"],
-                            "target_element_id": rel["target_element_id"],
-                            "type": rel["relationship_type"],
-                            "element_id": rel["relationship_element_id"]
-                        })
-            
-            context["documents"] = list(context["documents"])
-            context["entity_count"] = len(context["entities"])
-            context["relationship_count"] = len(context["relationships"])
-            
-            return context
-            
-        except Exception as e:
-            logging.error(f"Error getting RAG context: {e}")
-            return {
-                "query": query, 
-                "chunks": [], 
-                "entities": {}, 
-                "relationships": [],
-                "documents": [], 
+                "documents": [],
+                "total_score": 0,
+                "entity_count": 0,
+                "relationship_count": 0,
                 "error": str(e)
             }
 
@@ -545,7 +397,7 @@ User Query: {question}"""),
             # Vector search query
             if document_names:
                 search_query = """
-                CALL db.index.vector.queryNodes('vector_chunk', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE d.fileName IN $document_names
@@ -575,7 +427,7 @@ User Query: {question}"""),
                 }
             else:
                 search_query = """
-                CALL db.index.vector.queryNodes('vector_chunk', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE score >= 0.1  // Minimum similarity threshold
@@ -642,7 +494,7 @@ User Query: {question}"""),
 
                 # Also search for relevant entities via vector similarity
                 entity_search_query = """
-                CALL db.index.vector.queryNodes('vector_entity', 3, $query_vector)
+                CALL db.index.vector.queryNodes('entity_vector', 3, $query_vector)
                 YIELD node AS entity, score
                 WHERE score >= 0.3  // Higher threshold for entities
                 RETURN
@@ -710,128 +562,7 @@ User Query: {question}"""),
             # Don't return error - let it fall back to text search
             raise Exception(f"Vector search failed: {str(e)}")
 
-    def _fallback_text_search(self, graph, query: str, top_k: int = 5, document_names: List[str] = None) -> Dict[str, Any]:
-        """
-        Fallback text-based search when vector search is not available
-        """
-        try:
-            logging.info("Using fallback text search")
 
-            # Simple text-based search using CONTAINS
-            if document_names:
-                search_query = """
-                MATCH (c:Chunk)-[:PART_OF]->(d:Document)
-                WHERE d.fileName IN $document_names
-                AND (toLower(c.text) CONTAINS toLower($query))
-                OPTIONAL MATCH (c)-[:HAS_ENTITY]->(e:__Entity__)
-                WITH c, d, collect(DISTINCT e) AS chunk_entities,
-                     size([word IN split(toLower($query), ' ') WHERE toLower(c.text) CONTAINS word]) AS relevance_score
-                RETURN
-                    c.text AS text,
-                    c.id AS chunk_id,
-                    elementId(c) AS chunk_element_id,
-                    toFloat(relevance_score) / size(split($query, ' ')) AS score,
-                    d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {
-                        id: entity.id,
-                        element_id: elementId(entity),
-                        type: coalesce(entity.type, 'Unknown'),
-                        description: coalesce(entity.name, '')
-                    }] AS entities,
-                    [] AS relationships
-                ORDER BY score DESC
-                LIMIT $top_k
-                """
-                params = {
-                    "query": query,
-                    "top_k": top_k,
-                    "document_names": document_names
-                }
-            else:
-                search_query = """
-                MATCH (c:Chunk)-[:PART_OF]->(d:Document)
-                WHERE toLower(c.text) CONTAINS toLower($query)
-                OPTIONAL MATCH (c)-[:HAS_ENTITY]->(e:__Entity__)
-                WITH c, d, collect(DISTINCT e) AS chunk_entities,
-                     size([word IN split(toLower($query), ' ') WHERE toLower(c.text) CONTAINS word]) AS relevance_score
-                RETURN
-                    c.text AS text,
-                    c.id AS chunk_id,
-                    elementId(c) AS chunk_element_id,
-                    toFloat(relevance_score) / size(split($query, ' ')) AS score,
-                    d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {
-                        id: entity.id,
-                        element_id: elementId(entity),
-                        type: coalesce(entity.type, 'Unknown'),
-                        description: coalesce(entity.name, '')
-                    }] AS entities,
-                    [] AS relationships
-                ORDER BY score DESC
-                LIMIT $top_k
-                """
-                params = {
-                    "query": query,
-                    "top_k": top_k
-                }
-
-            results = graph.query(search_query, params)
-
-            context = {
-                "query": query,
-                "chunks": [],
-                "entities": {},
-                "relationships": [],
-                "documents": set(),
-                "total_score": 0,
-                "search_method": "text_fallback"
-            }
-
-            for result in results:
-                chunk_info = {
-                    "text": result["text"],
-                    "chunk_id": result["chunk_id"],
-                    "chunk_element_id": result["chunk_element_id"],
-                    "score": result["score"],
-                    "document": result["document"],
-                    "entities": result["entities"]
-                }
-                context["chunks"].append(chunk_info)
-                context["documents"].add(result["document"])
-                context["total_score"] += result["score"]
-
-                # Collect unique entities
-                for entity in result["entities"]:
-                    entity_id = entity["id"]
-                    if entity_id not in context["entities"]:
-                        context["entities"][entity_id] = {
-                            "id": entity_id,
-                            "element_id": entity["element_id"],
-                            "type": entity["type"],
-                            "description": entity["description"],
-                            "mentioned_in_chunks": []
-                        }
-                    context["entities"][entity_id]["mentioned_in_chunks"].append(result["chunk_id"])
-
-            context["documents"] = list(context["documents"])
-            context["entity_count"] = len(context["entities"])
-            context["relationship_count"] = len(context["relationships"])
-
-            return context
-
-        except Exception as e:
-            logging.error(f"Error in fallback text search: {e}")
-            return {
-                "query": query,
-                "chunks": [],
-                "entities": {},
-                "relationships": [],
-                "documents": [],
-                "total_score": 0,
-                "entity_count": 0,
-                "relationship_count": 0,
-                "error": f"Text search failed: {str(e)}"
-            }
 
     def _extract_used_entities(self, response: str, context_entities: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -869,22 +600,7 @@ User Query: {question}"""),
                 if element_id in mentioned_ids or entity_id in mentioned_ids:
                     mentioned = True
 
-                # Also check if entity name itself is mentioned (less reliable but fallback)
-                if not mentioned:
-                    entity_name = entity_info.get('id', '')
-                    if entity_name and len(entity_name) > 3:  # Avoid short/common words
-                        # Look for entity name in quotes or as standalone words
-                        name_pattern = rf'\b{re.escape(entity_name)}\b'
-                        if re.search(name_pattern, response, re.IGNORECASE):
-                            # Additional heuristic: must have some context near the entity
-                            start_pos = response.lower().find(entity_name.lower())
-                            if start_pos != -1:
-                                # Look for context around the entity mention
-                                context_window = response[max(0, start_pos-50):start_pos+len(entity_name)+50]
-                                if any(keyword in context_window.lower() for keyword in [
-                                    'entity', 'node', 'id:', 'relationship', 'connects', 'related'
-                                ]):
-                                    mentioned = True
+
 
                 if mentioned:
                     used_entities.append({

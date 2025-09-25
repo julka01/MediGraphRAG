@@ -10,43 +10,42 @@ load_dotenv()
 from model_providers import get_provider as get_llm_provider
 from ontology_guided_kg_creator import OntologyGuidedKGCreator
 
-# Add llm-graph-builder backend to path so `src` package resolves
-backend_root = os.path.join(os.path.dirname(__file__), "llm-graph-builder", "backend")
-sys.path.insert(0, backend_root)
+# Import from local kg_utils
+from kg_utils.extract_graph import extract_graph_from_file_local_file
+from kg_utils.graph_query import get_graphDB_driver
 
 # Retain actual langchain_experimental if available
-import importlib
-if "langchain_experimental" not in sys.modules:
-    importlib.import_module("langchain_experimental")
+# import importlib
+# if "langchain_experimental" not in sys.modules:
+#     importlib.import_module("langchain_experimental")
 
 # Core graph imports moved inside endpoint functions
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Global storage for current graph data
+current_graph_data = None
+
 @app.on_event("startup")
 def check_neo4j_connection():
-    from src.graph_query import get_graphDB_driver
     try:
-        try:
-            driver = get_graphDB_driver(
-                os.getenv("NEO4J_URI"),
-                os.getenv("NEO4J_USERNAME"),
-                os.getenv("NEO4J_PASSWORD"),
-                os.getenv("NEO4J_DATABASE"),
-            )
-        except Exception:
-            return JSONResponse(content={"kg_id": str(uuid.uuid4()), "graph_data": graph_data})
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
         with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
             session.run("RETURN 1").single()
+        print("✅ Neo4j connection check passed")
     except Exception as e:
         import sys
-        print(f"Neo4j health check failed: {e}", file=sys.stderr)
+        print(f"❌ Neo4j health check failed: {e}", file=sys.stderr)
         raise RuntimeError("Neo4j connection failed; check NEO4J_URI, credentials, and that the server is running")
 
 @app.get("/health/neo4j")
 def neo4j_health():
-    from src.graph_query import get_graphDB_driver
     try:
         driver = get_graphDB_driver(
             os.getenv("NEO4J_URI"),
@@ -78,8 +77,6 @@ async def load_kg_from_file(
     Return the full raw KG from llm-graph-builder (no ontology filtering).
     """
     try:
-        from src.main import extract_graph_from_file_local_file
-        from src.graph_query import get_graphDB_driver
         data = await file.read()
         tmp_dir = tempfile.gettempdir()
         file_path = os.path.join(tmp_dir, file.filename)
@@ -147,7 +144,6 @@ async def extract_graph(
     """
     Return raw graph JSON without ontology post-processing.
     """
-    from src.main import extract_graph_from_file_local_file
     try:
         data = await file.read()
         tmp_dir = tempfile.gettempdir()
@@ -175,11 +171,16 @@ async def extract_graph(
 async def create_ontology_guided_kg(
     file: UploadFile = File(...),
     provider: str = Form("openai"),
-    model: str = Form("gpt-3.5-turbo")
+    model: str = Form("gpt-3.5-turbo"),
+    embedding_model: str = Form("sentence_transformers"),
+    ontology_file: UploadFile = File(None),
+    max_chunks: int = Form(None),
+    kg_name: str = Form(None)
 ):
     """
-    Create ontology-guided knowledge graph with validity checks.
-    Uses biomedical ontology to ensure consistent entity types and relationships.
+    Create knowledge graph with optional ontology guidance.
+    If ontology file is provided, uses it to ensure consistent entity types and relationships.
+    If no ontology is provided, performs basic LLM-based entity extraction.
     """
     try:
         # Read file content with proper encoding handling
@@ -188,18 +189,20 @@ async def create_ontology_guided_kg(
         # Determine file type and extract text appropriately
         file_extension = os.path.splitext(file.filename)[1].lower()
 
+        import fitz  # PyMuPDF
+
         if file_extension == '.pdf':
-            # Extract text from PDF
+            # Extract text from PDF using PyMuPDF (fitz) like test
             try:
-                import PyPDF2
-                pdf_reader = PyPDF2.PdfReader(io.BytesIO(data))
+                doc = fitz.open(stream=io.BytesIO(data), filetype="pdf")
                 text_content = ""
-                for page in pdf_reader.pages:
-                    text_content += page.extract_text() + "\n"
+                for page in doc:
+                    text_content += page.get_text() + "\n"
+                doc.close()
                 if len(text_content.strip()) == 0:
                     raise HTTPException(status_code=400, detail="PDF file contains no extractable text")
-            except ImportError:
-                raise HTTPException(status_code=500, detail="PDF processing library not available")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
         else:
             # Try to decode as UTF-8 text file
             try:
@@ -214,34 +217,66 @@ async def create_ontology_guided_kg(
         print(f"🎯 Creating KG with model: {model} from provider: {provider}")
         print(f"📄 File type: {file_extension}, Size: {len(data)} bytes, Text length: {len(text_content)} chars")
 
-        # Get LLM provider
+        # Get LLM provider (use defaults matching test if not specified)
+        provider = provider or "openrouter"
+        model = model or "openai/gpt-oss-20b:free"
         llm = get_llm_provider(provider, model)
 
-        # Initialize ontology-guided KG creator
-        ontology_path = "biomedical_ontology.owl"
+        # Handle ontology file if provided
+        ontology_path = None
+        if ontology_file:
+            # Save ontology file temporarily
+            ontology_data = await ontology_file.read()
+            tmp_dir = tempfile.gettempdir()
+            ontology_filename = f"ontology_{uuid.uuid4()}{os.path.splitext(ontology_file.filename)[1]}"
+            ontology_path = os.path.join(tmp_dir, ontology_filename)
+            with open(ontology_path, "wb") as tmpf:
+                tmpf.write(ontology_data)
+            print(f"📚 Using provided ontology: {ontology_file.filename}")
+
+        # Generate unique KG name if not provided
+        if not kg_name:
+            kg_name = f"kg_{str(uuid.uuid4())}"
+
+        # Initialize ontology-guided KG creator (with defaults matching test)
         kg_creator = OntologyGuidedKGCreator(
             chunk_size=1500,
             chunk_overlap=200,
             ontology_path=ontology_path,
-            neo4j_uri=os.getenv("NEO4J_URI"),
-            neo4j_user=os.getenv("NEO4J_USERNAME"),
-            neo4j_password=os.getenv("NEO4J_PASSWORD"),
-            neo4j_database=os.getenv("NEO4J_DATABASE")
+            neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+            neo4j_user=os.getenv("NEO4J_USERNAME", "neo4j"),
+            neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+            neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
+            embedding_model=embedding_model or "openai"
         )
 
-        # Generate KG with ontology guidance
-        kg = kg_creator.generate_knowledge_graph(text_content, llm, file.filename, model)
+        # Generate KG with ontology guidance (or without if no ontology provided)
+        kg = kg_creator.generate_knowledge_graph(text_content, llm, file.filename, model, max_chunks, kg_name)
+
+        # Log results like test script
+        entities = kg.get('metadata', {}).get('total_entities', 0)
+        relationships = kg.get('metadata', {}).get('total_relationships', 0)
+        stored = kg.get('metadata', {}).get('stored_in_neo4j', False)
+
+        print(f"📊 Results:")
+        print(f"   - Entities: {entities}")
+        print(f"   - Relationships: {relationships}")
+        print(f"   - Stored in Neo4j: {stored}")
+
+        method = "ontology_guided" if ontology_path else "basic_llm"
+        determinism_improvements = [
+            "fixed_chunk_size",
+            "temperature=0_for_all_LLMs"
+        ]
+        if ontology_path:
+            determinism_improvements.append("ontology_constraints_applied")
 
         return JSONResponse(content={
             "kg_id": str(uuid.uuid4()),
             "graph_data": kg,
-            "method": "ontology_guided",
-            "ontology_file": ontology_path,
-            "determinism_improvements": [
-                "fixed_chunk_size",
-                "temperature=0_for_all_LLMs",
-                "ontology_constraints_applied"
-            ]
+            "method": method,
+            "ontology_file": ontology_file.filename if ontology_file else None,
+            "determinism_improvements": determinism_improvements
         })
 
     except HTTPException:
@@ -377,16 +412,33 @@ async def test_create_working_kg():
 
         print('Connected to Neo4j, creating test KG with placeholder embeddings...')
 
-        # Clear any existing test data
+        # Clear any existing test data and indexes
         with driver.session() as session:
             try:
-                session.run('MATCH (n) WHERE n.id STARTS WITH "test_" OR n.fileName = "test_medical_data.txt" DETACH DELETE n')
-                # Drop existing indexes if they exist
+                print('🔄 Clearing existing test data...')
+
+                # First drop existing vector indexes
                 try:
-                    session.run('DROP INDEX vector_chunk IF EXISTS')
-                    session.run('DROP INDEX vector_entity IF EXISTS')
-                except:
-                    pass
+                    session.run('DROP INDEX vector IF EXISTS')
+                    session.run('DROP INDEX entity_vector IF EXISTS')
+                    print('✅ Dropped existing vector indexes')
+                except Exception as e:
+                    print(f'Index drop warning (may not exist): {e}')
+
+                # Clear all test data with broader criteria
+                session.run('MATCH (n) WHERE n.id STARTS WITH "test_" OR n.fileName = "test_medical_data.txt" DETACH DELETE n')
+                session.run('MATCH (n) WHERE n.id IS NOT NULL AND n.id =~ "^\d+$" DETACH DELETE n')  # Clear numeric IDs from failed runs
+                session.run('MATCH (n) WHERE n.id IS NOT NULL AND toString(n.id) =~ "^\d+$" DETACH DELETE n')  # Clear string numeric IDs
+
+                # Clean up all related data step by step
+                session.run('MATCH ()-[r]-() DELETE r')  # Delete all relationships first
+                session.run('MATCH (n) WHERE n.fileName = "test_medical_data.txt" DETACH DELETE n')
+                session.run('MATCH (n:Document) DETACH DELETE n')
+                session.run('MATCH (n:Chunk) DETACH DELETE n')
+                session.run('MATCH (n:__Entity__) DETACH DELETE n')
+                session.run('MATCH (n) WHERE labels(n)[] IS NULL DETACH DELETE n')  # Clean up orphaned nodes
+
+                print('✅ Cleared existing test data')
             except Exception as e:
                 print(f'Cleanup warning: {e}')
 
@@ -483,8 +535,8 @@ async def test_create_working_kg():
 
             # Create vector indexes
             print('Creating vector indexes...')
-            session.run('CREATE VECTOR INDEX vector_chunk IF NOT EXISTS FOR (c:Chunk) ON (c.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
-            session.run('CREATE VECTOR INDEX vector_entity IF NOT EXISTS FOR (e:__Entity__) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
+            session.run('CREATE VECTOR INDEX vector IF NOT EXISTS FOR (c:Chunk) ON (c.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
+            session.run('CREATE VECTOR INDEX entity_vector IF NOT EXISTS FOR (e:__Entity__) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
             print('✅ Vector indexes created successfully!')
 
         print('✅ Test KG with embeddings created successfully!')
@@ -528,6 +580,118 @@ async def test_create_working_kg():
         raise HTTPException(status_code=500, detail=f"Test KG creation failed: {str(e)}")
 
 
+@app.post("/save_kg_to_neo4j")
+async def save_kg_to_neo4j(
+    kg_id: str = Form(...),
+    uri: str = Form(...),
+    user: str = Form(...),
+    password: str = Form(...)
+):
+    """
+    Save knowledge graph data to Neo4j database.
+    """
+    try:
+        global current_graph_data
+
+        # Check if we have graph data to save
+        if current_graph_data is None:
+            raise HTTPException(status_code=400, detail="No graph data available to save. Load a KG first.")
+
+        driver = get_graphDB_driver(uri, user, password, os.getenv("NEO4J_DATABASE"))
+
+        nodes_saved = 0
+        relationships_saved = 0
+
+        with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
+            # Clear existing data first (optional - you might want to keep this or make it configurable)
+            try:
+                session.run("MATCH (n) DETACH DELETE n")
+                print("Cleared existing Neo4j database")
+            except Exception as e:
+                print(f"Warning: Could not clear existing data: {e}")
+
+            # Save nodes
+            for node in current_graph_data.get('nodes', []):
+                labels = node.get('labels', [])
+                if not labels:
+                    labels = ['Entity']  # Default label
+
+                # Build Cypher MERGE query
+                label_str = ':'.join(f'`{label}`' for label in labels)
+                properties = {}
+
+                # Copy node properties, excluding internal ones
+                for k, v in node.get('properties', {}).items():
+                    if k not in ['embedding', 'element_id'] and v is not None:
+                        properties[k] = v
+
+                # Add id if it exists
+                if node.get('properties', {}).get('id'):
+                    properties['id'] = node['properties']['id']
+                elif node.get('id'):
+                    properties['id'] = str(node['id'])
+
+                # Build parameterized MERGE query
+                prop_str = ', '.join(f'`{k}`: ${k}' for k, v in properties.items())
+                if prop_str:
+                    merge_query = f"MERGE (n:{label_str} {{ {prop_str} }})"
+                else:
+                    # Fallback for nodes with no properties - use id if available
+                    node_id = properties.get('id', str(node.get('id', nodes_saved)))
+                    merge_query = f"MERGE (n:{label_str} {{ id: '{node_id}' }})"
+
+                try:
+                    param_dict = {k: v for k, v in properties.items()}
+                    session.run(merge_query, param_dict)
+                    nodes_saved += 1
+                except Exception as e:
+                    print(f"Error saving node {node.get('id', 'unknown')}: {e}")
+                    continue
+
+            # Save relationships
+            for rel in current_graph_data.get('relationships', []):
+                start_id = rel.get('start') or rel.get('from')
+                end_id = rel.get('end') or rel.get('to')
+                rel_type = rel.get('type', 'RELATED_TO')
+
+                if not start_id or not end_id:
+                    continue
+
+                # Build relationship query
+                properties = {}
+                for k, v in rel.get('properties', {}).items():
+                    if v is not None:
+                        properties[k] = v
+
+                prop_str = ', '.join(f'`{k}`: ${k}' for k, v in properties.items())
+                rel_prop = f" {{{prop_str}}}" if prop_str else ""
+
+                match_query = f"""
+                MATCH (a), (b)
+                WHERE id(a) = {start_id} AND id(b) = {end_id}
+                MERGE (a)-[r:`{rel_type}`{rel_prop}]->(b)
+                """
+
+                try:
+                    param_dict = {k: v for k, v in properties.items()}
+                    session.run(match_query, param_dict)
+                    relationships_saved += 1
+                except Exception as e:
+                    print(f"Error saving relationship {start_id}-{rel_type}->{end_id}: {e}")
+                    continue
+
+        return JSONResponse(content={
+            "message": "Knowledge graph saved to Neo4j successfully",
+            "kg_id": kg_id,
+            "nodes_saved": nodes_saved,
+            "relationships_saved": relationships_saved
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save KG to Neo4j: {str(e)}")
+
 @app.post("/load_kg_from_neo4j")
 async def load_kg_from_neo4j(
     uri: str = Form(...),
@@ -541,7 +705,6 @@ async def load_kg_from_neo4j(
     """
     Load the entire KG from Neo4j with optional sampling and filtering.
     """
-    from src.graph_query import get_graphDB_driver
     try:
         driver = get_graphDB_driver(uri, user, password, os.getenv("NEO4J_DATABASE"))
         with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
@@ -557,20 +720,37 @@ async def load_kg_from_neo4j(
             # Apply label filter if provided
             if kg_label:
                 node_query = node_query.replace("MATCH (n)", f"MATCH (n:{kg_label})")
-            nodes = [
-                {"id": record["n"].id, "labels": list(record["n"].labels), "properties": dict(record["n"])}
-                for record in session.run(node_query)
-            ]
-            relationships = [
-                {
-                    "id": record["r"].id,
-                    "type": record["r"].type,
-                    "start": record["r"].start_node.id,
-                    "end": record["r"].end_node.id,
-                    "properties": dict(record["r"])
-                }
-                for record in session.run("MATCH (n)-[r]->(m) RETURN r")
-            ]
+
+            # Process nodes with proper handling for DateTime objects
+            nodes = []
+            for record in session.run(node_query):
+                node = record["n"]
+                props = {}
+                for k, v in dict(node).items():
+                    if hasattr(v, "isoformat"):  # Handle DateTime and other temporal objects
+                        props[k] = v.isoformat()
+                    else:
+                        props[k] = v
+                nodes.append({"id": node.id, "labels": list(node.labels), "properties": props})
+
+            # Process relationships with proper handling for DateTime objects
+            relationships = []
+            for record in session.run("MATCH (n)-[r]->(m) RETURN r"):
+                rel = record["r"]
+                props = {}
+                for k, v in dict(rel).items():
+                    if hasattr(v, "isoformat"):  # Handle DateTime and other temporal objects
+                        props[k] = v.isoformat()
+                    else:
+                        props[k] = v
+                relationships.append({
+                    "id": rel.id,
+                    "type": rel.type,
+                    "start": rel.start_node.id,
+                    "end": rel.end_node.id,
+                    "properties": props
+                })
+
         stats = {
             "total_nodes_in_db": total_nodes,
             "total_relationships_in_db": total_rels,
