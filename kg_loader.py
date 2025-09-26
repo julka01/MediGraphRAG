@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, basic_auth
 from PyPDF2 import PdfReader
 from typing import Dict, List, Union, Tuple
 from owlready2 import get_ontology
@@ -19,7 +19,7 @@ class KGLoader:
             # Replace docker service name with localhost for local development
             self.neo4j_uri = configured_uri.replace("neo4j:7687", "localhost:7687")
         
-        self.neo4j_user = os.getenv("NEO4J_USER", "neo4j")
+        self.neo4j_user = os.getenv("NEO4J_USERNAME", "neo4j")
         self.neo4j_password = os.getenv("NEO4J_PASSWORD", "password")
         
         print(f"KGLoader initialized with Neo4j URI: {self.neo4j_uri}")
@@ -87,7 +87,7 @@ class KGLoader:
     def list_kg_labels(self, uri: str, user: str, password: str) -> Dict:
         """List available KG labels in Neo4j database"""
         try:
-            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver = GraphDatabase.driver(uri, auth=basic_auth(user, password))
             driver.verify_connectivity()
             
             with driver.session() as session:
@@ -118,7 +118,7 @@ class KGLoader:
             os.makedirs(kg_storage_dir, exist_ok=True)
             self.last_import_dir = kg_storage_dir
 
-            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver = GraphDatabase.driver(uri, auth=basic_auth(user, password))
             driver.verify_connectivity()
 
             with driver.session() as session:
@@ -429,7 +429,7 @@ class KGLoader:
         """
         try:
             # Use password directly without escaping
-            driver = GraphDatabase.driver(uri, auth=(user, password))
+            driver = GraphDatabase.driver(uri, auth=basic_auth(user, password))
 
             with driver.session() as session:
                 # Clear existing data only if requested

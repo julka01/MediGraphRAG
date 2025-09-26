@@ -1,5 +1,5 @@
 import logging
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, basic_auth
 import os
 from dotenv import load_dotenv
 
@@ -24,7 +24,7 @@ def get_graphDB_driver(uri, username, password, database="neo4j"):
         if not username and not password:
             auth = None
         else:
-            auth = (username, password)
+            auth = basic_auth(username, password)
 
         enable_user_agent = os.environ.get("ENABLE_USER_AGENT", "False").lower() in ("true", "1", "yes")
         if enable_user_agent:
