@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KG Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>KG Loading Debug Test</h1>
+
+    <button onclick="testHealth()">Test Neo4j Health</button>
+    <button onclick="testLoadKG()">Test KG Loading</button>
+    <button onclick="clearLog()">Clear Log</button>
+
+    <div id="status" class="status info">Click tests above to debug...</div>
+    <div id="log"></div>
+
+    <script>
+        function addLog(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div class="status ${type}">[${time}] ${message}</div>`;
+            console.log(`[${time}] ${message}`);
+        }
+
+        function setStatus(message, type = 'info') {
+            document.getElementById('status').className = `status ${type}`;
+            document.getElementById('status').textContent = message;
+        }
+
+        async function testHealth() {
+            setStatus('Testing Neo4j health...');
+            addLog('Testing Neo4j health...');
+
+            try {
+                const response = await fetch('http://localhost:8004/health/neo4j');
+                const data = await response.json();
+
+                addLog(`Health response: ${JSON.stringify(data)}`, 'info');
+                setStatus(`Health OK - Status: ${data.status}, Nodes: ${data.nodeCount}`, 'success');
+            } catch (error) {
+                addLog(`Health test failed: ${error.message}`, 'error');
+                setStatus(`Health test failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLoadKG() {
+            setStatus('Testing KG loading...');
+            addLog('Testing KG loading...');
+
+            try {
+                const formData = new FormData();
+                formData.append('uri', 'bolt://localhost:7687');
+                formData.append('user', 'neo4j');
+                formData.append('password', '');
+                formData.append('limit', '10');
+                formData.append('sample_mode', 'false');
+                formData.append('load_complete', 'false');
+
+                const response = await fetch('http://localhost:8004/load_kg_from_neo4j', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    addLog(`KG Load Successful: ${data.graph_data?.nodes?.length || 0} nodes, ${data.graph_data?.relationships?.length || 0} relationships`, 'success');
+                    setStatus('KG load test passed!', 'success');
+                } else {
+                    const errorText = await response.text();
+                    addLog(`KG Load Failed (${response.status}): ${errorText}`, 'error');
+                    setStatus(`KG load failed: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addLog(`KG load test error: ${error.message}`, 'error');
+                setStatus(`KG load test error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            setStatus('Log cleared', 'info');
+        }
+    </script>
+</body>
+</html>
