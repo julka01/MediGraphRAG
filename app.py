@@ -41,8 +41,9 @@ def check_neo4j_connection():
         print("✅ Neo4j connection check passed")
     except Exception as e:
         import sys
-        print(f"❌ Neo4j health check failed: {e}", file=sys.stderr)
-        raise RuntimeError("Neo4j connection failed; check NEO4J_URI, credentials, and that the server is running")
+        print(f"⚠️ Neo4j health check failed: {e}", file=sys.stderr)
+        print("⚠️ Continuing without Neo4j connection - some features may not work", file=sys.stderr)
+        # Don't raise error - allow app to start
 
 @app.get("/health/neo4j")
 def neo4j_health():
@@ -393,6 +394,81 @@ def default_credentials():
         "user": os.getenv("NEO4J_USERNAME"),
         "database": os.getenv("NEO4J_DATABASE")
     }
+
+@app.post("/clear_kg")
+async def clear_kg():
+    """
+    Clear the entire Neo4j knowledge graph by removing all nodes and relationships.
+    """
+    try:
+        # Use Neo4j driver from environment
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
+
+        print('🧹 Clearing entire Neo4j knowledge graph...')
+
+        with driver.session() as session:
+            # First, disable constraints that might interfere with deletion
+            try:
+                constraints_result = session.run("SHOW CONSTRAINTS")
+                constraints = [record["name"] for record in constraints_result]
+                for constraint in constraints:
+                    try:
+                        session.run(f"DROP CONSTRAINT {constraint}")
+                        print(f'✅ Dropped constraint: {constraint}')
+                    except Exception as e:
+                        print(f'⚠️ Could not drop constraint {constraint}: {e}')
+            except Exception as e:
+                print(f'⚠️ Error getting constraints: {e}')
+
+            # Drop indexes that might interfere
+            try:
+                indexes_result = session.run("SHOW INDEXES")
+                indexes = [record["name"] for record in indexes_result if record["type"] != "LOOKUP"]
+                for index in indexes:
+                    try:
+                        session.run(f"DROP INDEX {index}")
+                        print(f'✅ Dropped index: {index}')
+                    except Exception as e:
+                        print(f'⚠️ Could not drop index {index}: {e}')
+            except Exception as e:
+                print(f'⚠️ Error getting indexes: {e}')
+
+            # Delete all relationships first
+            session.run("MATCH ()-[r]-() DELETE r")
+            print("✅ Deleted all relationships")
+
+            # Delete all nodes
+            result = session.run("MATCH (n) DELETE n RETURN count(n) as deleted_count")
+            record = result.single()
+            deleted_count = record["deleted_count"] if record else 0
+            print(f"✅ Deleted all {deleted_count} nodes")
+
+            # Attempt garbage collection (APOC procedure - may not be available)
+            try:
+                session.run("CALL db.resample.index.all()")
+                print("✅ Index resampled successfully")
+            except Exception as e:
+                print(f"⚠️ Index resampling failed (APOC not available): {e}")
+                print("⚠️ Continuing without index resampling - this is usually fine")
+
+        print('🎉 Successfully cleared the entire Neo4j knowledge graph!')
+
+        return JSONResponse(content={
+            "message": f"Knowledge graph cleared successfully! Deleted {deleted_count} nodes and all relationships.",
+            "status": "cleared",
+            "nodes_deleted": deleted_count
+        })
+
+    except Exception as e:
+        import traceback
+        print(f'❌ Error clearing KG: {e}')
+        print(f'Traceback: {traceback.format_exc()}')
+        raise HTTPException(status_code=500, detail=f"Failed to clear knowledge graph: {str(e)}")
 
 @app.post("/test_create_working_kg")
 async def test_create_working_kg():

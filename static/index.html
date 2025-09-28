@@ -1186,6 +1186,7 @@
             <div class="action-buttons">
                 <button class="btn-primary" id="load-file">Select File</button>
                 <button class="btn-primary" id="load-neo4j">From Neo4j</button>
+                <button class="btn-secondary" id="clear-kg-btn">Clear KG</button>
             </div>
 
             <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
@@ -2912,6 +2913,67 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
             // Attach handlers
             document.getElementById('connect-neo4j').addEventListener('click', handleConnectNeo4j);
             
+            // Clear KG button functionality
+            document.getElementById('clear-kg-btn').addEventListener('click', async function() {
+                if (!confirm('⚠️ WARNING: This will permanently delete ALL nodes and relationships from Neo4j database. This action cannot be undone. Are you sure you want to continue?')) {
+                    return;
+                }
+
+                const clearButton = document.getElementById('clear-kg-btn');
+                const originalText = clearButton.textContent;
+
+                try {
+                    // Show loading state
+                    clearButton.innerHTML = '<div class="spinner"></div> Clearing...';
+                    clearButton.disabled = true;
+
+                    const response = await fetch('/clear_kg', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.detail || 'Failed to clear knowledge graph');
+                    }
+
+                    const result = await response.json();
+
+                    // Clear the current graph visualization
+                    if (network) {
+                        try {
+                            network.destroy();
+                            network = null;
+                        } catch (e) {
+                            console.warn('Error destroying network:', e);
+                        }
+                    }
+
+                    // Clear stored graph data
+                    graphData = null;
+                    currentKGId = null;
+                    highlightedNodes.clear();
+
+                    // Clear overview panel
+                    document.getElementById('overview-panel').style.display = 'none';
+
+                    // Add success message to chat
+                    addToChat(`🧹 ${result.message}`, 'ai');
+
+                    // Show success notification
+                    showError(`✅ Knowledge graph cleared successfully!`);
+
+                } catch (error) {
+                    console.error('Error clearing KG:', error);
+                    showError(`❌ Failed to clear knowledge graph: ${error.message}`);
+                    addToChat(`Error clearing KG: ${error.message}`, 'error');
+                } finally {
+                    // Restore button state
+                    clearButton.innerHTML = originalText;
+                    clearButton.disabled = false;
+                }
+            });
+
             // Clear chat button functionality
             document.getElementById('clear-chat-btn').addEventListener('click', function() {
                 document.getElementById('chat-box').innerHTML = '';
