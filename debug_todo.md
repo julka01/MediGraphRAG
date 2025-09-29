@@ -1,0 +1,12 @@
+- [x] Examine frontend code (static/index.html) to understand KG visualization implementation
+- [x] Start the FastAPI server to check backend functionality  
+- [x] Check backend API endpoints for KG data retrieval (e.g., /load_kg_from_neo4j)
+- [x] Inspect JavaScript code for how graph data is fetched and rendered
+- [x] Verify KG data processing in initializeGraph function
+- [ ] Check browser console for JavaScript errors (user reports KG still not showing)
+- [x] Test API endpoints manually to ensure they return valid data
+- [ ] Debug why autoLoadKG function is not working
+- [ ] Check if server is actually running and accessible
+- [ ] Verify logic in autoLoadKG function for health check and data loading
+- [ ] Test the automatic KG loading manually
+- [x] Confirm KG is being loaded correctly from Neo4j
