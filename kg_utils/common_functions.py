@@ -3,8 +3,9 @@ import logging
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_vertexai import VertexAIEmbeddings
 from langchain_openai import OpenAIEmbeddings
-from langchain_neo4j import Neo4jGraph
+from neo4j import GraphDatabase, basic_auth
 from neo4j.exceptions import TransientError
+from langchain_neo4j import Neo4jGraph
 from langchain_community.graphs.graph_document import GraphDocument
 from typing import List
 import re
@@ -51,10 +52,14 @@ def create_graph_database_connection(uri, userName, password, database):
     Create Neo4j graph database connection
     """
     enable_user_agent = os.environ.get("ENABLE_USER_AGENT", "False").lower() in ("true", "1", "yes")
+
+    driver_config = {}
     if enable_user_agent:
-        graph = Neo4jGraph(url=uri, database=database, username=userName, password=password, refresh_schema=False, sanitize=True, driver_config={'user_agent':os.environ.get('NEO4J_USER_AGENT')})
-    else:
-        graph = Neo4jGraph(url=uri, database=database, username=userName, password=password, refresh_schema=False, sanitize=True)
+        driver_config['user_agent'] = os.environ.get('NEO4J_USER_AGENT')
+
+    # LangChain Neo4jGraph with direct username/password parameters
+    graph = Neo4jGraph(url=uri, database=database, username=userName, password=password,
+                       refresh_schema=False, sanitize=True, driver_config=driver_config)
     return graph
 
 def delete_uploaded_local_file(merged_file_path, file_name):
