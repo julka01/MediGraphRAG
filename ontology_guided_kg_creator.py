@@ -10,6 +10,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.docstore.document import Document
 from langchain_neo4j import Neo4jGraph
 from langchain_text_splitters import TokenTextSplitter
+from collections import defaultdict, Counter
 import os
 import sys
 import logging
@@ -52,11 +53,17 @@ class OntologyGuidedKGCreator:
         self.ontology_classes = []
         self.ontology_relationships = []
         if ontology_path and os.path.exists(ontology_path):
-            self._load_ontology(ontology_path)
-            logging.info(f"Loaded ontology: {len(self.ontology_classes)} classes, {len(self.ontology_relationships)} relationships")
+            logging.info(f"Ontology file exists at: {ontology_path} (size: {os.path.getsize(ontology_path)} bytes)")
+            try:
+                self._load_ontology(ontology_path)
+                logging.info(f"✅ Successfully loaded ontology: {len(self.ontology_classes)} classes, {len(self.ontology_relationships)} relationships")
+            except Exception as e:
+                logging.error(f"❌ Failed to load ontology: {e}")
+                # Continue with empty ontology - LLM extraction will still work
         else:
             if ontology_path:
                 logging.warning(f"Ontology file not found: {ontology_path}")
+                logging.info(f"Available files in temp dir: {os.listdir(os.path.dirname(ontology_path)) if ontology_path else 'N/A'}")
             else:
                 logging.info("No ontology provided - using basic LLM entity extraction")
             # No ontology - use empty lists (will fall back to pattern matching)
@@ -494,33 +501,109 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
         # Generate UUID5 (name-based) for deterministic but unique IDs
         return str(uuid.uuid5(uuid.NAMESPACE_OID, unique_seed))
 
+    def _normalize_entity_text(self, text: str) -> str:
+        """
+        Normalize entity text for better duplicate detection
+        """
+        # Convert to lowercase, remove extra whitespace, normalize common variations
+        normalized = re.sub(r'\s+', ' ', text.lower().strip())
+
+        # Common medical abbreviations and normalizations
+        normalizations = {
+            'prostate cancer': 'prostate_cancer',
+            'breast cancer': 'breast_cancer',
+            'lung cancer': 'lung_cancer',
+            r'\bpc\b': 'prostate_cancer',  # Prostate cancer abbreviation
+            r'\bbc\b': 'breast_cancer',    # Breast cancer abbreviation
+            r'\blc\b': 'lung_cancer',      # Lung cancer abbreviation
+            'radical prostatectomy': 'radical_prostatectomy',
+            'brachytherapy': 'brachytherapy',
+            'hormone therapy': 'hormone_therapy',
+            'radiation therapy': 'radiation_therapy',
+        }
+
+        # Apply normalizations
+        for full, normalized_form in normalizations.items():
+            if isinstance(full, str):
+                normalized = re.sub(rf'\b{re.escape(full)}\b', normalized_form, normalized)
+            else:  # regex pattern
+                normalized = re.sub(full, normalized_form, normalized)
+
+        return normalized
+
     def _harmonize_entities(self, all_entities: List[Dict]) -> List[Dict]:
         """
-        Harmonize entities across chunks to avoid duplicates using UUID-based IDs
+        Harmonize entities across chunks to avoid duplicates using improved normalization
         """
-        entity_map = {}
-        harmonized_entities = []
+        logging.info(f"Starting harmonization of {len(all_entities)} raw entities")
+
+        # Step 1: Build initial grouping by normalized form
+        entity_groups = defaultdict(list)
 
         for entity in all_entities:
-            # Use normalized key for deduplication
-            entity_key = f"{entity['type']}:{entity['id'].lower().strip()}"
+            normalized_text = self._normalize_entity_text(entity['id'])
+            normalized_key = f"{entity['type']}:{normalized_text}"
+            entity_groups[normalized_key].append(entity)
 
-            if entity_key not in entity_map:
-                # Generate UUID-based ID for the entity
-                entity_uuid = self._generate_entity_id(entity)
-                entity_copy = entity.copy()
-                entity_copy['uuid'] = entity_uuid  # Store UUID for later use
-                entity_map[entity_key] = entity_copy
-                harmonized_entities.append(entity_copy)
-            else:
-                # Merge properties and keep the best embedding
-                existing_entity = entity_map[entity_key]
+        # Step 2: Log entity distribution before harmonization
+        type_distribution = Counter()
+        for entities in entity_groups.values():
+            for entity in entities:
+                type_distribution[entity['type']] += 1
+
+        logging.info(f"Entity type distribution before harmonization: {dict(type_distribution)}")
+
+        # Step 3: Create harmonized entities
+        harmonized_entities = []
+        entity_map = {}  # For mapping original IDs to harmonized versions
+        total_duplicates_removed = 0
+
+        for normalized_key, entities in entity_groups.items():
+            if not entities:
+                continue
+
+            # Take the first entity as the representative
+            representative_entity = entities[0].copy()
+
+            # Merge information from all occurrences
+            all_names = set()
+            all_descriptions = set()
+
+            for entity in entities:
+                all_names.add(entity['id'])
+                if entity.get('properties', {}).get('description'):
+                    all_descriptions.add(entity['properties']['description'])
+
+                # Keep the best embedding (prefer any available embedding)
+                if not representative_entity.get('embedding') and entity.get('embedding'):
+                    representative_entity['embedding'] = entity['embedding']
+
+                # Merge additional properties
                 if entity.get('properties'):
-                    existing_entity.setdefault('properties', {}).update(entity['properties'])
+                    representative_entity.setdefault('properties', {}).update(entity['properties'])
 
-                # Keep embedding if the existing one doesn't have it
-                if not existing_entity.get('embedding') and entity.get('embedding'):
-                    existing_entity['embedding'] = entity['embedding']
+            # Update representative entity with merged information
+            if len(all_names) > 1 or len(all_descriptions) > 1:
+                # Create a canonical name if multiple variations exist
+                representative_entity['properties']['all_names'] = list(all_names)
+                representative_entity['properties']['all_descriptions'] = list(all_descriptions)
+                total_duplicates_removed += len(entities) - 1
+
+            # Generate deterministic UUID
+            entity_uuid = self._generate_entity_id(representative_entity)
+            representative_entity['uuid'] = entity_uuid
+
+            harmonized_entities.append(representative_entity)
+
+            # Map all original name variations to the harmonized entity
+            for entity in entities:
+                entity_map[entity['id']] = representative_entity
+
+        logging.info(f"Harmonization complete: {len(harmonized_entities)} entities (removed {total_duplicates_removed} duplicates)")
+
+        # Log final distribution
+        final_type_distribution = Counter(e['type'] for e in harmonized_entities)
+        logging.info(f"Entity type distribution after harmonization: {dict(final_type_distribution)}")
 
         return harmonized_entities
 
@@ -769,15 +852,17 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                     "fileName": file_name
                 })
 
-            # Create entity nodes with embeddings
+            # Create entity nodes with embeddings and ontology-based labels
             for node in kg['nodes']:
-                # Use __Entity__ label for compatibility with llm-graph-builder
+                entity_type = node['label']  # This is the ontology class (Disease, Treatment, etc.)
+                # Use both __Entity__ for compatibility and the specific ontology class label
                 node_query = f"""
-                MERGE (n:__Entity__ {{id: $id}})
+                MERGE (n:__Entity__:{entity_type} {{id: $id}})
                 SET n.name = $name,
                     n.type = $type,
                     n.description = $description,
-                    n.embedding = $embedding
+                    n.embedding = $embedding,
+                    n.ontology_class = $entity_type
                 """
 
                 properties = node.get('properties', {})
@@ -786,7 +871,8 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                     "name": properties.get('name', node['id']),
                     "type": node['label'],
                     "description": properties.get('description', ''),
-                    "embedding": node.get('embedding')
+                    "embedding": node.get('embedding'),
+                    "entity_type": entity_type
                 })
 
             # Create relationships
@@ -794,8 +880,15 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 # Filter out 'id' property to avoid duplicate key issues in database
                 properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
 
-                # Sanitize relationship type to replace spaces with underscores for valid Cypher
-                sanitized_rel_type = rel['type'].replace(' ', '_').replace('-', '_').upper()
+                # Use ontology relationship type if available, otherwise sanitize
+                sanitized_rel_type = rel['type']
+                # Check if it's one of the defined ontology relationships
+                for ont_rel in self.ontology_relationships:
+                    if ont_rel['label'].lower().replace(' ', '_') == rel['type'].lower().replace(' ', '_'):
+                        sanitized_rel_type = ont_rel['id']
+                        break
+                # Otherwise sanitize manually
+                sanitized_rel_type = sanitized_rel_type.replace(' ', '_').replace('-', '_').upper()
 
                 rel_query = f"""
                 MATCH (source:__Entity__ {{id: $source_id}})

@@ -61,26 +61,58 @@ def ping_openrouter_model(model: str, api_key: str) -> Dict[str, Any]:
             "error": str(e)
         }
 
-def main():
-    # Models to test
-    models = [
-        "meta-llama/llama-4-maverick:free",
-        "deepseek/deepseek-r1-0528:free",
-        "microsoft/wizardlm-2-8x22b:free",
-        "openai/gpt-oss-20b:free"
-    ]
+def list_available_models(api_key):
+    """List available models from OpenRouter API"""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "https://github.com/ModelContext/tool-2025-kg-rag",
+        "X-Title": "KG RAG Tool"
+    }
 
+    try:
+        response = httpx.get("https://openrouter.ai/api/v1/models", headers=headers, timeout=30)
+        if response.status_code == 200:
+            data = response.json()
+            models = data.get("data", [])
+            # Filter for free models or models that might work
+            free_models = [m["id"] for m in models if "free" in m["id"] or any(x in m["id"].lower() for x in ["gemma", "llama", "microsoft", "qwen"])]
+            return free_models
+        else:
+            print(f"❌ Failed to list models: HTTP {response.status_code}: {response.text}")
+            return []
+    except Exception as e:
+        print(f"❌ Failed to list models: {str(e)}")
+        return []
+
+def main():
     # Get API key from environment
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         print("❌ OPENROUTER_API_KEY environment variable not set")
         return
 
-    print("🏓 Pinging OpenRouter models...\n")
+    print("🔍 Listing available OpenRouter models...\n")
+    available_models = list_available_models(api_key)
+    if not available_models:
+        print("❌ Could not retrieve model list from OpenRouter API")
+        return
+
+    # Filter models to test (free tier, common ones)
+    models_to_test = [m for m in available_models if ":free" in m or m in [
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "microsoft/wizardlm-2-8x22b:free",
+        "google/gemma-7b-it:free",
+        "qwen/qwen-2-7b-instruct:free"
+    ]]
+
+    if not models_to_test:
+        models_to_test = available_models[:5]  # Test first 5 if no free ones
+
+    print(f"🏓 Testing {len(models_to_test)} available models...\n")
 
     results = []
 
-    for model in models:
+    for model in models_to_test:
         print(f"Testing {model}...")
         result = ping_openrouter_model(model, api_key)
         results.append(result)
@@ -101,6 +133,11 @@ def main():
     for result in results:
         status_emoji = "✅" if result["status"] == "success" else "❌"
         print(f"{status_emoji} {result['model']}")
+
+    if successful > 0:
+        print("\n✓ Found working models! Update your model lists with these.")
+        working_models = [r["model"] for r in results if r["status"] == "success"]
+        print(f"Working models: {working_models}")
 
 if __name__ == "__main__":
     main()

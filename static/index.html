@@ -2366,14 +2366,14 @@
                             modelSelect.appendChild(option);
                         });
                         
-                        // Preselect first model
-                        if (data.models.length > 0) {
-                            if (vendor === 'openrouter' && data.models.includes('meta-llama/llama-4-maverick:free')) {
-                                modelSelect.value = 'meta-llama/llama-4-maverick:free';
-                            } else {
-                                modelSelect.value = data.models[0];
-                            }
-                        } else {
+            // Preselect first model
+            if (data.models.length > 0) {
+                if (vendor === 'openrouter' && data.models.includes('openai/gpt-oss-20b:free')) {
+                    modelSelect.value = 'openai/gpt-oss-20b:free';
+                } else {
+                    modelSelect.value = data.models[0];
+                }
+            } else {
                             modelSelect.innerHTML = '<option value="">No models available</option>';
                         }
                     } catch (error) {
@@ -2514,7 +2514,7 @@
                     formData.append('model', model);
                     formData.append('embedding_model', embeddingModel);
                     if (ontologyFile) {
-                        formData.append('ontology', ontologyFile);
+                        formData.append('ontology_file', ontologyFile);
                     }
                     
                     const response = await fetch('/create_ontology_guided_kg', {
@@ -2544,24 +2544,6 @@
                     const relCount = result.graph_data?.relationships?.length ?? 0;
                     addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
 
-                    // Add test node to verify graph is working
-                    setTimeout(() => {
-                        if(network) {
-                            try {
-                                const testNode = {id: 999999, label: 'TEST NODE - Graph Working', color: {background: '#ff0000'}};
-                                network.body.data.nodes.add(testNode);
-                                console.log('Test node added successfully');
-                                addToChat('Test node added to verify graph functionality', 'ai');
-                            } catch(e) {
-                                console.error('Failed to add test node:', e);
-                                addToChat(`Error adding test node: ${e.message}`, 'error');
-                            }
-                        } else {
-                            console.error('Network is null after KG creation');
-                            addToChat('Network is null - graph initialization failed', 'error');
-                        }
-                    }, 1000);
-                    
                     // Reset file selection
                     fileInput.value = '';
                     document.getElementById('file-selection').style.display = 'none';
@@ -3086,6 +3068,7 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                     currentFilters.nodeTypes.clear();
                     currentFilters.relationshipTypes.clear();
                     highlightedNodes.clear();
+                    reasoningEdges.clear(); // Also clear reasoning edges
 
                     // Reset checkboxes to checked state
                     const nodeCheckboxes = document.querySelectorAll('#node-type-filters input[type="checkbox"]');
@@ -3093,7 +3076,7 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                     nodeCheckboxes.forEach(checkbox => checkbox.checked = true);
                     relCheckboxes.forEach(checkbox => checkbox.checked = true);
 
-                    // Re-initialize graph with original data to clear all modifications
+                    // Clear RAG-specific filtering by reinitializing with full graph data
                     if (graphData) {
                         initializeGraph(graphData);
                     }

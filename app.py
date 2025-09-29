@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
+from typing import Optional
 import os, uuid, sys, tempfile, io
 from dotenv import load_dotenv
 
@@ -174,7 +175,7 @@ async def create_ontology_guided_kg(
     provider: str = Form("openai"),
     model: str = Form("gpt-3.5-turbo"),
     embedding_model: str = Form("sentence_transformers"),
-    ontology_file: UploadFile = File(None),
+    ontology_file: Optional[UploadFile] = File(None),
     max_chunks: int = Form(None),
     kg_name: str = Form(None)
 ):
@@ -223,6 +224,11 @@ async def create_ontology_guided_kg(
         model = model or "openai/gpt-oss-20b:free"
         llm = get_llm_provider(provider, model)
 
+        # DEBUG: Log ontology file information early
+        print(f"🔍 Ontology file parameter: ontology_file = {ontology_file}")
+        if ontology_file:
+            print(f"🔍 Ontology file details: filename={ontology_file.filename}, content_type={getattr(ontology_file, 'content_type', 'unknown')}")
+
         # Handle ontology file if provided
         ontology_path = None
         if ontology_file:
@@ -233,11 +239,45 @@ async def create_ontology_guided_kg(
             ontology_path = os.path.join(tmp_dir, ontology_filename)
             with open(ontology_path, "wb") as tmpf:
                 tmpf.write(ontology_data)
-            print(f"📚 Using provided ontology: {ontology_file.filename}")
+            print(f"📚 Using provided ontology: {ontology_file.filename} -> {ontology_path}")
+            print(f"🧪 Ontology file size: {len(ontology_data)} bytes")
+
+            # Enhanced verification with file content check
+            if os.path.exists(ontology_path):
+                file_size = os.path.getsize(ontology_path)
+                print(f"✅ Ontology file saved successfully: {file_size} bytes")
+
+                # Try to read a small portion to verify it's valid
+                try:
+                    with open(ontology_path, 'r', encoding='utf-8') as f:
+                        sample_content = f.read(500)
+                        if 'owl:' in sample_content.lower() or 'rdf:' in sample_content.lower():
+                            print(f"✅ Ontology file appears to be valid OWL/RDF format")
+                        else:
+                            print(f"⚠️ Ontology file may not be valid OWL/RDF format (no ontology tags found in first 500 chars)")
+                            print(f"📄 Sample content: {sample_content[:200]}...")
+                except Exception as e:
+                    print(f"⚠️ Could not read ontology file content: {e}")
+            else:
+                print(f"❌ Ontology file not found after saving: {ontology_path}")
+
+                # Log temp directory contents for debugging
+                try:
+                    temp_files = os.listdir(tmp_dir)
+                    ontology_files = [f for f in temp_files if f.startswith('ontology_')]
+                    print(f"📁 Temp directory contents: {len(temp_files)} files, {len(ontology_files)} ontology files")
+                except Exception as e:
+                    print(f"❌ Could not list temp directory: {e}")
+
+        else:
+            print(f"ℹ️ No ontology file provided in request")
 
         # Generate unique KG name if not provided
         if not kg_name:
             kg_name = f"kg_{str(uuid.uuid4())}"
+
+        # DEBUG: Log ontology_path being passed to KG creator
+        print(f"🔄 Initializing OntologyGuidedKGCreator with ontology_path: {ontology_path}")
 
         # Initialize ontology-guided KG creator (with defaults matching test)
         kg_creator = OntologyGuidedKGCreator(
@@ -250,6 +290,16 @@ async def create_ontology_guided_kg(
             neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
             embedding_model=embedding_model or "openai"
         )
+
+        # DEBUG: Verify ontology state after initialization
+        print(f"🔍 After KG creator initialization:")
+        print(f"   - kg_creator.ontology_path: {kg_creator.ontology_path}")
+        print(f"   - kg_creator.ontology_classes: {len(kg_creator.ontology_classes)} loaded")
+        print(f"   - kg_creator.ontology_relationships: {len(kg_creator.ontology_relationships)} loaded")
+        if kg_creator.ontology_classes:
+            print(f"   - Sample classes: {kg_creator.ontology_classes[:3]}")
+        if kg_creator.ontology_relationships:
+            print(f"   - Sample relationships: {kg_creator.ontology_relationships[:3]}")
 
         # Generate KG with ontology guidance (or without if no ontology provided)
         kg = kg_creator.generate_knowledge_graph(text_content, llm, file.filename, model, max_chunks, kg_name)
@@ -380,7 +430,7 @@ def list_models(provider: str):
     """
     model_map = {
         "openai": ["gpt-4", "gpt-3.5-turbo"],
-        "openrouter": ["meta-llama/llama-4-maverick:free", "deepseek/deepseek-r1-0528:free", "microsoft/wizardlm-2-8x22b:free", "openai/gpt-oss-20b:free"]
+        "openrouter": ["openai/gpt-oss-20b:free", "meta-llama/llama-3.3-8b-instruct:free", "deepseek/deepseek-chat-v3.1:free", "x-ai/grok-4-fast:free"]
     }
     return {"models": model_map.get(provider.lower(), [])}
 
@@ -543,77 +593,11 @@ async def test_create_working_kg():
 
             # Link chunk to document
             session.run('MATCH (c:Chunk {id: $chunk_id}), (d:Document {id: $doc_id}) MERGE (c)-[:PART_OF]->(d)', {
-                'chunk_id': chunk_id, 'doc_id': doc_id
+                'chunk_id': chunk_id,
+                'doc_id': doc_id
             })
 
-            # Create entities with embeddings
-            entities = [
-                ('Prostate cancer', 'Disease'),
-                ('frequent urination', 'Symptom'),
-                ('difficulty urinating', 'Symptom'),
-                ('blood in urine', 'Symptom'),
-                ('erectile dysfunction', 'Symptom'),
-                ('PSA', 'Biomarker'),
-                ('prostate-specific antigen', 'Biomarker'),
-                ('surgery', 'Treatment'),
-                ('radiation therapy', 'Treatment'),
-                ('hormone therapy', 'Treatment')
-            ]
-
-            for entity_name, entity_type in entities:
-                entity_id = str(uuid.uuid4())
-                # Use placeholder embeddings to avoid sentence_transformers import issues
-                entity_embedding = [0.1] * 384  # Placeholder vector with same dimensions
-
-                session.run('''
-                MERGE (e:__Entity__ {id: $entity_id})
-                SET e.name = $entity_name,
-                    e.type = $entity_type,
-                    e.embedding = $entity_emb
-                ''', {
-                    'entity_id': entity_id,
-                    'entity_name': entity_name,
-                    'entity_type': entity_type,
-                    'entity_emb': entity_embedding
-                })
-
-                # Link entities to chunks if they appear in text
-                if entity_name.lower() in test_text.lower():
-                    session.run('MATCH (c:Chunk {id: $chunk_id}), (e:__Entity__ {id: $entity_id}) MERGE (c)-[:HAS_ENTITY]->(e)', {
-                        'chunk_id': chunk_id, 'entity_id': entity_id
-                    })
-
-            # Create relationships
-            relationships = [
-                ('Prostate cancer', 'frequent urination', 'CAUSES'),
-                ('Prostate cancer', 'difficulty urinating', 'CAUSES'),
-                ('Prostate cancer', 'blood in urine', 'CAUSES'),
-                ('Prostate cancer', 'erectile dysfunction', 'CAUSES'),
-                ('surgery', 'Prostate cancer', 'TREATS'),
-                ('radiation therapy', 'Prostate cancer', 'TREATS'),
-                ('hormone therapy', 'Prostate cancer', 'TREATS')
-            ]
-
-            for source_name, target_name, rel_type in relationships:
-                # Find entity nodes by name
-                source_result = session.run('MATCH (e:__Entity__) WHERE e.name = $name RETURN e.id AS id LIMIT 1', {'name': source_name})
-                target_result = session.run('MATCH (e:__Entity__) WHERE e.name = $name RETURN e.id AS id LIMIT 1', {'name': target_name})
-
-                if source_result and source_result.peek() and target_result and target_result.peek():
-                    source_record = source_result.peek()
-                    target_record = target_result.peek()
-                    # Need to use string interpolation for relationship type since Cypher doesn't support parameterized relationship types
-                    cypher_query = f'MATCH (s:__Entity__ {{id: $source_id}}), (t:__Entity__ {{id: $target_id}}) MERGE (s)-[:{rel_type}]->(t)'
-                    session.run(cypher_query, {
-                        'source_id': source_record['id'],
-                        'target_id': target_record['id']
-                    })
-
-            # Create vector indexes
-            print('Creating vector indexes...')
-            session.run('CREATE VECTOR INDEX vector IF NOT EXISTS FOR (c:Chunk) ON (c.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
-            session.run('CREATE VECTOR INDEX entity_vector IF NOT EXISTS FOR (e:__Entity__) ON (e.embedding) OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: "cosine"}}')
-            print('✅ Vector indexes created successfully!')
+            # No test entities created - removed hardcoded test entities
 
         print('✅ Test KG with embeddings created successfully!')
 
@@ -642,8 +626,8 @@ async def test_create_working_kg():
             "data_stats": {
                 "documents": result.get('docs', 1) if 'result' in locals() and result else 1,
                 "chunks": result.get('chunks', 1) if 'result' in locals() and result else 1,
-                "entities": result.get('entities', 8) if 'result' in locals() and result else 8,
-                "relationships": result.get('rels', 7) if 'result' in locals() and result else 7,
+                "entities": 0,  # No test entities created
+                "relationships": 0,  # No test relationships created
                 "embedding_dimensions": 384,
                 "similarity_function": "cosine"
             }

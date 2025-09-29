@@ -571,147 +571,89 @@ User Query: {question}"""),
 
     def _extract_used_entities_and_chunks(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract entities and chunks that are actually mentioned in the LLM response,
-        and identify the reasoning path edges that connect them
+        Extract entities and chunks that are actually mentioned in the RAG answer,
+        focusing ONLY on nodes that are explicitly referenced by their element ID
         """
         used_entities = []
         used_chunks = []
         reasoning_edges = []
 
         try:
-            response_lower = response.lower()
             context_entities = context.get("entities", {})
             context_chunks = context.get("chunks", [])
+            context_relationships = context.get("relationships", [])
 
-            # Create chunk lookup by ID for validation
-            chunk_lookup = {chunk.get("chunk_id", ""): chunk for chunk in context_chunks}
-
-            # 1. Extract all node IDs mentioned in the response using regex patterns
-            # Pattern: (ID:actual_id_from_context)
+            # Find all element IDs explicitly referenced in the response text (ID:...)
             entity_id_pattern = r'\(ID:([^)]+)\)'
             mentioned_element_ids = set(re.findall(entity_id_pattern, response))
 
-            # 2. Also check for direct mentions in the reasoning path
-            reasoning_section = ""
-            lines = response.split('\n')
-            in_reasoning = False
-            for line in lines:
-                if 'REASONING PATH' in line.upper() and '#' in line:
-                    in_reasoning = True
-                    continue
-                elif in_reasoning and ('#' in line or 'COMBINED EVIDENCE' in line.upper()):
-                    break
-                elif in_reasoning:
-                    reasoning_section += line + "\n"
+            # Also extract chunk IDs if they appear in the same format
+            chunk_id_pattern = r'Chunk\s*(\d+)\s*\(ID:\s*([^)]+)\)'
+            chunk_matches = re.findall(chunk_id_pattern, response)
 
-            # Parse reasoning path to find node connections
-            # Look for patterns like: Finding 1 → Relationship → Finding 2
-            reasoning_lines = reasoning_section.strip().split('\n')
-            prev_node = None
+            # Collect chunk IDs from matches
+            mentioned_chunk_ids = set()
+            for match in chunk_matches:
+                chunk_num, chunk_id = match
+                mentioned_chunk_ids.add(chunk_id)
 
-            for line in reasoning_lines:
-                line = line.strip()
-                if not line or line.startswith('-'):
-                    continue
+            # CRITICAL: Only include entities that are EXPLICITLY referenced by their element_id in (ID:...) format
+            # This ensures we only get entities that are actually referenced in the reasoning
+            for entity_id, entity_info in context_entities.items():
+                element_id = entity_info.get('element_id', '')
 
-                # Extract all (ID:...) references in this reasoning step
-                step_ids = set(re.findall(entity_id_pattern, line))
+                if element_id in mentioned_element_ids:
+                    used_entities.append({
+                        "id": entity_id,
+                        "element_id": element_id,
+                        "type": entity_info.get("type", "Unknown"),
+                        "description": entity_info.get("description", ""),
+                        "reasoning_context": "explicitly referenced by ID in RAG response"
+                    })
 
-                # Find entities mentioned in this step
-                step_entities = []
-                for entity_id, entity_info in context_entities.items():
-                    element_id = entity_info.get('element_id', '')
-                    if (element_id in step_ids or
-                        element_id in mentioned_element_ids or
-                        entity_id.lower() in response_lower or
-                        entity_info.get('description', '').lower() in response_lower):
+            # Find chunks that are directly referenced
+            for chunk in context_chunks:
+                chunk_id = chunk.get("chunk_id", "")
+                chunk_element_id = chunk.get("chunk_element_id", "")
 
-                        step_entities.append({
-                            "id": entity_id,
-                            "element_id": element_id,
-                            "type": entity_info.get("type", "Unknown"),
-                            "description": entity_info.get("description", ""),
-                            "reasoning_step": line
-                        })
+                chunk_mentioned = False
+                if chunk_id in mentioned_chunk_ids or chunk_element_id in mentioned_element_ids:
+                    chunk_mentioned = True
 
-                # Find chunks mentioned in this step
-                step_chunks = []
-                for chunk in context_chunks:
-                    chunk_id = chunk.get("chunk_id", "")
-                    if chunk_id in step_ids or chunk_id in mentioned_element_ids:
-                        step_chunks.append({
-                            "id": chunk_id,
-                            "element_id": chunk.get("chunk_element_id", ""),
-                            "text": chunk.get("text", "")[:100] + "..." if len(chunk.get("text", "")) > 100 else chunk.get("text", ""),
-                            "reasoning_step": line
-                        })
+                if chunk_mentioned:
+                    used_chunks.append({
+                        "id": chunk_id,
+                        "element_id": chunk_element_id,
+                        "text": chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", ""),
+                        "reasoning_context": "directly referenced chunk"
+                    })
 
-                # If we found a previous node, create edges to current nodes
-                if prev_node and (step_entities or step_chunks):
-                    current_nodes = step_entities + step_chunks
-                    for curr_node in current_nodes:
-                        # Look for the actual relationship in the graph data
-                        edge_found = False
-                        if context.get("relationships"):
-                            for rel in context["relationships"]:
-                                # Check if this edge connects prev_node to curr_node
-                                if ((rel.get("source_element_id") == prev_node.get("element_id") and
-                                     rel.get("target_element_id") == curr_node.get("element_id")) or
-                                    (rel.get("target_element_id") == prev_node.get("element_id") and
-                                     rel.get("source_element_id") == curr_node.get("element_id"))):
-                                    reasoning_edges.append({
-                                        "from": prev_node["element_id"],
-                                        "to": curr_node["element_id"],
-                                        "relationship": rel.get("type", "CONNECTED_TO"),
-                                        "reasoning_step": line,
-                                        "bidirectional": rel.get("target_element_id") == prev_node.get("element_id")
-                                    })
-                                    edge_found = True
-                                    break
+            # Find relationships between the explicitly used entities (reasoning edges)
+            used_entity_element_ids = {e['element_id'] for e in used_entities}
 
-                        # If no direct edge found, create a logical connection for reasoning path
-                        if not edge_found:
-                            reasoning_edges.append({
-                                "from": prev_node["element_id"],
-                                "to": curr_node["element_id"],
-                                "relationship": "REASONING_PATH",
-                                "reasoning_step": line,
-                                "bidirectional": False
-                            })
+            for rel in context_relationships:
+                source_id = rel.get("source_element_id", "")
+                target_id = rel.get("target_element_id", "")
 
-                # Set current nodes as previous for next iteration
-                if step_entities:
-                    prev_node = step_entities[0]  # Use first entity as anchor
-                elif step_chunks:
-                    prev_node = step_chunks[0]  # Use first chunk as anchor
+                # Only include edges where both nodes are in our filtered set
+                if source_id in used_entity_element_ids and target_id in used_entity_element_ids:
+                    reasoning_edges.append({
+                        "from": source_id,
+                        "to": target_id,
+                        "relationship": rel.get("type", "CONNECTED_TO"),
+                        "reasoning_context": "connects explicitly referenced entities"
+                    })
 
-                # Add all found entities and chunks to used lists
-                used_entities.extend(step_entities)
-                used_chunks.extend(step_chunks)
-
-            # Remove duplicates while preserving reasoning information
-            seen_entity_ids = set()
-            unique_used_entities = []
-            for entity in used_entities:
-                if entity['id'] not in seen_entity_ids:
-                    seen_entity_ids.add(entity['id'])
-                    unique_used_entities.append(entity)
-
-            seen_chunk_ids = set()
-            unique_used_chunks = []
-            for chunk in used_chunks:
-                if chunk['id'] not in seen_chunk_ids:
-                    seen_chunk_ids.add(chunk['id'])
-                    unique_used_chunks.append(chunk)
-
-            logging.info(f"Extracted {len(unique_used_entities)} entities and {len(unique_used_chunks)} chunks from response")
-            logging.info(f"Identified {len(reasoning_edges)} reasoning path edges")
+            logging.info(f"Filtered to {len(used_entities)} entities and {len(used_chunks)} chunks EXPLICITLY referenced in RAG answer")
+            logging.info(f"Found {len(reasoning_edges)} connecting edges between referenced entities")
 
             return {
-                "used_entities": unique_used_entities,
-                "used_chunks": unique_used_chunks,
+                "used_entities": used_entities,
+                "used_chunks": used_chunks,
                 "reasoning_edges": reasoning_edges,
-                "reasoning_path": reasoning_section.strip()
+                "total_filtered_entities": len(used_entities),
+                "total_filtered_chunks": len(used_chunks),
+                "total_reasoning_edges": len(reasoning_edges)
             }
 
         except Exception as e:
@@ -720,5 +662,5 @@ User Query: {question}"""),
                 "used_entities": [],
                 "used_chunks": [],
                 "reasoning_edges": [],
-                "reasoning_path": ""
+                "error": str(e)
             }
