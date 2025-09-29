@@ -1383,6 +1383,7 @@
         let network = null;
         let currentKGId = null;
         let highlightedNodes = new Set(); // Track nodes to highlight from RAG answers
+        let reasoningEdges = new Set(); // Track edges that form the reasoning path
         let graphData = null; // Store current graph data for re-initialization
         let globalNodeIdCounter = Date.now(); // Global counter for unique node IDs across all graphs
         let nodeTypeColors = {}; // Store color mapping for node types
@@ -1861,41 +1862,64 @@
                         const relType = rel.type || 'Unknown';
                         const edgeColor = relationshipTypeColors[relType] || '#888888';
 
+                        // Check if this edge is part of the reasoning path
+                        const isReasoningEdge = reasoningEdges.has(`${rel.source_element_id || rel.from}_${relType}_${rel.target_element_id || rel.to}`) ||
+                                                reasoningEdges.has(`${rel.target_element_id || rel.to}_${relType}_${rel.source_element_id || rel.from}`);
+                        const isBidirectionalReasoningEdge = reasoningEdges.has(`${rel.target_element_id || rel.to}_${relType}_${rel.source_element_id || rel.from}`);
+
+                        // Apply reasoning path highlighting
+                        let finalEdgeColor = edgeColor;
+                        let edgeWidth = 1;
+                        let edgeLabel = relType;
+
+                        if (isReasoningEdge) {
+                            finalEdgeColor = '#ff6b35'; // Orange-red for reasoning path
+                            edgeWidth = 3; // Thicker edges for reasoning path
+                            edgeLabel = `★ ${relType}`; // Star prefix for reasoning edges
+                        }
+
                         return {
                             id: uniqueIdCounter++,
                             from: fromId,
                             to: toId,
-                            label: relType,
+                            label: edgeLabel,
                             originalId: rel.id,
                             arrows: {
                                 to: {
                                     enabled: true,
                                     scaleFactor: 0.8,
                                     type: 'arrow'
-                                }
+                                },
+                                ...(isBidirectionalReasoningEdge ? {
+                                    from: {
+                                        enabled: true,
+                                        scaleFactor: 0.8,
+                                        type: 'arrow'
+                                    }
+                                } : {})
                             },
                             color: {
-                                color: edgeColor,
+                                color: finalEdgeColor,
                                 highlight: '#ff6b35',
                                 hover: '#ff6b35'
                             },
                             font: {
                                 size: 11,
                                 face: 'Helvetica, Arial, sans-serif',
-                                color: '#333333',
+                                color: isReasoningEdge ? '#ff6b35' : '#333333', // Color font for reasoning edges
                                 background: 'rgba(255, 255, 255, 0.8)',
                                 strokeWidth: 0,
                                 align: 'top',
                                 vadjust: 15
                             },
-                            title: `${relType}\nFrom: ${rel.from || rel.start || rel.source}\nTo: ${rel.to || rel.end || rel.target}`,
-                            width: 1, // Thinner lines like Neo4j
+                            title: `${relType} ${isReasoningEdge ? '(Reasoning Path)' : ''}\nFrom: ${rel.from || rel.start || rel.source}\nTo: ${rel.to || rel.end || rel.target}`,
+                            width: edgeWidth, // Thicker lines for reasoning path
                             smooth: {
                                 enabled: true,
                                 type: 'straightCross',
                                 forceDirection: false
                             },
-                            shadow: false
+                            shadow: isReasoningEdge // Enable shadow for reasoning edges
                         };
                     }
                     return null;
@@ -2718,33 +2742,57 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                         
                     const result = await response.json();
 
-                    // Update highlighted nodes from used_entities in response
-                    if (result.info && result.info.entities && result.info.entities.used_entities) {
-                        // Clear previous highlights and set new ones
+                    // Update highlighted nodes from used_entities and used_chunks in response
+                    if (result.info && result.info.entities) {
+                        // Clear previous highlights and reasoning edges
                         highlightedNodes.clear();
-                        result.info.entities.used_entities.forEach(entity => {
-                            highlightedNodes.add(entity.id.toString());
-                            // Also add element_id if present as fallback
-                            if (entity.element_id) {
-                                highlightedNodes.add(entity.element_id.toString());
-                            }
-                        });
+                        reasoningEdges.clear();
 
-                        // If no highlights found, show all nodes (fallback to full graph)
-                        if (highlightedNodes.size === 0) {
-                            // Re-initialize graph to show all nodes when no specific entities are found
-                            if (graphData) {
-                                initializeGraph(graphData);
-                            }
-                        } else {
-                            // Re-initialize graph to show highlights if we have a graph loaded
-                            if (currentKGId && graphData) {
-                                initializeGraph(graphData);
-                            }
+                        // Process used entities
+                        if (result.info.entities.used_entities) {
+                            result.info.entities.used_entities.forEach(entity => {
+                                highlightedNodes.add(entity.id.toString());
+                                // Also add element_id if present as fallback
+                                if (entity.element_id) {
+                                    highlightedNodes.add(entity.element_id.toString());
+                                }
+                            });
                         }
+
+                        // Process used chunks
+                        if (result.used_chunks) {
+                            result.used_chunks.forEach(chunk => {
+                                highlightedNodes.add(chunk.id.toString());
+                                if (chunk.element_id) {
+                                    highlightedNodes.add(chunk.element_id.toString());
+                                }
+                            });
+                        }
+
+                        // Process reasoning edges for highlighting
+                        if (result.reasoning_edges) {
+                            result.reasoning_edges.forEach(edge => {
+                                const edgeKey = `${edge.from}_${edge.relationship}_${edge.to}`;
+                                reasoningEdges.add(edgeKey);
+                                // Also store backwards direction for bidirectional edges
+                                if (edge.bidirectional) {
+                                    reasoningEdges.add(`${edge.to}_${edge.relationship}_${edge.from}`);
+                                }
+                            });
+                        }
+
+                        // Always re-initialize graph to show reasoning subgraph
+                        if (currentKGId && graphData) {
+                            initializeGraph(graphData);
+                        } else if (graphData) {
+                            // If no highlights, show all nodes
+                            initializeGraph(graphData);
+                        }
+
                     } else {
-                        // No used_entities in response, show all nodes
+                        // No structured info in response, show all nodes
                         highlightedNodes.clear();
+                        reasoningEdges.clear();
                         if (graphData) {
                             initializeGraph(graphData);
                         }

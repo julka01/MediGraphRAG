@@ -213,8 +213,11 @@ User Query: {question}"""),
                 "question": question
             })
 
-            # Extract entities actually mentioned in the response
-            used_entities = self._extract_used_entities(response, context["entities"])
+            # Extract entities and chunks actually mentioned in the response, plus reasoning edges
+            extracted_info = self._extract_used_entities_and_chunks(response, context)
+            used_entities = extracted_info["used_entities"]
+            used_chunks = extracted_info["used_chunks"]
+            reasoning_edges = extracted_info["reasoning_edges"]
 
             # Calculate confidence based on similarity scores
             avg_score = context["total_score"] / len(context["chunks"]) if context["chunks"] else 0
@@ -225,7 +228,9 @@ User Query: {question}"""),
                 "context": context,
                 "sources": context["documents"],
                 "entities": list(context["entities"].keys()),
-                "used_entities": used_entities,  # Nodes actually used in the answer
+                "used_entities": used_entities,  # Entities actually used in the answer
+                "used_chunks": used_chunks,  # Chunks actually used in the answer
+                "reasoning_edges": reasoning_edges,  # Edges that form the reasoning path
                 "relationships": context["relationships"],
                 "confidence": confidence,
                 "chunk_count": len(context["chunks"]),
@@ -564,70 +569,156 @@ User Query: {question}"""),
 
 
 
-    def _extract_used_entities(self, response: str, context_entities: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_used_entities_and_chunks(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract entities that are actually mentioned in the LLM response
-        Uses multiple strategies to identify entity references
+        Extract entities and chunks that are actually mentioned in the LLM response,
+        and identify the reasoning path edges that connect them
         """
         used_entities = []
+        used_chunks = []
+        reasoning_edges = []
 
         try:
             response_lower = response.lower()
+            context_entities = context.get("entities", {})
+            context_chunks = context.get("chunks", [])
 
-            for entity_id, entity_info in context_entities.items():
-                entity_name = entity_info.get('description', entity_info.get('id', '')).lower()
-                entity_type = entity_info.get('type', '').lower()
-                element_id = entity_info.get('element_id', '')
+            # Create chunk lookup by ID for validation
+            chunk_lookup = {chunk.get("chunk_id", ""): chunk for chunk in context_chunks}
 
-                # Check if this entity is mentioned in various ways
-                mentioned = False
+            # 1. Extract all node IDs mentioned in the response using regex patterns
+            # Pattern: (ID:actual_id_from_context)
+            entity_id_pattern = r'\(ID:([^)]+)\)'
+            mentioned_element_ids = set(re.findall(entity_id_pattern, response))
 
-                # 1. Direct entity ID or name mention in response
-                if entity_id.lower() in response_lower:
-                    mentioned = True
+            # 2. Also check for direct mentions in the reasoning path
+            reasoning_section = ""
+            lines = response.split('\n')
+            in_reasoning = False
+            for line in lines:
+                if 'REASONING PATH' in line.upper() and '#' in line:
+                    in_reasoning = True
+                    continue
+                elif in_reasoning and ('#' in line or 'COMBINED EVIDENCE' in line.upper()):
+                    break
+                elif in_reasoning:
+                    reasoning_section += line + "\n"
 
-                # 2. Entity name/description in response (case insensitive)
-                elif entity_name and entity_name in response_lower:
-                    mentioned = True
+            # Parse reasoning path to find node connections
+            # Look for patterns like: Finding 1 → Relationship → Finding 2
+            reasoning_lines = reasoning_section.strip().split('\n')
+            prev_node = None
 
-                # 3. Entity type in response (more lenient)
-                elif entity_type and len(entity_type) > 2 and entity_type in response_lower:
-                    # Only if the entity name is also somewhat related
-                    entity_words = set(entity_name.split())
-                    response_words = set(response_lower.split())
-                    if len(entity_words.intersection(response_words)) > 0:
-                        mentioned = True
+            for line in reasoning_lines:
+                line = line.strip()
+                if not line or line.startswith('-'):
+                    continue
 
-                # 4. Element ID mentioned
-                elif element_id and element_id in response:
-                    mentioned = True
+                # Extract all (ID:...) references in this reasoning step
+                step_ids = set(re.findall(entity_id_pattern, line))
 
-                # 5. Extract all ID references from response using regex
-                # Looking for patterns like: Entity Name (ID:actual_id_from_context)
-                entity_id_pattern = r'\(ID:([^)]+)\)'
-                mentioned_ids = re.findall(entity_id_pattern, response)
-                if element_id in mentioned_ids or entity_id in mentioned_ids:
-                    mentioned = True
+                # Find entities mentioned in this step
+                step_entities = []
+                for entity_id, entity_info in context_entities.items():
+                    element_id = entity_info.get('element_id', '')
+                    if (element_id in step_ids or
+                        element_id in mentioned_element_ids or
+                        entity_id.lower() in response_lower or
+                        entity_info.get('description', '').lower() in response_lower):
 
-                if mentioned:
-                    used_entities.append({
-                        "id": entity_id,
-                        "element_id": element_id,
-                        "type": entity_info.get("type", "Unknown"),
-                        "description": entity_info.get("description", "")
-                    })
+                        step_entities.append({
+                            "id": entity_id,
+                            "element_id": element_id,
+                            "type": entity_info.get("type", "Unknown"),
+                            "description": entity_info.get("description", ""),
+                            "reasoning_step": line
+                        })
 
-            # Remove duplicates based on entity_id
-            seen_ids = set()
+                # Find chunks mentioned in this step
+                step_chunks = []
+                for chunk in context_chunks:
+                    chunk_id = chunk.get("chunk_id", "")
+                    if chunk_id in step_ids or chunk_id in mentioned_element_ids:
+                        step_chunks.append({
+                            "id": chunk_id,
+                            "element_id": chunk.get("chunk_element_id", ""),
+                            "text": chunk.get("text", "")[:100] + "..." if len(chunk.get("text", "")) > 100 else chunk.get("text", ""),
+                            "reasoning_step": line
+                        })
+
+                # If we found a previous node, create edges to current nodes
+                if prev_node and (step_entities or step_chunks):
+                    current_nodes = step_entities + step_chunks
+                    for curr_node in current_nodes:
+                        # Look for the actual relationship in the graph data
+                        edge_found = False
+                        if context.get("relationships"):
+                            for rel in context["relationships"]:
+                                # Check if this edge connects prev_node to curr_node
+                                if ((rel.get("source_element_id") == prev_node.get("element_id") and
+                                     rel.get("target_element_id") == curr_node.get("element_id")) or
+                                    (rel.get("target_element_id") == prev_node.get("element_id") and
+                                     rel.get("source_element_id") == curr_node.get("element_id"))):
+                                    reasoning_edges.append({
+                                        "from": prev_node["element_id"],
+                                        "to": curr_node["element_id"],
+                                        "relationship": rel.get("type", "CONNECTED_TO"),
+                                        "reasoning_step": line,
+                                        "bidirectional": rel.get("target_element_id") == prev_node.get("element_id")
+                                    })
+                                    edge_found = True
+                                    break
+
+                        # If no direct edge found, create a logical connection for reasoning path
+                        if not edge_found:
+                            reasoning_edges.append({
+                                "from": prev_node["element_id"],
+                                "to": curr_node["element_id"],
+                                "relationship": "REASONING_PATH",
+                                "reasoning_step": line,
+                                "bidirectional": False
+                            })
+
+                # Set current nodes as previous for next iteration
+                if step_entities:
+                    prev_node = step_entities[0]  # Use first entity as anchor
+                elif step_chunks:
+                    prev_node = step_chunks[0]  # Use first chunk as anchor
+
+                # Add all found entities and chunks to used lists
+                used_entities.extend(step_entities)
+                used_chunks.extend(step_chunks)
+
+            # Remove duplicates while preserving reasoning information
+            seen_entity_ids = set()
             unique_used_entities = []
             for entity in used_entities:
-                if entity['id'] not in seen_ids:
-                    seen_ids.add(entity['id'])
+                if entity['id'] not in seen_entity_ids:
+                    seen_entity_ids.add(entity['id'])
                     unique_used_entities.append(entity)
 
-            logging.info(f"Extracted {len(unique_used_entities)} used entities from response")
-            return unique_used_entities
+            seen_chunk_ids = set()
+            unique_used_chunks = []
+            for chunk in used_chunks:
+                if chunk['id'] not in seen_chunk_ids:
+                    seen_chunk_ids.add(chunk['id'])
+                    unique_used_chunks.append(chunk)
+
+            logging.info(f"Extracted {len(unique_used_entities)} entities and {len(unique_used_chunks)} chunks from response")
+            logging.info(f"Identified {len(reasoning_edges)} reasoning path edges")
+
+            return {
+                "used_entities": unique_used_entities,
+                "used_chunks": unique_used_chunks,
+                "reasoning_edges": reasoning_edges,
+                "reasoning_path": reasoning_section.strip()
+            }
 
         except Exception as e:
-            logging.error(f"Error extracting used entities: {e}")
-            return []
+            logging.error(f"Error extracting used entities and chunks: {e}")
+            return {
+                "used_entities": [],
+                "used_chunks": [],
+                "reasoning_edges": [],
+                "reasoning_path": ""
+            }
