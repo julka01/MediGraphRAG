@@ -802,10 +802,13 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 else:
                     raise conn_error
 
-            # Create document node
+            # Create document node with versioning
+            import uuid
+            kg_version = str(uuid.uuid4())
             doc_query = """
             MERGE (d:Document {fileName: $fileName})
-            SET d.createdAt = datetime(),
+            SET d.kgVersion = $kgVersion,
+                d.createdAt = datetime(),
                 d.totalChunks = $totalChunks,
                 d.totalEntities = $totalEntities,
                 d.totalRelationships = $totalRelationships,
@@ -813,6 +816,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 d.ontologyRelationships = $ontologyRelationships
             """
             graph.query(doc_query, {
+                "kgVersion": kg_version,
                 "fileName": file_name,
                 "totalChunks": kg['metadata']['total_chunks'],
                 "totalEntities": kg['metadata']['total_entities'],
@@ -854,24 +858,39 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
             # Create entity nodes with embeddings and ontology-based labels
             for node in kg['nodes']:
+                properties = node.get('properties', {})
                 entity_type = node['label']  # This is the ontology class (Disease, Treatment, etc.)
-                # Use both __Entity__ for compatibility and the specific ontology class label
+                # Sanitize entity type for Cypher compatibility (remove spaces and special chars)
+                cypher_safe_entity_type = entity_type.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace(',', '')
+
+                # Generate embedding for entity if it doesn't have one
+                entity_embedding = node.get('embedding')
+                if entity_embedding is None:
+                    # Generate embedding from entity name and description
+                    entity_text = properties.get('name', node['id'])
+                    if properties.get('description'):
+                        entity_text += " " + properties.get('description', '')
+                    try:
+                        entity_embedding = self.embedding_function.embed_query(entity_text)
+                    except Exception as e:
+                        logging.warning(f"Failed to generate embedding for entity {node['id']}: {e}")
+                        entity_embedding = None
+
+                # Use specific ontology class label first, then __Entity__ to ensure ontology class is the primary label
                 node_query = f"""
-                MERGE (n:__Entity__:{entity_type} {{id: $id}})
+                MERGE (n:{cypher_safe_entity_type}:__Entity__ {{id: $id}})
                 SET n.name = $name,
                     n.type = $type,
                     n.description = $description,
                     n.embedding = $embedding,
                     n.ontology_class = $entity_type
                 """
-
-                properties = node.get('properties', {})
                 graph.query(node_query, {
                     "id": node['id'],
                     "name": properties.get('name', node['id']),
                     "type": node['label'],
                     "description": properties.get('description', ''),
-                    "embedding": node.get('embedding'),
+                    "embedding": entity_embedding,
                     "entity_type": entity_type
                 })
 

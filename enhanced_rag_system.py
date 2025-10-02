@@ -572,7 +572,7 @@ User Query: {question}"""),
     def _extract_used_entities_and_chunks(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract entities and chunks that are actually mentioned in the RAG answer,
-        focusing ONLY on nodes that are explicitly referenced by their element ID
+        using multiple fallback strategies to ensure filtering works
         """
         used_entities = []
         used_chunks = []
@@ -583,35 +583,102 @@ User Query: {question}"""),
             context_chunks = context.get("chunks", [])
             context_relationships = context.get("relationships", [])
 
-            # Find all element IDs explicitly referenced in the response text (ID:...)
-            entity_id_pattern = r'\(ID:([^)]+)\)'
-            mentioned_element_ids = set(re.findall(entity_id_pattern, response))
+            # Strategy 1: Find all element IDs explicitly referenced in multiple formats
+            entity_id_patterns = [
+                r'\(ID:([^)]+)\)',           # (ID:12345)
+                r'<ID:([^>]+)>',             # <ID:12345>
+                r'ID:\s*([^\s,.:;]+)',       # ID: 12345
+                r'elementId\([\'"]?([^\'")\s]+)'  # elementId('12345-123')
+            ]
 
-            # Also extract chunk IDs if they appear in the same format
-            chunk_id_pattern = r'Chunk\s*(\d+)\s*\(ID:\s*([^)]+)\)'
-            chunk_matches = re.findall(chunk_id_pattern, response)
+            mentioned_element_ids = set()
+            for pattern in entity_id_patterns:
+                matches = re.findall(pattern, response)
+                mentioned_element_ids.update(matches)
 
-            # Collect chunk IDs from matches
+            # Strategy 2: Extract chunk references
+            chunk_patterns = [
+                r'Chunk\s*(\d+)\s*\(ID:\s*([^)]+)\)',  # Chunk 1 (ID:...)
+                r'chunk\s*\d+',                           # chunk 1, chunk 2
+            ]
+
             mentioned_chunk_ids = set()
-            for match in chunk_matches:
-                chunk_num, chunk_id = match
-                mentioned_chunk_ids.add(chunk_id)
+            for pattern in chunk_patterns:
+                chunk_matches = re.findall(pattern, response, re.IGNORECASE)
+                if chunk_matches:
+                    # Handle different capture groups
+                    for match in chunk_matches:
+                        if isinstance(match, tuple) and len(match) > 1:
+                            # Pattern with ID capture: (chunk_num, chunk_id)
+                            mentioned_chunk_ids.add(match[1])
+                        else:
+                            # Pattern without ID: just chunk number
+                            pass  # Would need string matching below
 
-            # CRITICAL: Only include entities that are EXPLICITLY referenced by their element_id in (ID:...) format
-            # This ensures we only get entities that are actually referenced in the reasoning
+            # Strategy 3: Fuzzy name matching for entities (fallback)
+            response_lower = response.lower()
+            mentioned_entity_names = set()
+
+            # Extract potential entity mentions from context
+            for entity_key, entity_info in context_entities.items():
+                entity_name = entity_info.get("id", "").lower()
+                entity_desc = entity_info.get("description", "").lower()
+
+                # Check if entity name appears in response (improved fuzzy matching)
+                if entity_name and len(entity_name) > 2:  # Allow shorter matches
+                    if entity_name in response_lower:
+                        mentioned_entity_names.add(entity_key)
+                    # Also check for partial matches (e.g., "PSA" matches "PSA testing")
+                    elif len(entity_name) > 4 and any(word.startswith(entity_name[:4]) for word in response_lower.split()):
+                        mentioned_entity_names.add(entity_key)
+                    # Check for acronym/variation matching
+                    elif 'psa' in entity_name and 'psa' in response_lower:
+                        mentioned_entity_names.add(entity_key)
+                    elif 'gleason' in entity_name and 'gleason' in response_lower:
+                        mentioned_entity_names.add(entity_key)
+
+                # Check description too (helps with fuzzy matching)
+                desc_words = entity_desc.split() if entity_desc else []
+                for word in desc_words:
+                    if len(word) > 3 and word in response_lower:
+                        mentioned_entity_names.add(entity_key)
+                        break
+
+                # Additional fuzzy matching for common medical terms
+                if entity_name in ['age', 'race', 'family history', 'brca1', 'brca2'] and any(term in response_lower for term in ['age', 'race', 'risk factor', 'family', 'genetic']):
+                    mentioned_entity_names.add(entity_key)
+
+            logging.info(f"ID-based matches: {len(mentioned_element_ids)} element IDs")
+            logging.info(f"Name-based matches: {len(mentioned_entity_names)} entities")
+
+            # Combine ID-based and name-based entity matching
             for entity_id, entity_info in context_entities.items():
                 element_id = entity_info.get('element_id', '')
+                entity_name = entity_info.get('id', '')
+                entity_type = entity_info.get("type", "Unknown")
 
-                if element_id in mentioned_element_ids:
+                # Include entity if:
+                # 1. Element ID is explicitly mentioned, OR
+                # 2. Entity name is mentioned (fallback)
+                if (element_id in mentioned_element_ids) or (entity_id in mentioned_entity_names):
                     used_entities.append({
                         "id": entity_id,
                         "element_id": element_id,
-                        "type": entity_info.get("type", "Unknown"),
+                        "type": entity_type,
                         "description": entity_info.get("description", ""),
-                        "reasoning_context": "explicitly referenced by ID in RAG response"
+                        "reasoning_context": "explicitly referenced by ID" if element_id in mentioned_element_ids else "mentioned by name"
                     })
 
-            # Find chunks that are directly referenced
+            # Strategy 4: Include chunks that contain mentioned entities (semantic linking)
+            relevant_chunk_ids = set()
+            for entity_id in {e['id'] for e in used_entities}:
+                for chunk in context_chunks:
+                    chunk_entities = chunk.get('entities', [])
+                    if any(ce.get('id') == entity_id for ce in chunk_entities):
+                        relevant_chunk_ids.add(chunk.get('chunk_id'))
+                        relevant_chunk_ids.add(chunk.get('chunk_element_id'))
+
+            # Include explicitly mentioned chunks
             for chunk in context_chunks:
                 chunk_id = chunk.get("chunk_id", "")
                 chunk_element_id = chunk.get("chunk_element_id", "")
@@ -620,32 +687,45 @@ User Query: {question}"""),
                 if chunk_id in mentioned_chunk_ids or chunk_element_id in mentioned_element_ids:
                     chunk_mentioned = True
 
+                # Also include chunks that contain our selected entities
+                if chunk_id in relevant_chunk_ids or chunk_element_id in relevant_chunk_ids:
+                    chunk_mentioned = True
+
                 if chunk_mentioned:
                     used_chunks.append({
                         "id": chunk_id,
                         "element_id": chunk_element_id,
                         "text": chunk.get("text", "")[:200] + "..." if len(chunk.get("text", "")) > 200 else chunk.get("text", ""),
-                        "reasoning_context": "directly referenced chunk"
+                        "reasoning_context": "directly referenced chunk" if chunk_id in mentioned_chunk_ids else "contains relevant entities"
                     })
 
-            # Find relationships between the explicitly used entities (reasoning edges)
-            used_entity_element_ids = {e['element_id'] for e in used_entities}
+            # Strategy 5: Find relationships between selected entities
+            if used_entities:  # Only look for relationships if we have filtered entities
+                used_entity_element_ids = {e['element_id'] for e in used_entities if e['element_id']}
+                used_entity_ids = {e['id'] for e in used_entities}
 
-            for rel in context_relationships:
-                source_id = rel.get("source_element_id", "")
-                target_id = rel.get("target_element_id", "")
+                for rel in context_relationships:
+                    source_id = rel.get("source", "")
+                    target_id = rel.get("target", "")
+                    source_element_id = rel.get("source_element_id", "")
+                    target_element_id = rel.get("target_element_id", "")
 
-                # Only include edges where both nodes are in our filtered set
-                if source_id in used_entity_element_ids and target_id in used_entity_element_ids:
-                    reasoning_edges.append({
-                        "from": source_id,
-                        "to": target_id,
-                        "relationship": rel.get("type", "CONNECTED_TO"),
-                        "reasoning_context": "connects explicitly referenced entities"
-                    })
+                    # Include edge if both connected entities are in our filtered set
+                    source_in_set = (source_id in used_entity_ids or
+                                   source_element_id in used_entity_element_ids)
+                    target_in_set = (target_id in used_entity_ids or
+                                   target_element_id in used_entity_element_ids)
 
-            logging.info(f"Filtered to {len(used_entities)} entities and {len(used_chunks)} chunks EXPLICITLY referenced in RAG answer")
-            logging.info(f"Found {len(reasoning_edges)} connecting edges between referenced entities")
+                    if source_in_set and target_in_set:
+                        reasoning_edges.append({
+                            "from": source_element_id or source_id,
+                            "to": target_element_id or target_id,
+                            "relationship": rel.get("type", "CONNECTED_TO"),
+                            "reasoning_context": "connects relevant entities"
+                        })
+
+            logging.info(f"Filtered to {len(used_entities)} entities ({len([e for e in used_entities if 'mentioned by name' in e['reasoning_context']])} by name) and {len(used_chunks)} chunks")
+            logging.info(f"Found {len(reasoning_edges)} reasoning edges")
 
             return {
                 "used_entities": used_entities,
