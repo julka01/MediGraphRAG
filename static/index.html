@@ -645,27 +645,140 @@
             color: #2c3e50;
         }
 
-        /* Enhanced Message Styling with Heavy Markdown Support */
-        .ai-message {
-            background: #e3f2fd;
-            padding: 12px 15px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.5;
+        /* Enhanced Clinical-Focused Message Styling */
+        .chat-messages {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            padding: 1rem;
+        }
+
+        .message-container {
+            display: flex;
+            margin-bottom: 1rem;
             position: relative;
+        }
+
+        .message-container.user {
+            justify-content: flex-end;
+        }
+
+        .message-container.ai {
+            justify-content: flex-start;
+        }
+
+        .ai-message, .user-message {
+            max-width: 85%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            position: relative;
+            border-radius: 18px;
+            box-shadow: 0 3px 16px rgba(0,0,0,0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
+            transform: translateZ(0); /* Hardware acceleration */
+        }
+
+        .ai-message:hover, .user-message:hover {
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
+        }
+
+        .ai-message {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border: 2px solid #e3f2fd;
+            padding: 0;
+            border-left: 6px solid #2196f3;
         }
 
         .user-message {
-            background: #f1f8e9;
-            padding: 12px 15px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.5;
+            background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+            color: white;
+            border: 2px solid #1976d2;
+            padding: 0;
+            border-right: 6px solid #0d47a1;
+        }
+
+        .message-bubble {
+            padding: 18px 24px;
             position: relative;
-            overflow: hidden;
+        }
+
+        /* Clinical Context Indicators */
+        .clinical-context-badge {
+            position: absolute;
+            top: -10px;
+            right: 15px;
+            background: #4caf50;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            z-index: 10;
+        }
+
+        /* Confidence Level Indicators */
+        .confidence-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 8px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+
+        .confidence-high {
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+            border: 2px solid #4caf50;
+            color: #2e7d32;
+        }
+
+        .confidence-medium {
+            background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+            border: 2px solid #ff9800;
+            color: #f57c00;
+        }
+
+        .confidence-low {
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
+            border: 2px solid #f44336;
+            color: #c62828;
+        }
+
+        /* Enhanced Hover Interactions */
+        .entity-link {
+            cursor: pointer;
+            background: linear-gradient(120deg, #a5d6ff 0%, transparent 100%);
+            border-radius: 4px;
+            padding: 1px 4px;
+            margin: 0 1px;
+            transition: all 0.2s ease;
+            text-decoration: none !important;
+            border-bottom: 2px solid transparent;
+        }
+
+        .entity-link:hover {
+            background: linear-gradient(120deg, #4dabff 0%, transparent 100%);
+            border-bottom-color: #2196f3;
+            transform: scale(1.02);
+        }
+
+        /* Graph-Chat Synchronization */
+        .graph-focus-marker {
+            background: #ffeb3b;
+            border: 2px solid #f57f17;
+            animation: pulse-marker 2s infinite;
+        }
+
+        @keyframes pulse-marker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
         }
         
         .thinking-message {
@@ -2267,41 +2380,50 @@
         
         function addToChat(message, type, id = null) {
             const chatBox = document.getElementById('chat-box');
-            let messageClass = 'ai-message';
-            if (type === 'user') messageClass = 'user-message';
-            if (type === 'error') messageClass = 'ai-message error';
-            if (type === 'thinking') messageClass = 'thinking-message';
-            
-            const messageEl = document.createElement('div');
-            messageEl.className = messageClass;
-            
-            // Prepend "Agent: " to AI messages for clarity
-            if (type === 'ai' || type === 'thinking') {
+
+            // Create message container with flexbox layout
+            const messageContainer = document.createElement('div');
+            messageContainer.className = 'message-container ' + type;
+
+            const messageBubble = document.createElement('div');
+            messageBubble.className = type + '-message';
+
+            // Create internal bubble content
+            const bubbleContent = document.createElement('div');
+            bubbleContent.className = 'message-bubble';
+
+            // Only prepend "Agent: " for thinking messages, clinical responses already have titles
+            if (type === 'thinking') {
                 message = `<strong>Agent:</strong> ${message}`;
             }
-            
-            // Create message content container
-            const contentEl = document.createElement('div');
-            contentEl.innerHTML = message;
-            messageEl.appendChild(contentEl);
-            
+
+            bubbleContent.innerHTML = message;
+            messageBubble.appendChild(bubbleContent);
+
+            // Add clinical context indicator if AI response
+            if (type === 'ai' && message.includes('clinical')) {
+                const contextBadge = document.createElement('div');
+                contextBadge.className = 'clinical-context-badge';
+                contextBadge.innerHTML = '<span style="font-size: 0.75em; opacity: 0.7;">🏥 Medical Context</span>';
+                messageBubble.appendChild(contextBadge);
+            }
+
             // Add timestamp
             const timestampEl = document.createElement('div');
             timestampEl.className = 'message-timestamp';
             const now = new Date();
             timestampEl.textContent = now.toLocaleTimeString();
-            timestampEl.style.fontSize = '0.75em';
-            timestampEl.style.color = '#666';
-            timestampEl.style.marginTop = '4px';
-            messageEl.appendChild(timestampEl);
-            
+            messageBubble.appendChild(timestampEl);
+
+            messageContainer.appendChild(messageBubble);
+
             if (id) {
-                messageEl.id = id;
+                messageContainer.id = id;
             }
-            
-            chatBox.appendChild(messageEl);
+
+            chatBox.appendChild(messageContainer);
             chatBox.scrollTop = chatBox.scrollHeight;
-            return messageEl;
+            return messageContainer;
         }
         
         // Store KG ID for later use with Load from Neo4j button
@@ -2947,11 +3069,15 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                     function formatMarkdown(text) {
                         return text
                             .replace(/\n/g, '<br>')
-                            .replace(/\*\*(.*?)\*\*/g, '<strong style="color: #1565c0; font-weight: 700;">$1</strong>')
-                            .replace(/\*(.*?)\*/g, '<em style="color: #7b1fa2;">$1</em>')
-                            .replace(/`(.*?)`/g, '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>')
+                            .replace(/\*\*(.*?)\*\*/g,
+                                `<strong style="color: #1565c0; font-weight: 700;">$1</strong>`)
+                            .replace(/\*(.*?)\*/g,
+                                '<em style="color: #7b1fa2;">$1</em>')
+                            .replace(/`(.*?)`/g,
+                                '<code style="background: #f7fafc; color: #e53e3e; padding: 3px 8px; border-radius: 6px; font-family: monospace;">$1</code>')
                             .replace(/[•·]/g, '<br>• ')
-                            .replace(/^[\s]*[•·]\s*/gm, '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">')
+                            .replace(/^[\s]*[•·]\s*/gm,
+                                '<li style="margin: 8px 0; list-style-type: disc; margin-left: 20px;">')
                             .replace(/(\n|^)(\d+)\.\s+/gm, '$1$2. ')
                             .replace(/BECAUSE ALL (.*?) CONVERGE ON THE (.*?), THE EVIDENCE IS (.*?) AND (.*?)\./g,
                                 '<div style="background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%); padding: 16px; border-radius: 12px; margin: 16px 0; border-left: 6px solid #4caf50; font-weight: 600;"><strong>BECAUSE ALL $1 CONVERGE ON THE $2, THE EVIDENCE IS $3 AND $4.</strong></div>');
