@@ -133,7 +133,9 @@ class OntologyGuidedKGCreator:
             url=self.neo4j_uri,
             username=self.neo4j_user,
             password=password,
-            database=self.neo4j_database
+            database=self.neo4j_database,
+            refresh_schema=False,
+            sanitize=True
         )
 
     def _chunk_text(self, text: str) -> List[Dict[str, Any]]:

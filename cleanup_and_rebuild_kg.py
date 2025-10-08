@@ -47,7 +47,9 @@ class KGCleanupManager:
             url=self.neo4j_uri,
             username=self.neo4j_user,
             password=self.neo4j_password,
-            database=self.neo4j_database
+            database=self.neo4j_database,
+            refresh_schema=False,
+            sanitize=True
         )
 
     def cleanup_database(self, confirm: bool = True) -> bool:

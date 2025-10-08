@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from model_providers import get_provider as get_llm_provider
-from ontology_guided_kg_creator import OntologyGuidedKGCreator
+from enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
+from csv_processor import MedicalReportCSVProcessor
 
 # Import from local kg_utils
 from kg_utils.extract_graph import extract_graph_from_file_local_file
@@ -177,7 +178,11 @@ async def create_ontology_guided_kg(
     embedding_model: str = Form("sentence_transformers"),
     ontology_file: Optional[UploadFile] = File(None),
     max_chunks: int = Form(None),
-    kg_name: str = Form(None)
+    kg_name: str = Form(None),
+    neo4j_uri: str = Form(None),
+    neo4j_user: str = Form(None),
+    neo4j_password: str = Form(None),
+    neo4j_database: str = Form(None)
 ):
     """
     Create knowledge graph with optional ontology guidance.
@@ -280,15 +285,21 @@ async def create_ontology_guided_kg(
         print(f"🔄 Initializing OntologyGuidedKGCreator with ontology_path: {ontology_path}")
 
         # Initialize ontology-guided KG creator (with defaults matching test)
-        kg_creator = OntologyGuidedKGCreator(
-            chunk_size=1500,
-            chunk_overlap=200,
+        # Use provided neo4j credentials or fall back to environment variables
+        neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
+        neo4j_user = neo4j_user or os.getenv("NEO4J_USERNAME", "neo4j")
+        neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD", "password")
+        neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE", "neo4j")
+
+        kg_creator = UnifiedOntologyGuidedKGCreator(
+            chunk_size=2000,  # Larger chunks for better patient report context
+            chunk_overlap=300,
             ontology_path=ontology_path,
-            neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-            neo4j_user=os.getenv("NEO4J_USERNAME", "neo4j"),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
-            neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
-            embedding_model=embedding_model or "openai"
+            neo4j_uri=neo4j_uri,
+            neo4j_user=neo4j_user,
+            neo4j_password=neo4j_password,
+            neo4j_database=neo4j_database,
+            embedding_model=embedding_model or "sentence_transformers"
         )
 
         # DEBUG: Verify ontology state after initialization
@@ -309,22 +320,64 @@ async def create_ontology_guided_kg(
         relationships = kg.get('metadata', {}).get('total_relationships', 0)
         stored = kg.get('metadata', {}).get('stored_in_neo4j', False)
 
-        print(f"📊 Results:")
+        print(f"📊 Initial KG Results:")
         print(f"   - Entities: {entities}")
         print(f"   - Relationships: {relationships}")
         print(f"   - Stored in Neo4j: {stored}")
 
+        # Reload KG from Neo4j to ensure ontology labels are properly displayed
+        loaded_kg = None
+        if stored:
+            print("🔄 Reloading KG from Neo4j to ensure proper ontology labels...")
+            from kg_loader import KGLoader
+
+            kg_loader = KGLoader()
+            reload_success = False
+            if kg_name:
+                # Load by KG name (ontology label) - now includes Document nodes
+                loaded_kg = kg_loader.load_from_neo4j(
+                    uri=neo4j_uri,
+                    user=neo4j_user,
+                    password=neo4j_password,
+                    kg_label=kg_name
+                )
+                if loaded_kg and loaded_kg.get('status') == 'success':
+                    reload_success = True
+            else:
+                # Load all entities (excluding system nodes)
+                loaded_kg = kg_loader.load_from_neo4j(
+                    uri=neo4j_uri,
+                    user=neo4j_user,
+                    password=neo4j_password
+                )
+                if loaded_kg and loaded_kg.get('status') == 'success':
+                    reload_success = True
+
+            if reload_success:
+                loaded_entities = loaded_kg.get('loaded_nodes', 0) if 'loaded_nodes' in loaded_kg else len(loaded_kg.get('nodes', []))
+                loaded_relationships = loaded_kg.get('loaded_relationships', 0) if 'loaded_relationships' in loaded_kg else len(loaded_kg.get('relationships', []))
+                print(f"✅ Reloaded {loaded_entities} nodes, {loaded_relationships} relationships from Neo4j")
+            else:
+                print("⚠️ Failed to reload KG from Neo4j, using initial KG data")
+                loaded_kg = None
+
+        # Use reloaded KG data if available and valid, otherwise use initial KG
+        final_kg_data = loaded_kg if loaded_kg and loaded_kg.get('status') == 'success' else kg
+
         method = "ontology_guided" if ontology_path else "basic_llm"
         determinism_improvements = [
             "fixed_chunk_size",
-            "temperature=0_for_all_LLMs"
+            "temperature=0_for_all_LLMs",
+            "node_label_fix",
+            "neo4j_reload" if loaded_kg else None
         ]
+        determinism_improvements = [x for x in determinism_improvements if x is not None]
         if ontology_path:
             determinism_improvements.append("ontology_constraints_applied")
 
         return JSONResponse(content={
             "kg_id": str(uuid.uuid4()),
-            "graph_data": kg,
+            "graph_data": final_kg_data,
             "method": method,
             "ontology_file": ontology_file.filename if ontology_file else None,
             "determinism_improvements": determinism_improvements
@@ -333,7 +386,28 @@ async def create_ontology_guided_kg(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ontology-guided KG creation failed: {str(e)}")
+        # Provide fallback: try to return the initial KG data even if Neo4j operations failed
+        error_msg = f"Ontology-guided KG creation failed: {str(e)}"
+
+        # If we have initial KG data (created before Neo4j failure), return it
+        if 'kg' in locals() and kg:
+            print(f"⚠️ Neo4j storage/reload failed, but returning locally generated KG data")
+            return JSONResponse(content={
+                "kg_id": str(uuid.uuid4()),
+                "graph_data": kg,
+                "method": "ontology_guided" if ontology_path else "basic_llm",
+                "ontology_file": ontology_file.filename if ontology_file else None,
+                "determinism_improvements": [
+                    "fixed_chunk_size",
+                    "temperature=0_for_all_LLMs",
+                    "node_label_fix"
+                ] + (["ontology_constraints_applied"] if ontology_path else []),
+                "warning": "Neo4j connection/storage failed - using locally processed data only",
+                "error_details": error_msg
+            })
+
+        # No fallback data available, raise the error
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @app.post("/chat")
 async def chat(body: dict = Body(...)):
@@ -442,6 +516,7 @@ def default_credentials():
     return {
         "uri": os.getenv("NEO4J_URI"),
         "user": os.getenv("NEO4J_USERNAME"),
+        "password": os.getenv("NEO4J_PASSWORD"),
         "database": os.getenv("NEO4J_DATABASE")
     }
 
@@ -526,15 +601,13 @@ async def test_create_working_kg():
     Create a working test KG with vector embeddings that the RAG can actually use with semantic similarity search.
     """
     try:
-        # Use Neo4j driver directly to avoid APOC dependency
-        from neo4j import GraphDatabase
-        import os
-
-        uri = os.getenv("NEO4J_URI")
-        user = os.getenv("NEO4J_USERNAME")
-        password = os.getenv("NEO4J_PASSWORD")
-
-        driver = GraphDatabase.driver(uri, auth=(user, password))
+        # Use the get_graphDB_driver function for consistency
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
 
         print('Connected to Neo4j, creating test KG with placeholder embeddings...')
 
@@ -828,3 +901,167 @@ async def load_kg_from_neo4j(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/validate_csv")
+async def validate_csv(csv_file: UploadFile = File(...)):
+    """
+    Validate CSV file format and structure for medical reports.
+    """
+    try:
+        print(f"🔍 Validating CSV file: {csv_file.filename}")
+
+        # Save uploaded file temporarily
+        data = await csv_file.read()
+        tmp_dir = tempfile.gettempdir()
+        csv_path = os.path.join(tmp_dir, f"validate_{uuid.uuid4()}.csv")
+
+        with open(csv_path, "wb") as tmpf:
+            tmpf.write(data)
+
+        # Initialize CSV processor
+        processor = MedicalReportCSVProcessor(delimiter='|')
+
+        # Validate format
+        validation_result = processor.validate_csv_format(csv_path)
+
+        # Clean up temp file
+        try:
+            os.unlink(csv_path)
+        except Exception as e:
+            print(f"Warning: Could not delete temp file {csv_path}: {e}")
+
+        return JSONResponse(content={
+            "is_valid": validation_result.get("is_valid", False),
+            "delimiter": validation_result.get("delimiter", "|"),
+            "num_columns": validation_result.get("num_columns", 0),
+            "num_rows": validation_result.get("num_rows", 0),
+            "field_mappings_count": len(validation_result.get("field_mappings", {})),
+            "columns": validation_result.get("columns", []),
+            "field_mappings": validation_result.get("field_mappings", {}),
+            "errors": validation_result.get("validation_errors", [])
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"❌ CSV validation error: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"CSV validation failed: {str(e)}")
+
+@app.post("/bulk_process_csv")
+async def bulk_process_csv(
+    csv_file: UploadFile = File(...),
+    batch_size: int = Form(50, description="Number of reports to process per batch"),
+    start_row: int = Form(0, description="Starting row number (0-based)"),
+    max_chunks: int = Form(20, description="Maximum number of chunks to process per report (for testing)")
+):
+    """
+    Process multiple medical reports from CSV in bulk batches.
+    """
+    try:
+        print(f"🔄 Starting bulk CSV processing: {csv_file.filename}")
+        print(f"   Batch size: {batch_size}, Start row: {start_row}")
+
+        # Save uploaded file temporarily
+        data = await csv_file.read()
+        tmp_dir = tempfile.gettempdir()
+        csv_path = os.path.join(tmp_dir, f"bulk_{uuid.uuid4()}.csv")
+
+        with open(csv_path, "wb") as tmpf:
+            tmpf.write(data)
+
+        # Initialize enhanced KG creator for bulk processing
+        provider = "openrouter"
+        model = "openai/gpt-oss-20b:free"
+        llm = get_llm_provider(provider, model)
+
+        kg_creator = UnifiedOntologyGuidedKGCreator(
+            chunk_size=2000,
+            chunk_overlap=300,
+            neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+            neo4j_user=os.getenv("NEO4J_USERNAME", "neo4j"),
+            neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+            neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
+            embedding_model="sentence_transformers",
+            max_chunks=max_chunks
+        )
+
+        # Process CSV in bulk
+        bulk_result = kg_creator.bulk_process_medical_reports(
+            csv_path=csv_path,
+            start_row=start_row,
+            batch_size=batch_size
+        )
+
+        # Clean up temp file
+        try:
+            os.unlink(csv_path)
+        except Exception as e:
+            print(f"Warning: Could not delete temp file {csv_path}: {e}")
+
+        kg_id = str(uuid.uuid4())  # Generate a unique KG ID for this bulk processing session
+
+        return JSONResponse(content={
+            "kg_id": kg_id,
+            "message": f"Successfully processed {bulk_result.get('total_reports_processed', 0)} medical reports from CSV",
+            "total_reports_processed": bulk_result.get("total_reports_processed", 0),
+            "total_kgs": bulk_result.get("total_knowledge_graphs", 0),
+            "total_entities": bulk_result.get("total_entities", 0),
+            "total_relationships": bulk_result.get("total_relationships", 0),
+            "batch_size": batch_size,
+            "start_row": start_row,
+            "processing_details": bulk_result.get("processing_details", []),
+            "csv_validation": bulk_result.get("csv_validation", {}),
+            "bulk_processing_info": {
+                "batch_size_used": batch_size,
+                "start_row": start_row,
+                "timestamp": str(uuid.uuid4())[:8]  # Simple timestamp
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"❌ Bulk CSV processing error: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Bulk CSV processing failed: {str(e)}")
+
+@app.get("/static/medical_reports_template.csv")
+async def serve_csv_template():
+    """
+    Serve the medical reports CSV template for download.
+    """
+    try:
+        processor = MedicalReportCSVProcessor()
+
+        # Create template in memory
+        tmp_dir = tempfile.gettempdir()
+        template_path = os.path.join(tmp_dir, f"template_{uuid.uuid4()}.csv")
+
+        processor.create_csv_template(template_path, num_sample_rows=3)
+
+        # Read and return file
+        def cleanup_temp_file():
+            try:
+                os.unlink(template_path)
+            except Exception as e:
+                print(f"Warning: Could not delete temp template file: {e}")
+
+        from starlette.responses import StreamingResponse
+        import io
+
+        with open(template_path, 'rb') as f:
+            content = f.read()
+
+        # Schedule cleanup (non-blocking)
+        import threading
+        threading.Timer(10.0, cleanup_temp_file).start()  # Delete after 10 seconds
+
+        headers = {
+            'Content-Disposition': 'attachment; filename="medical_reports_template.csv"',
+            'Content-Type': 'text/csv'
+        }
+
+        return StreamingResponse(io.BytesIO(content), headers=headers)
+
+    except Exception as e:
+        print(f"❌ Error serving CSV template: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not generate CSV template: {str(e)}")

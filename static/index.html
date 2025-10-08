@@ -118,7 +118,8 @@
         }
 
         .control-group select,
-        .control-group input[type="range"] {
+        .control-group input[type="range"],
+        .control-group input[type="number"] {
             width: 100%;
             padding: 6px 8px;
             border: 1px solid #34495e;
@@ -1182,6 +1183,12 @@
                     <option value="titan">AWS Titan</option>
                 </select>
             </div>
+
+            <div class="control-group">
+                <label for="max-chunks">Max Chunks per Report:</label>
+                <input type="number" id="max-chunks" value="20" min="1" max="100" step="1">
+                <small style="color: #bdc3c7; font-size: 10px; display: block; margin-top: 2px;">Limit chunks processed per report (for large documents)</small>
+            </div>
             
             <div class="action-buttons">
                 <button class="btn-primary" id="load-file">Select File</button>
@@ -1189,18 +1196,22 @@
                 <button class="btn-secondary" id="clear-kg-btn">Clear KG</button>
             </div>
 
-            <input type="file" id="file-upload" accept=".pdf,.txt,.json" style="display:none">
+            <input type="file" id="file-upload" accept=".pdf,.txt,.json,.csv" style="display:none">
             
             <div style="margin-top: 12px;">
                 <label style="color: #bdc3c7; font-size: 11px;">Optional Ontology:</label>
                 <input type="file" id="ontology-upload" accept=".json,.owl" style="display:none">
                 <button class="btn-secondary" id="select-ontology">Select Ontology</button>
                 <div id="selected-ontology"></div>
+
+
             </div>
-            
+
             <div id="file-selection">
                 <div id="selected-file"></div>
-                <button class="btn-primary" id="create-kg-btn">Create KG</button>
+                <div class="action-buttons">
+                    <button class="btn-primary" id="create-kg-btn">Create KG</button>
+                </div>
             </div>
         </div>
 
@@ -1660,9 +1671,11 @@
             });
         }
 
-        function initializeGraph(graphData, mergeMode = false) {
+        function initializeGraph(graphData, mergeMode = false, isRAGFilterMode = false) {
             console.log('Initializing graph with data:', graphData);
-            console.log('Merge mode:', mergeMode);
+            console.log('Merge mode:', mergeMode, 'RAG filter mode:', isRAGFilterMode);
+            console.log('Current highlighted nodes:', Array.from(highlightedNodes));
+            console.log('Current reasoning edges:', Array.from(reasoningEdges));
 
             if (!graphData || (!graphData.nodes && !graphData.relationships)) {
                 console.log('No graph data provided');
@@ -1729,31 +1742,44 @@
             // Create a mapping from original Neo4j IDs to unique sequential IDs to avoid conflicts
             const nodeIdMap = new Map();
 
-            // Process nodes with filtering for RAG highlights and current filters
+            // Process nodes with RAG filtering as primary filter
             const processedNodes = (graphData.nodes || [])
                 .filter(node => {
-                    // If no RAG query has been made yet (highlightedNodes empty), show all nodes
-                    if (highlightedNodes.size === 0) {
-                        return true;
+                    // PRIMARY FILTER: RAG entity filtering
+                    if (isRAGFilterMode && highlightedNodes.size > 0) {
+                        console.log('Applying RAG filter mode for node:', node.id);
+
+                        // Check all possible node identifiers that might be in highlightedNodes
+                        const nodeIdentifier = (node.properties && (node.properties.id || node.properties.name)) || node.id.toString();
+                        const nodeElementId = node.properties && node.properties.element_id;
+                        const nodeId = node.id.toString();
+                        const nodeName = node.properties && node.properties.name;
+
+                        // Log matching attempts
+                        const matches = highlightedNodes.has(nodeIdentifier) ||
+                                       (nodeElementId && highlightedNodes.has(nodeElementId)) ||
+                                       highlightedNodes.has(nodeId) ||
+                                       highlightedNodes.has(nodeName);
+
+                        console.log('Node filtering check:', {
+                            nodeId: node.id,
+                            nodeIdentifier,
+                            nodeElementId,
+                            nodeName,
+                            matches
+                        });
+
+                        return matches;
                     }
 
-                    // Check if this node was referenced in the RAG response
-                    const nodeIdentifier = (node.properties && (node.properties.id || node.properties.name)) || node.id.toString();
-                    const nodeElementId = node.properties && node.properties.element_id;
+                    // If no RAG filtering, apply other filters
+                    console.log('No RAG filtering - applying other filters');
 
-                    return highlightedNodes.has(nodeIdentifier) ||
-                           (nodeElementId && highlightedNodes.has(nodeElementId)) ||
-                           highlightedNodes.has(node.id.toString());
-                })
-                .filter(node => {
-                    // Apply current filters
+                    // Apply current UI filters
                     if (currentFilters.nodeTypes.size > 0) {
-                        // Filter by node types - only show nodes of selected types
                         const nodeType = node.labels && node.labels.length > 0 ? node.labels[0] : 'Unknown';
                         return currentFilters.nodeTypes.has(nodeType);
                     } else if (currentFilters.relationshipTypes.size > 0) {
-                        // Filter by relationship types - only show nodes connected to selected relationship types
-                        // Check if this node is connected to any relationship of the selected types
                         const nodeConnected = graphData.relationships.some(rel =>
                             (currentFilters.relationshipTypes.has(rel.type || 'Unknown')) &&
                             ((rel.from || rel.start || rel.source) === node.id ||
@@ -1761,7 +1787,9 @@
                         );
                         return nodeConnected;
                     }
-                    return true; // No filters active, show all nodes
+
+                    // No filters active - show all nodes
+                    return true;
                 })
                 .map(node => {
                     const originalId = node.id;
@@ -2276,6 +2304,12 @@
             return messageEl;
         }
         
+        // Store KG ID for later use with Load from Neo4j button
+        function storeKGId(kgId) {
+            localStorage.setItem('currentKGId', kgId);
+            console.log('Stored KG ID:', kgId);
+        }
+
         function showError(message) {
             const errorPopup = document.getElementById('error-popup');
             const errorMessage = document.getElementById('error-message');
@@ -2304,10 +2338,14 @@
                     // Set for load form
                     document.getElementById('neo4j-uri').value = data.uri;
                     document.getElementById('neo4j-user').value = data.user;
-                    
+                    if (data.password && !document.getElementById('neo4j-password').style.display.includes('none')) {
+                        document.getElementById('neo4j-password').value = data.password;
+                    }
+
                     // Set for save form
                     document.getElementById('save-neo4j-uri').value = data.uri;
                     document.getElementById('save-neo4j-user').value = data.user;
+                    document.getElementById('save-neo4j-password').value = data.password;
                 })
                 .catch(error => {
                     console.error('Error fetching default Neo4j credentials:', error);
@@ -2507,12 +2545,14 @@
                     const provider = document.getElementById('kg-provider').value;
                     const model = document.getElementById('kg-model').value;
                     const embeddingModel = document.getElementById('embedding-model').value;
+                    const maxChunks = document.getElementById('max-chunks').value;
 
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('provider', provider);
                     formData.append('model', model);
                     formData.append('embedding_model', embeddingModel);
+                    formData.append('max_chunks', maxChunks);
                     if (ontologyFile) {
                         formData.append('ontology_file', ontologyFile);
                     }
@@ -2532,17 +2572,13 @@
                     console.log('KG creation result:', result);
                     console.log('Graph data:', result.graph_data);
 
-                    // Always create/replace graph for new KG creations
-                    const mergeMode = false;
-                    console.log('Merge mode:', mergeMode);
-
-                    initializeGraph(result.graph_data, mergeMode);
-                    graphData = result.graph_data; // Store graph data for re-initialization
-                    highlightedNodes.clear(); // Clear highlights for new KG
-
+                    // Display success message (graph will be loaded via Load from Neo4j button)
                     const nodeCount = result.graph_data?.nodes?.length ?? 0;
                     const relCount = result.graph_data?.relationships?.length ?? 0;
-                    addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships`);
+                    addToChat(`Knowledge graph created with ${nodeCount} nodes and ${relCount} relationships. Use "From Neo4j" to load the graph.`);
+
+                    // Store the KG ID for later use with the Load from Neo4j button
+                    storeKGId(result.kg_id);
 
                     // Reset file selection
                     fileInput.value = '';
@@ -2763,12 +2799,11 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                             });
                         }
 
-                        // Always re-initialize graph to show reasoning subgraph
-                        if (currentKGId && graphData) {
-                            initializeGraph(graphData);
-                        } else if (graphData) {
-                            // If no highlights, show all nodes
-                            initializeGraph(graphData);
+                        // Always re-initialize graph - use RAG filter mode when we have highlighted nodes
+                        if (graphData) {
+                            const isRAGFilterMode = highlightedNodes.size > 0;
+                            console.log('Calling initializeGraph with RAG filter mode:', isRAGFilterMode);
+                            initializeGraph(graphData, false, isRAGFilterMode);
                         }
 
                     } else {
@@ -3023,6 +3058,8 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
             
             // Attach create KG handler
             attachCreateKGHandler();
+
+            // File upload functionality is now unified - no separate CSV handling needed
 
             // Zoom functionality with error checking
             function handleZoomIn() {

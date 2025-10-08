@@ -4,7 +4,10 @@ import requests
 from neo4j import GraphDatabase, basic_auth
 from PyPDF2 import PdfReader
 from typing import Dict, List, Union, Tuple
-from owlready2 import get_ontology
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class KGLoader:
     def __init__(self):
@@ -125,108 +128,112 @@ class KGLoader:
                 # First, get database statistics
                 stats_result = session.run("MATCH (n) RETURN count(n) as node_count")
                 total_nodes = stats_result.single()["node_count"]
-                
+
                 stats_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
                 total_relationships = stats_result.single()["rel_count"]
-                
+
                 print(f"Neo4j Database Stats: {total_nodes} nodes, {total_relationships} relationships")
-                
+
                 # Determine loading strategy based on graph size
                 if sample_mode and total_nodes > 1000:
                     # For very large graphs, use sampling strategy
                     return self._load_neo4j_sample(session, kg_label, total_nodes, total_relationships)
-                
-                # Build queries for complete or filtered loading
-                if query:
-                    # Custom query provided
-                    node_query = query
-                    # Try to extract relationships for custom queries
-                    rel_query = "MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end"
-                    if limit:
-                        rel_query += f" LIMIT {limit}"
-                elif kg_label:
-                    # Filter by specific label
-                    node_query = f"MATCH (n:`{kg_label}`) RETURN n"
-                    rel_query = f"MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`) RETURN r, a as start, b as end"
-                    if limit:
-                        node_query += f" LIMIT {limit}"
-                        rel_query += f" LIMIT {limit}"
-                else:
-                    # Load entire graph
-                    node_query = "MATCH (n) RETURN n"
-                    rel_query = "MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end"
-                    if limit:
-                        node_query += f" LIMIT {limit}"
-                        rel_query += f" LIMIT {limit}"
 
-                print(f"Executing node query: {node_query}")
-                result = session.run(node_query)
-                nodes = []
-                node_id_map = {}  # Map Neo4j internal IDs to our node indices
+            # Build queries for complete or filtered loading
+            if query:
+                # Custom query provided
+                node_query = query
+                # Try to extract relationships for custom queries
+                rel_query = "MATCH ()-[r]->() RETURN r, startNode(r) as start, endNode(r) as end"
+                if limit:
+                    rel_query += f" LIMIT {limit}"
+            elif kg_label:
+                # Filter by specific label - include Document nodes for context but exclude Chunk nodes
+                node_query = f"MATCH (n:`{kg_label}`) WHERE NOT n:Chunk RETURN n UNION MATCH (d:Document) WHERE d.fileName IS NOT NULL RETURN d"
+                rel_query = f"MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`) WHERE NOT a:Chunk AND NOT b:Chunk RETURN r, a as start, b as end UNION MATCH (a:`{kg_label}`)-[r:PART_OF]->(d:Document) RETURN r, a as start, d as end"
+                if limit:
+                    node_query += f" LIMIT {limit}"
+                    rel_query += f" LIMIT {limit * 2}"  # Account for potentially more relationships with documents
+            else:
+                # Load entire graph - exclude system nodes
+                node_query = "MATCH (n) WHERE NOT n:Document AND NOT n:Chunk RETURN n"
+                rel_query = "MATCH (start)-[r]->(end) WHERE NOT start:Document AND NOT start:Chunk AND NOT end:Document AND NOT end:Chunk RETURN r, start, end"
+                if limit:
+                    node_query += f" LIMIT {limit}"
+                    rel_query += f" LIMIT {limit}"
 
-                for record in result:
-                    node = record["n"]
+            print(f"Executing node query: {node_query}")
+            result = session.run(node_query)
+            nodes = []
+            node_id_map = {}  # Map Neo4j internal IDs to our node indices
+
+            for record in result:
+                # Handle UNION query that returns both "n" and "d" columns
+                node = record.get("n") or record.get("d")
+                if node is None:
+                    continue  # Skip if neither column exists
+
+                properties = {}
+                for key, value in dict(node).items():
+                    if isinstance(value, (list, dict, str, int, float, bool, type(None))):
+                        properties[key] = value
+                    else:
+                        properties[key] = str(value)
+
+                # Use Neo4j internal ID as our node ID for consistency
+                node_data = {
+                    "id": node.id,
+                    "labels": list(node.labels),
+                    "label": list(node.labels)[0] if node.labels else "Node",
+                    "properties": properties
+                }
+                nodes.append(node_data)
+                node_id_map[node.id] = node.id
+
+            print(f"Loaded {len(nodes)} nodes")
+
+            # Get relationships
+            print(f"Executing relationship query: {rel_query}")
+            rel_result = session.run(rel_query)
+            relationships = []
+
+            for record in rel_result:
+                rel = record["r"]
+                start_node = record["start"]
+                end_node = record["end"]
+
+                # Only include relationships where both nodes were loaded
+                if start_node.id in node_id_map and end_node.id in node_id_map:
                     properties = {}
-                    for key, value in dict(node).items():
+                    for key, value in dict(rel).items():
                         if isinstance(value, (list, dict, str, int, float, bool, type(None))):
                             properties[key] = value
                         else:
                             properties[key] = str(value)
 
-                    # Use Neo4j internal ID as our node ID for consistency
-                    node_data = {
-                        "id": node.id,
-                        "labels": list(node.labels),
-                        "label": list(node.labels)[0] if node.labels else "Node",
+                    relationships.append({
+                        "id": rel.id,
+                        "type": rel.type,
+                        "from": start_node.id,
+                        "to": end_node.id,
                         "properties": properties
-                    }
-                    nodes.append(node_data)
-                    node_id_map[node.id] = node.id
+                    })
 
-                print(f"Loaded {len(nodes)} nodes")
+            print(f"Loaded {len(relationships)} relationships")
 
-                # Get relationships
-                print(f"Executing relationship query: {rel_query}")
-                rel_result = session.run(rel_query)
-                relationships = []
-
-                for record in rel_result:
-                    rel = record["r"]
-                    start_node = record["start"]
-                    end_node = record["end"]
-                    
-                    # Only include relationships where both nodes were loaded
-                    if start_node.id in node_id_map and end_node.id in node_id_map:
-                        properties = {}
-                        for key, value in dict(rel).items():
-                            if isinstance(value, (list, dict, str, int, float, bool, type(None))):
-                                properties[key] = value
-                            else:
-                                properties[key] = str(value)
-
-                        relationships.append({
-                            "id": rel.id,
-                            "type": rel.type,
-                            "from": start_node.id,
-                            "to": end_node.id,
-                            "properties": properties
-                        })
-
-                print(f"Loaded {len(relationships)} relationships")
-
-                return {
-                    "status": "success",
-                    "nodes": nodes,
-                    "relationships": relationships,
-                    "source": "neo4j",
-                    "kg_label": kg_label,
-                    "query": node_query,
-                    "total_nodes_in_db": total_nodes,
-                    "total_relationships_in_db": total_relationships,
-                    "loaded_nodes": len(nodes),
-                    "loaded_relationships": len(relationships),
-                    "complete_import": limit is None and not kg_label and not query
-                }
+            return {
+                "status": "success",
+                "nodes": nodes,
+                "relationships": relationships,
+                "source": "neo4j",
+                "kg_label": kg_label,
+                "query": node_query,
+                "total_nodes_in_db": total_nodes,
+                "total_relationships_in_db": total_relationships,
+                "loaded_nodes": len(nodes),
+                "loaded_relationships": len(relationships),
+                "complete_import": limit is None and not kg_label and not query
+            }
         except Exception as e:
             error_details = {
                 "error_type": type(e).__name__,

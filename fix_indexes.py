@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import os
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, basic_auth
 
 def fix_indexes():
     driver = GraphDatabase.driver(
         os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
-        auth=(os.getenv('NEO4J_USERNAME', 'neo4j'), os.getenv('NEO4J_PASSWORD', 'password'))
+        auth=basic_auth(os.getenv('NEO4J_USERNAME', 'neo4j'), os.getenv('NEO4J_PASSWORD', 'password'))
     )
 
     try:

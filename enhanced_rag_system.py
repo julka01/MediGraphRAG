@@ -92,7 +92,7 @@ User Query: {question}"""),
         ])
 
     def _create_neo4j_connection(self):
-        """Create Neo4j graph connection without schema refresh"""
+        """Create Neo4j graph connection"""
         return Neo4jGraph(
             url=self.neo4j_uri,
             username=self.neo4j_user,

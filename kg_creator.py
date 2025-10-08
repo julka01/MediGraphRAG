@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.docstore.document import Document
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, basic_auth
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 import os
 import sys
@@ -44,7 +44,7 @@ class ChunkedKGCreator:
         """Create Neo4j driver connection"""
         return GraphDatabase.driver(
             self.neo4j_uri,
-            auth=(self.neo4j_user, self.neo4j_password)
+            auth=basic_auth(self.neo4j_user, self.neo4j_password)
         )
    
     def _chunk_text(self, text: str) -> List[Dict[str, Any]]:
