@@ -102,7 +102,7 @@ User Query: {question}"""),
             sanitize=True
         )
 
-    def get_rag_context(self, query: str, top_k: int = 15, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
         """
         Get comprehensive RAG context including chunks, entities, and relationships using vector search
         """
@@ -129,7 +129,7 @@ User Query: {question}"""),
 
             # Try vector search first
             logging.info("Attempting vector similarity search")
-            return self._vector_similarity_search(graph, query, top_k, document_names, similarity_threshold)
+            return self._vector_similarity_search(graph, query, document_names, similarity_threshold)
 
         except Exception as e:
             logging.error(f"Error getting RAG context: {e}")
@@ -179,14 +179,14 @@ User Query: {question}"""),
         
         return formatted_context, formatted_entities
 
-    def generate_response(self, question: str, llm, document_names: List[str] = None, top_k: int = 15, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
         """
         Generate a RAG response using the knowledge graph
         """
         try:
             logging.info(f"Starting generate_response for question: {question}")
             # Get context from knowledge graph
-            context = self.get_rag_context(question, top_k=top_k, document_names=document_names, similarity_threshold=similarity_threshold)
+            context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold)
             logging.info(f"Got context with {context.get('entity_count', 0)} entities")
 
             if not context["chunks"]:
@@ -386,7 +386,7 @@ User Query: {question}"""),
             logging.error(f"Error searching entities: {e}")
             return []
 
-    def _vector_similarity_search(self, graph, query: str, top_k: int = 5, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def _vector_similarity_search(self, graph, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
         """
         Vector similarity search using placeholder embeddings (to avoid import issues)
         """
@@ -402,7 +402,7 @@ User Query: {question}"""),
             # Vector search query
             if document_names:
                 search_query = """
-                CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('vector', 100, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE d.fileName IN $document_names
@@ -423,16 +423,14 @@ User Query: {question}"""),
                         description: coalesce(entity.name, '')
                     }] AS entities
                 ORDER BY score DESC
-                LIMIT $top_k
                 """
                 params = {
                     "query_vector": query_embedding,
-                    "top_k": top_k,
                     "document_names": document_names
                 }
             else:
                 search_query = """
-                CALL db.index.vector.queryNodes('vector', $top_k, $query_vector)
+                CALL db.index.vector.queryNodes('vector', 100, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE score >= $similarity_threshold  // Configurable similarity threshold
@@ -452,11 +450,9 @@ User Query: {question}"""),
                         description: coalesce(entity.name, '')
                     }] AS entities
                 ORDER BY score DESC
-                LIMIT $top_k
                 """
                 params = {
                     "query_vector": query_embedding,
-                    "top_k": top_k,
                     "similarity_threshold": similarity_threshold
                 }
 
