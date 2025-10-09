@@ -28,8 +28,7 @@ MediGraph implements an ontology-guided knowledge graph creation system for stru
 This work builds on research in ontology-guided knowledge graph construction for medical applications:
 
 ```
-Julka et al. "Ontology-Guided Knowledge Graph Construction for Medical Evidence Synthesis"
-Unpublished Manuscript (2024)
+TBD
 ```
 
 ## What Makes MediGraph Unique
@@ -212,33 +211,9 @@ curl -X POST "http://localhost:8004/bulk_process_csv" \
 
 ## Performance Validation Results
 
-### Quantitative Metrics
-- **Entity Extraction F1-Score**: 0.89 (against manually annotated medical corpora)
-- **Relationship Precision**: 0.91 (biomedical relationship validation)
-- **Query Response Time**: Median 3.2 seconds (n=1000 medical literature queries)
-- **Memory Utilization**: ~2.8GB peak for 50-document knowledge base
-
-### Qualitative Assessment
-- **Clinical Relevance**: 94% of extracted entities clinically meaningful (domain expert evaluation)
-- **Evidence Transparency**: 100% of responses include source attribution
-- **Reasoning Completeness**: 87% of responses contain complete decision logic chains
-
 ## Research Applications Index
 
-### Clinical Decision Support
-- [Differential Diagnosis Support](#differential-diagnosis-support)
-- [Treatment Recommendation Systems](#treatment-recommendation-systems)
-- [Medication Safety Analysis](#medication-safety-analysis)
 
-### Medical Informatics
-- [Literature Synthesis Automation](#literature-synthesis-automation)
-- [Ontology Development](#ontology-development)
-- [Terminology Standardization](#terminology-standardization)
-
-### Quality Assurance
-- [Clinical Protocol Compliance](#clinical-protocol-compliance)
-- [Documentation Gap Analysis](#documentation-gap-analysis)
-- [Audit Trail Generation](#audit-trail-generation)
 
 ## API Specifications
 
@@ -358,10 +333,7 @@ git push origin feature/enhancement-name
 This implementation draws from established work in:
 
 ```
-[1] Chen et al. "Towards Knowledge Graphs for Healthcare" (2021)
-[2] Esteva et al. "Deep Learning for Medical Imaging" (2019)
-[3] Rotmensch et al. "Learning a Health Knowledge Graph from Electronic Medical Records" (2017)
-[4] Cai et al. "Ontology-Based Knowledge Graph Construction" (2020)
+
 ```
 
 ## License and Distribution
