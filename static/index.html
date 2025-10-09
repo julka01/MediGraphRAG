@@ -2128,7 +2128,7 @@
                 // Performance optimizations based on graph size
                 const graphSize = processedNodes.length;
                 const isLargeGraph = graphSize > 500;
-                const isVeryLargeGraph = graphSize > 2000;
+                const isVeryLargeGraph = graphSize > 1000;
 
                 // Adaptive physics settings for performance
                 let physicsSettings;
@@ -2139,26 +2139,26 @@
                         stabilization: false
                     };
                 } else if (isLargeGraph) {
-                    // Reduced physics for large graphs
+                    // Optimized physics for large graphs - improved stability
                     physicsSettings = {
                         enabled: true,
                         stabilization: {
                             enabled: true,
-                            iterations: 100,
-                            updateInterval: 50
+                            iterations: 500,
+                            updateInterval: 25
                         },
                         barnesHut: {
                             gravitationalConstant: -2000,
-                            centralGravity: 0.5,
+                            centralGravity: 0.3,
                             springLength: 100,
-                            springConstant: 0.05,
-                            damping: 0.15,
+                            springConstant: 0.04,
+                            damping: 0.25,
                             avoidOverlap: 0.02
                         },
                         solver: 'barnesHut',
-                        minVelocity: 2,
+                        minVelocity: 0.5,
                         maxVelocity: 50,
-                        timestep: 0.5
+                        timestep: 0.4
                     };
                 } else {
                     // Full physics for small/medium graphs

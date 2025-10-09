@@ -353,9 +353,16 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 logging.warning(f"Invalid response structure. Returning empty result.")
                 return {'entities': [], 'relationships': []}
 
-            # Filter out non-medical entities
+            # Filter out non-medical entities - with better error handling
             medical_entities = []
-            for entity in result.get('entities', []):
+            entities_raw = result.get('entities', [])
+
+            # Check if entities is the wrong type (LLM returned malformed JSON)
+            if not isinstance(entities_raw, list):
+                logging.warning(f"LLM returned entities as {type(entities_raw)} instead of list: {entities_raw}. Skipping chunk.")
+                return {'entities': [], 'relationships': []}
+
+            for entity in entities_raw:
                 # Handle both dict and string formats from LLM response
                 if isinstance(entity, str):
                     # Convert string entity to dict format
@@ -367,6 +374,22 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                             "description": f"{self._classify_entity_with_ontology(entity)}: {entity}"
                         }
                     }
+                elif isinstance(entity, dict):
+                    # Ensure required fields exist
+                    if 'id' not in entity:
+                        logging.warning(f"Entity missing 'id' field: {entity}. Skipping.")
+                        continue
+                    if 'type' not in entity:
+                        entity['type'] = self._classify_entity_with_ontology(entity['id'])
+                    if 'properties' not in entity:
+                        entity['properties'] = {
+                            "name": entity['id'],
+                            "description": f"{entity['type']}: {entity['id']}"
+                        }
+                else:
+                    logging.warning(f"Entity is neither string nor dict: {type(entity)} = {entity}. Skipping.")
+                    continue
+
                 if self._is_medical_entity(entity):
                     medical_entities.append(entity)
 
@@ -374,32 +397,45 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
             medical_relationships = []
             entity_ids = {e['id'] for e in medical_entities}
 
-            # Process relationships, handling both dict and string formats
-            for rel in result.get('relationships', []):
-                if isinstance(rel, str):
-                    # Skip string relationships for now (LLM returned malformed data)
-                    continue
-                elif isinstance(rel, dict):
-                    # Verify both source and target exist
-                    if (isinstance(rel.get('source'), str) and
-                        isinstance(rel.get('target'), str) and
-                        rel.get('source', '') in entity_ids and
-                        rel.get('target', '') in entity_ids):
-                        medical_relationships.append(rel)
-                    else:
-                        # Try to create a valid relationship from incomplete data
-                        source = rel.get('source', '')
-                        target = rel.get('target', '')
-                        rel_type = rel.get('type', 'RELATED_TO')
+            relationships_raw = result.get('relationships', [])
 
-                        # Only add if we have valid source and target
-                        if source and target and source in entity_ids and target in entity_ids:
-                            medical_relationships.append({
-                                'source': source,
-                                'target': target,
-                                'type': rel_type,
-                                'properties': rel.get('properties', {})
-                            })
+            # Check if relationships is the wrong type (LLM returned malformed JSON)
+            if not isinstance(relationships_raw, list):
+                logging.warning(f"LLM returned relationships as {type(relationships_raw)} instead of list: {relationships_raw}. Skipping relationships.")
+                medical_relationships = []
+            else:
+                # Process relationships, handling both dict and string formats
+                for rel in relationships_raw:
+                    if isinstance(rel, str):
+                        # Skip string relationships for now (LLM returned malformed data)
+                        logging.warning(f"Relationship is string: {rel}. Skipping.")
+                        continue
+                    elif isinstance(rel, dict):
+                        # Verify both source and target exist
+                        if (isinstance(rel.get('source'), str) and
+                            isinstance(rel.get('target'), str) and
+                            rel.get('source', '') in entity_ids and
+                            rel.get('target', '') in entity_ids):
+                            medical_relationships.append(rel)
+                        else:
+                            # Try to create a valid relationship from incomplete data
+                            source = rel.get('source', '')
+                            target = rel.get('target', '')
+                            rel_type = rel.get('type', 'RELATED_TO')
+
+                            # Only add if we have valid source and target
+                            if source and target and source in entity_ids and target in entity_ids:
+                                medical_relationships.append({
+                                    'source': source,
+                                    'target': target,
+                                    'type': rel_type,
+                                    'properties': rel.get('properties', {})
+                                })
+                            else:
+                                logging.warning(f"Invalid relationship (source/target not in entities): {rel}. Skipping.")
+                    else:
+                        logging.warning(f"Relationship is neither string nor dict: {type(rel)} = {rel}. Skipping.")
+                        continue
 
             return {
                 'entities': medical_entities,

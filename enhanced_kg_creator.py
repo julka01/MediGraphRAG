@@ -99,7 +99,7 @@ class EnhancedKGCreator:
 
     def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm) -> Dict[str, Any]:
         """
-        Extract entities and relationships using LLM with proper escaped templates
+        Extract entities and relationships using LLM with robust error handling
         """
         extraction_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert knowledge graph extraction system. Extract entities and relationships from medical text.
@@ -120,24 +120,102 @@ Return response as JSON with this structure:
 }}"""),
             ("human", "Extract knowledge from:\n{text}")
         ])
-        
+
         try:
             chain = extraction_prompt | llm | StrOutputParser()
             response = chain.invoke({"text": chunk_text})
-            
+
             # Handle JSON wrapped in markdown code blocks
             json_match = re.search(r'```(?:json)?\n(.*?)\n```', response, re.DOTALL)
             if json_match:
                 response = json_match.group(1)
-                
+
+            # Clean response
+            response = response.strip()
+
             try:
-                return json.loads(response)
+                result = json.loads(response)
             except json.JSONDecodeError as e:
                 logging.error(f"JSON parsing failed. Raw LLM response:\n{response}")
                 return {"entities": [], "relationships": []}
-            
+
+            # Enhanced validation - check if result has the expected structure
+            if not isinstance(result, dict):
+                logging.warning(f"LLM returned non-dict result: {type(result)} = {result}. Skipping chunk.")
+                return {"entities": [], "relationships": []}
+
+            # Safely get entities and relationships with validation
+            entities_raw = result.get('entities', [])
+            relationships_raw = result.get('relationships', [])
+
+            if not isinstance(entities_raw, list):
+                logging.warning(f"LLM returned entities as {type(entities_raw)} instead of list: {entities_raw}. Skipping chunk.")
+                return {"entities": [], "relationships": []}
+
+            if not isinstance(relationships_raw, list):
+                logging.warning(f"LLM returned relationships as {type(relationships_raw)} instead of list: {relationships_raw}. Skipping entities.")
+                relationships_raw = []  # Allow processing to continue with empty relationships
+
+            # Process entities with enhanced validation
+            medical_entities = []
+            for entity in entities_raw:
+                if not isinstance(entity, dict):
+                    logging.warning(f"Entity is not a dict: {type(entity)} = {entity}. Skipping.")
+                    continue
+
+                if 'id' not in entity:
+                    logging.warning(f"Entity missing 'id' field: {entity}. Skipping.")
+                    continue
+
+                entity_type = entity.get('type', 'Concept')
+                entity_properties = entity.get('properties', {})
+
+                # Ensure properties is a dict
+                if not isinstance(entity_properties, dict):
+                    entity_properties = {"description": str(entity_properties)}
+
+                # Create standardized entity
+                medical_entities.append({
+                    "id": str(entity['id']),
+                    "type": str(entity_type),
+                    "properties": entity_properties
+                })
+
+            # Process relationships with enhanced validation
+            medical_relationships = []
+            for rel in relationships_raw:
+                if not isinstance(rel, dict):
+                    logging.warning(f"Relationship is not a dict: {type(rel)} = {rel}. Skipping.")
+                    continue
+
+                required_fields = ['source', 'target', 'type']
+                if not all(field in rel for field in required_fields):
+                    logging.warning(f"Relationship missing required fields: {rel}. Skipping.")
+                    continue
+
+                # Validate source and target exist in entities
+                source_id = str(rel['source'])
+                target_id = str(rel['target'])
+                entity_ids = {e['id'] for e in medical_entities}
+
+                if source_id not in entity_ids or target_id not in entity_ids:
+                    logging.warning(f"Relationship references non-existent entities: {rel}. Skipping.")
+                    continue
+
+                medical_relationships.append({
+                    "source": source_id,
+                    "target": target_id,
+                    "type": str(rel['type']),
+                    "properties": rel.get('properties', {})
+                })
+
+            return {
+                'entities': medical_entities,
+                'relationships': medical_relationships
+            }
+
         except Exception as e:
-            logging.warning(f"LLM extraction failed: {str(e)}")
+            logging.error(f"LLM extraction failed completely: {str(e)}")
             return {"entities": [], "relationships": []}
 
     def generate_knowledge_graph(self, text: str, llm, file_name: str = None) -> Dict[str, Any]:
