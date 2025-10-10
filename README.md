@@ -240,7 +240,7 @@ curl -X POST "http://localhost:8004/chat" \
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What percentage of our atrial fibrillation patients treated with warfarin achieved therapeutic INR ranges, and what major bleeding complication rates were observed? How did genetic variants (VKORC1, CYP2C9) and drug interactions predict treatment success?",
+    "question": "What percentage of our atrial fibrillation patients treated with warfarin achieved therapeutic INR ranges, and what major bleeding complication rates were observed?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
@@ -359,11 +359,7 @@ git push origin feature/enhancement-name
 ```
 
 ### Code Quality Standards
-- Type hints mandatory for new functions
-- Docstring coverage > 90%
-- Unit test coverage > 85%
-- Dependency security scanning
-- Performance benchmarking for new features
+
 
 ## Acknowledgments and Research Context
 
