@@ -182,14 +182,31 @@
             font-size: 12px;
         }
 
-        /* View Toggle */
-        .view-toggle {
-            display: flex;
-            background: #34495e;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
+/* View Toggle - Fixed position at top */
+#view-toggle-fixed {
+    position: fixed !important;
+    top: 10px;
+    left: 10px;
+    display: flex !important;
+    background: #34495e;
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 9999 !important;
+    padding: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Original view toggle styles */
+.view-toggle {
+    display: flex !important;
+    background: #34495e;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1010 !important;
+    flex-shrink: 0;
+}
 
         .view-toggle button {
             flex: 1;
@@ -200,6 +217,7 @@
             font-size: 11px;
             cursor: pointer;
             transition: all 0.2s ease;
+            display: block !important;
         }
 
         .view-toggle button.active {
@@ -1257,12 +1275,6 @@
     
     <!-- Left Panel - Minimal Controls -->
     <div class="left-panel">
-        <!-- View Toggle -->
-        <div class="view-toggle">
-            <button id="kg-toggle" class="active">KG</button>
-            <button id="chat-toggle">Chat</button>
-            <button id="both-toggle">Both</button>
-        </div>
 
         <!-- KG Configuration -->
         <div class="panel-section">
@@ -1357,6 +1369,16 @@
             </div>
         </div>
 
+        <!-- View Toggle - Positioned in sidebar -->
+        <div class="panel-section">
+            <h3>View Mode</h3>
+            <div class="view-toggle" id="view-toggle-sidebar" style="margin-bottom: 10px;">
+                <button id="kg-toggle" class="active">KG</button>
+                <button id="chat-toggle">Chat</button>
+                <button id="both-toggle">Both</button>
+            </div>
+        </div>
+
         <!-- Neo4j Overview Panel -->
         <div class="panel-section" id="overview-panel" style="display: none;">
             <h3>Graph Overview</h3>
@@ -1402,6 +1424,14 @@
                 </div>
 
                 <div id="graph-container" style="position: relative;">
+                    <!-- Legend Panel -->
+                    <div class="legend-panel" id="legend-panel" style="display: none;">
+                        <h4>Graph Legend</h4>
+                        <div id="legend-content">
+                            <!-- Legend items will be populated by JavaScript -->
+                        </div>
+                        <button class="zoom-btn" id="toggle-legend" style="width: 100%;">Toggle Legend</button>
+                    </div>
                 </div>
                 <!-- Filter Panel -->
                 <div class="filter-panel" id="filter-panel">
@@ -1548,31 +1578,49 @@
 
         // Update legend display
         function updateLegend(nodeTypes, relationshipTypes) {
-            const legendContainer = document.getElementById('graph-legend');
-            legendContainer.innerHTML = '';
+            const legendPanel = document.getElementById('legend-panel');
+            const legendContent = document.getElementById('legend-content');
+
+            if (!legendPanel) return; // If legend panel doesn't exist, skip
+
+            legendContent.innerHTML = '';
 
             // Add node type legends
-            Object.entries(nodeTypes).forEach(([type, color]) => {
+            for (const [type, color] of Object.entries(nodeTypes)) {
                 const legendItem = document.createElement('div');
                 legendItem.className = 'legend-item';
                 legendItem.innerHTML = `
-                    <div class="legend-color" style="background-color: ${color};"></div>
-                    <span>${type}</span>
+                    <span class="legend-color-box" style="background-color: ${color};"></span>
+                    <span class="legend-text">${type}</span>
                 `;
-                legendContainer.appendChild(legendItem);
-            });
+                legendContent.appendChild(legendItem);
+            }
 
-            // Add relationship type legends if space allows
-            if (Object.keys(nodeTypes).length <= 6) {
-                Object.entries(relationshipTypes).slice(0, 3).forEach(([type, color]) => {
-                    const legendItem = document.createElement('div');
-                    legendItem.className = 'legend-item';
-                    legendItem.innerHTML = `
-                        <div class="legend-color" style="background-color: ${color}; border: 2px solid ${color};"></div>
-                        <span>${type}</span>
-                    `;
-                    legendContainer.appendChild(legendItem);
-                });
+            // Add separator if we have both node and relationship types
+            if (Object.keys(relationshipTypes).length > 0) {
+                const separator = document.createElement('hr');
+                separator.style.margin = '10px 0';
+                separator.style.border = 'none';
+                separator.style.borderTop = '1px solid #ddd';
+                legendContent.appendChild(separator);
+            }
+
+            // Add relationship type legends
+            for (const [type, color] of Object.entries(relationshipTypes)) {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+                legendItem.innerHTML = `
+                    <span class="legend-relation-box" style="border-color: ${color}; background-color: rgba(255,255,255,0.8);"></span>
+                    <span class="legend-text">${type} →</span>
+                `;
+                legendContent.appendChild(legendItem);
+            }
+
+            // Show legend panel if we have content
+            if (Object.keys(nodeTypes).length > 0 || Object.keys(relationshipTypes).length > 0) {
+                legendPanel.style.display = 'block';
+            } else {
+                legendPanel.style.display = 'none';
             }
         }
 
@@ -1682,6 +1730,13 @@
                     overviewToggle.classList.add('collapsed');
                 }
             });
+
+            // Ensure view toggles are visible after graph initialization
+            const viewToggleContainer = document.querySelector('.view-toggle');
+            if (viewToggleContainer) {
+                viewToggleContainer.style.display = 'flex';
+                viewToggleContainer.style.zIndex = '1000';
+            }
         }
 
         // Update filter panel
@@ -2788,6 +2843,23 @@
                     // Clear filters for new graph
                     currentFilters.nodeTypes.clear();
                     currentFilters.relationshipTypes.clear();
+
+            // Ensure view toggles remain visible after graph initialization
+            const viewToggleContainer = document.querySelector('.view-toggle');
+            if (viewToggleContainer) {
+                viewToggleContainer.style.display = 'flex !important';
+                viewToggleContainer.style.zIndex = '1010 !important';
+                viewToggleContainer.style.position = 'relative !important';
+                viewToggleContainer.style.opacity = '1 !important';
+                viewToggleContainer.style.visibility = 'visible !important';
+
+                // Also ensure the left panel stays visible
+                const leftPanel = document.querySelector('.left-panel');
+                if (leftPanel) {
+                    leftPanel.style.zIndex = '1020 !important';
+                    leftPanel.style.position = 'relative !important';
+                }
+            }
 
                     // Display detailed loading statistics
                     const stats = result.stats || {};
