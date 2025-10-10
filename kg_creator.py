@@ -12,6 +12,7 @@ from neo4j import GraphDatabase, basic_auth
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 import os
 import sys
+import logging
 
 # Import from local kg_utils
 from kg_utils.create_chunks import CreateChunksofDocument
@@ -142,22 +143,48 @@ class ChunkedKGCreator:
         """
         Harmonize entities across chunks to avoid duplicates
         Based on llm-graph-builder's harmonization logic
+        Also prevents duplicate nodes when same text content is repeated
         """
         entity_map = {}
         harmonized_entities = []
-        
+
         for entity in all_entities:
+            # Create text hash for content-based deduplication
+            entity_text = entity.get('id', '').strip()
+            entity_text_hash = None
+            if entity_text:
+                entity_text_hash = hashlib.sha256(entity_text.lower().encode('utf-8')).hexdigest()
+
+                # Check if we've seen this exact text content before (in-memory deduplication)
+                if hasattr(self, '_seen_entity_text_hashes'):
+                    if entity_text_hash in self._seen_entity_text_hashes:
+                        # Skip this entity - it's identical text content already processed
+                        continue
+
+                # Record this text hash as seen
+                if not hasattr(self, '_seen_entity_text_hashes'):
+                    self._seen_entity_text_hashes = set()
+                self._seen_entity_text_hashes.add(entity_text_hash)
+
+            # Type-based entity harmonization (different from text hash deduplication)
             entity_key = f"{entity['type']}:{entity['id'].lower()}"
-            
+
             if entity_key not in entity_map:
                 entity_map[entity_key] = entity
+                # Store text hash in properties for database-level deduplication
+                if entity_text_hash:
+                    entity.setdefault('properties', {})['text_hash'] = entity_text_hash
+                    entity.setdefault('properties', {})['name'] = entity_text
+                    entity.setdefault('properties', {})['description'] = f"{entity['type']}: {entity_text}"
                 harmonized_entities.append(entity)
             else:
-                # Merge properties if needed
+                # Merge properties if needed, but ensure text_hash is preserved
                 existing_entity = entity_map[entity_key]
+                if entity_text_hash and not existing_entity.get('properties', {}).get('text_hash'):
+                    existing_entity.setdefault('properties', {})['text_hash'] = entity_text_hash
                 if entity.get('properties'):
                     existing_entity.setdefault('properties', {}).update(entity['properties'])
-        
+
         return harmonized_entities
 
     def _harmonize_relationships(self, all_relationships: List[Dict], entity_map: Dict) -> List[Dict]:
@@ -180,7 +207,11 @@ class ChunkedKGCreator:
     def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free", kg_name: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text using chunking and the app's chosen LLM
+        Prevents duplicate nodes when same text appears multiple times
         """
+        # Initialize hash cache for text-based deduplication
+        self._seen_entity_text_hashes = set()
+
         # Step 1: Chunk the text using llm-graph-builder's logic
         chunks = self._chunk_text(text)
 
@@ -311,15 +342,39 @@ class ChunkedKGCreator:
                 """
                 session.run(doc_query, {"fileName": file_name})
 
-            # Create entity nodes
+            # Create entity nodes with text hash deduplication
             for node in kg['nodes']:
+                properties = node.get('properties', {})
+
+                # Check if we have a text hash for deduplication
+                text_hash = properties.get('text_hash')
+                if text_hash:
+                    # Try to find existing entity with same text hash
+                    existing_entity_query = """
+                    MATCH (n)
+                    WHERE n.text_hash = $text_hash
+                    RETURN n.id AS existing_id, n.name AS existing_name
+                    LIMIT 1
+                    """
+                    existing_result = session.run(existing_entity_query, {"text_hash": text_hash})
+
+                    existing_entity = existing_result.single() if existing_result.peek() else None
+
+                    if existing_entity:
+                        # Skip creating this node - link existing entity instead
+                        logging.info(f"Skipping duplicate entity '{node['id']}' - using existing entity '{existing_entity['existing_name']}'")
+
+                        # Update chunk mentions to point to existing entity
+                        # We'll handle this in the chunk mention creation below
+                        continue
+
                 node_query = f"""
                 MERGE (n:{node['label']} {{id: $id}})
                 SET n += $properties
                 """
                 session.run(node_query, {
                     "id": node['id'],
-                    "properties": node.get('properties', {})
+                    "properties": properties
                 })
 
                 # Link entity to version if version_id is provided

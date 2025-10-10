@@ -208,11 +208,11 @@ curl -X POST "http://localhost:8004/bulk_process_csv" \
   -F "max_chunks=25"
 ```
 
-### 4. Advanced Query Examples
+### 4. Cohort-Level Evidence Query Examples
 
-#### Cardiovascular Cohort Analysis: Treatment Outcomes for Acute Coronary Syndrome
+#### Cardiovascular Cohort Analysis: STEMI Treatment Outcomes
 ```bash
-# Analyze treatment outcomes for STEMI patients with different interventions
+# Analyze STEMI treatment outcomes comparing primary PCI vs thrombolysis with stratification
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
@@ -222,63 +222,27 @@ curl -X POST "http://localhost:8004/chat" \
   }'
 ```
 
-#### Diagnosis Support: Chest Pain Differential Diagnosis
+#### Prostate Cancer Cohort Treatment Outcomes
 ```bash
-# Identify potential diagnoses based on patient presentation
+# Analyze biochemical recurrence-free survival rates for different prostate cancer treatments
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "A 55-year-old female with hypertension presents to ER with acute substernal chest pain radiating to left arm, associated with dyspnea and nausea. What are the most likely differential diagnoses prioritized by our institutional data? What specific ECG, cardiac enzyme, and risk factor findings in our database support or refute each possibility?",
-    "provider_rag": "anthropic",
-    "model_rag": "claude-3-sonnet-20240229"
-  }'
-```
-
-#### Endocrine Second Opinion: Diabetes Management Strategy
-```bash
-# Cross-reference treatment recommendations with evidence-based guidelines
-curl -X POST "http://localhost:8004/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "For a patient with new-onset type 2 diabetes (HbA1c 8.2%, BMI 32), compare metformin monotherapy versus GLP-1 receptor agonist initiation based on ADA guidelines versus our institutional outcomes. What baseline factors would favor starting combination therapy? What metabolic and cardiovascular outcomes data from our cohort inform the optimal initial approach?",
-    "provider_rag": "openai",
-    "model_rag": "gpt-4-turbo"
-  }'
-```
-
-#### Respiratory Comorbidity Analysis: COPD Exacerbation Risks
-```bash
-# Assess exacerbation risks based on patient comorbidities and preventive strategies
-curl -X POST "http://localhost:8004/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What predictive factors and preoperative complications have occurred in severe COPD patients undergoing major surgery? How effective have different perioperative optimization strategies (bronchodilators, smoking cessation, pulmonary rehab) been at reducing postoperative respiratory failure rates compared to patients receiving standard care?",
-    "provider_rag": "anthropic",
-    "model_rag": "claude-3-haiku-20240307"
-  }'
-```
-
-#### Oncology Temporal Progression: Breast Cancer Surveillance
-```bash
-# Track disease progression and surveillance patterns chronologically
-curl -X POST "http://localhost:8004/chat" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What is the typical pattern of cancer antigen 15-3 (CA 15-3) elevation in patients with early-stage breast cancer treated with adjuvant chemotherapy, including timing of nadir, rebound kinetics, and correlation with recurrence events? What surveillance imaging and marker interval produced our lowest false-positive rate for detecting recurrence?",
+    "question": "Among patients with intermediate-risk prostate cancer (PSA 10.1-20, Gleason 4+3=7, clinical stage T2b), what biochemical recurrence-free survival rates are associated with active surveillance versus definitive treatments? Which baseline factors most strongly predict treatment success in our cohort?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
 ```
 
-#### Prostate Cancer Cohort Analysis: Treatment Outcomes
+#### Respiratory Cohort Analysis: COPD Surgery Optimization
 ```bash
-# Analyze outcomes for high-risk localized prostate cancer management
+# Evaluate perioperative optimization strategies for severe COPD patients
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "Among patients with intermediate-risk prostate cancer (PSA 10.1-20, Gleason 4+3=7, clinical stage T2b), what biochemical recurrence-free survival rates are associated with active surveillance versus definitive treatments? Which baseline factors most strongly predict treatment success in our cohort?",
-    "provider_rag": "anthropic",
-    "model_rag": "claude-3-sonnet-20240229"
+    "question": "What predictive factors and preoperative complications have occurred in severe COPD patients undergoing major surgery? How effective have different perioperative optimization strategies (bronchodilators, smoking cessation, pulmonary rehab) been at reducing postoperative respiratory failure rates compared to patients receiving standard care?",
+    "provider_rag": "openai",
+    "model_rag": "gpt-4o"
   }'
 ```
 

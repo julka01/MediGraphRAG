@@ -302,11 +302,14 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 response = response[:-3]
             response = response.strip()
 
-            # Try to extract JSON from response - handle cases where LLM returns malformed JSON
+            # Robust JSON extraction with multiple fallback strategies
+            json_content = ""
+
+            # Strategy 1: Try to extract JSON from response with improved parsing
             json_start = response.find('{')
             if json_start == -1:
-                logging.warning(f"No JSON start found in response: {response[:200]}... Returning empty result.")
-                return {'entities': [], 'relationships': []}
+                logging.warning(f"No JSON start found in response: {response[:200]}... Trying fallback.")
+                return self._ontology_fallback_entity_extraction(chunk_text)
 
             # Try to find the complete JSON object by looking for balanced braces
             brace_count = 0
@@ -339,14 +342,23 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
             if brace_count == 0 and json_end > json_start:
                 json_content = response[json_start:json_end]
-                try:
-                    result = json.loads(json_content)
-                except json.JSONDecodeError as e:
-                    logging.warning(f"JSON parsing error: {e}. Content: {json_content[:300]}... Returning empty result.")
-                    return {'entities': [], 'relationships': []}
             else:
-                logging.warning(f"Incomplete JSON in response (brace_count={brace_count}): {response[json_start:json_start+300]}... Returning empty result.")
-                return {'entities': [], 'relationships': []}
+                logging.warning(f"Incomplete JSON structure (brace_count={brace_count}). Trying alternative extraction.")
+                # Strategy 2: Try simple { } extraction
+                json_start = response.find('{')
+                json_end = response.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    json_content = response[json_start:json_end]
+                else:
+                    logging.warning("Could not extract JSON with any strategy. Using fallback.")
+                    return self._ontology_fallback_entity_extraction(chunk_text)
+
+            # Parse the JSON content
+            try:
+                result = json.loads(json_content)
+            except json.JSONDecodeError as e:
+                logging.warning(f"JSON parsing error: {e}. Content: {json_content[:300]}... Using fallback.")
+                return self._ontology_fallback_entity_extraction(chunk_text)
 
             # Validate the result has the expected structure
             if not isinstance(result, dict) or 'entities' not in result or 'relationships' not in result:
@@ -445,7 +457,59 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
         except Exception as e:
             logging.error(f"LLM extraction failed: {e}")
             # Return empty result instead of failing completely
-            return {'entities': [], 'relationships': []}
+            return self._ontology_fallback_entity_extraction(chunk_text)
+
+    def _ontology_fallback_entity_extraction(self, text: str) -> Dict[str, Any]:
+        """
+        Fallback entity extraction using pattern matching when LLM JSON fails
+        """
+        entities = []
+        relationships = []
+
+        # Extract potential medical entities using pattern matching
+        entity_patterns = [
+            r'\b(?:cancer|diabetes|hypertension|asthma|arthritis|covid|covid-19)\b',
+            r'\b(?:aspirin|ibuprofen|metformin|insulin|lisinopril|amlodipine)\b',
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'  # Capitalized medical terms
+        ]
+
+        found_entities = set()
+        for pattern in entity_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                match = match.strip()
+                # Filter out common words that aren't medical entities
+                if len(match) > 2 and match.lower() not in ['the', 'and', 'but', 'for', 'with', 'this', 'that', 'from']:
+                    found_entities.add(match)
+
+        # Create relationships between consecutive medical entities found
+        entity_list = list(found_entities)
+        for i in range(len(entity_list) - 1):
+            relationships.append({
+                "source": entity_list[i],
+                "target": entity_list[i + 1],
+                "type": "RELATED_TO",
+                "properties": {"description": f"Found together in medical text"}
+            })
+
+        # Convert to entity format
+        for entity_text in found_entities:
+            # Classify entity type with ontology guidance if available
+            entity_type = self._classify_entity_with_ontology(entity_text)
+
+            entities.append({
+                "id": entity_text,
+                "type": entity_type,
+                "properties": {
+                    "name": entity_text,
+                    "description": f"Medical entity extracted via pattern matching: {entity_text}"
+                }
+            })
+
+        return {
+            "entities": entities,
+            "relationships": relationships
+        }
 
     def _is_medical_entity(self, entity: Dict[str, Any]) -> bool:
         """
@@ -541,31 +605,113 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
     def _normalize_entity_text(self, text: str) -> str:
         """
-        Normalize entity text for better duplicate detection
+        Normalize entity text for better duplicate detection using enhanced medical normalization
         """
-        # Convert to lowercase, remove extra whitespace, normalize common variations
+        # Convert to lowercase, remove extra whitespace
         normalized = re.sub(r'\s+', ' ', text.lower().strip())
 
-        # Common medical abbreviations and normalizations
+        # Remove common medical prefixes/suffixes that don't change meaning
+        prefixes_suffixes = [
+            'the ', 'and ', 'or ',
+            ' - ', ' (', ')', '[', ']', ',', ';', '.', ':',
+            ' disease', ' syndrome', ' disorder',
+            ' therapy', ' treatment', ' procedure',
+            ' drug', ' medication', ' agent'
+        ]
+
+        for item in prefixes_suffixes:
+            if isinstance(item, str):
+                normalized = normalized.replace(item, '')
+
+        # Normalize common medical variations - be much more aggressive
         normalizations = {
+            # Cancer types
             'prostate cancer': 'prostate_cancer',
             'breast cancer': 'breast_cancer',
             'lung cancer': 'lung_cancer',
-            r'\bpc\b': 'prostate_cancer',  # Prostate cancer abbreviation
-            r'\bbc\b': 'breast_cancer',    # Breast cancer abbreviation
-            r'\blc\b': 'lung_cancer',      # Lung cancer abbreviation
+            'colorectal cancer': 'colorectal_cancer',
+            'pancreatic cancer': 'pancreatic_cancer',
+            'ovarian cancer': 'ovarian_cancer',
+            'colon cancer': 'colon_cancer',
+            'rectal cancer': 'rectal_cancer',
+            'metastatic prostate cancer': 'metastatic_prostate_cancer',
+            'advanced prostate cancer': 'advanced_prostate_cancer',
+            r'\bpc\b|\bpc[a-z\s]*': 'prostate_cancer',  # Prostate cancer abbreviation
+            r'\bbc\b|\bbc[a-z\s]*': 'breast_cancer',    # Breast cancer abbreviation
+            r'\blc\b|\blc[a-z\s]*': 'lung_cancer',      # Lung cancer abbreviation
+            r'\bcrc\b|\bcrc[a-z\s]*': 'colorectal_cancer',
+
+            # Treatments
             'radical prostatectomy': 'radical_prostatectomy',
+            'open radical prostatectomy': 'radical_prostatectomy',
+            'laparoscopic radical prostatectomy': 'radical_prostatectomy',
+            'robotic radical prostatectomy': 'radical_prostatectomy',
             'brachytherapy': 'brachytherapy',
             'hormone therapy': 'hormone_therapy',
             'radiation therapy': 'radiation_therapy',
+            'radiotherapy': 'radiation_therapy',
+            'chemotherapy': 'chemotherapy',
+            'immunotherapy': 'immunotherapy',
+            'targeted therapy': 'targeted_therapy',
+            'active surveillance': 'active_surveillance',
+            'watchful waiting': 'active_surveillance',
+            'radical retropubic prostatectomy': 'radical_prostatectomy',
+            'robot-assisted radical prostatectomy': 'robotic_radical_prostatectomy',
+
+            # Drugs and medications
+            'bicalutamide': 'bicalutamide',
+            'goserelin': 'goserelin',
+            'leuprolide': 'leuprolide',
+            'triptorelin': 'triptorelin',
+            'abiraterone': 'abiraterone',
+            'enzalutamide': 'enzalutamide',
+            'apalutamide': 'apalutamide',
+            'darolutamide': 'darolutamide',
+            'degarelix': 'degarelix',
+            '979': 'sipuleucel_T',  # Sipuleucel-T
+            'sipuleucel-t': 'sipuleucel_T',
+            'docetaxel': 'docetaxel',
+            'cabazitaxel': 'cabazitaxel',
+            'mitoxantrone': 'mitoxantrone',
+            'zoledronic acid': 'zoledronic_acid',
+            'denosumab': 'denosumab',
+
+            # Symptoms and conditions
+            'urinary incontinence': 'urinary_incontinence',
+            'erectile dysfunction': 'erectile_dysfunction',
+            'lower urinary tract symptoms': 'lower_urinary_tract_symptoms',
+            'luts': 'lower_urinary_tract_symptoms',
+            'benign prostatic hyperplasia': 'benign_prostatic_hyperplasia',
+            'bph': 'benign_prostatic_hyperplasia',
+            'elevated psa': 'elevated_psa',
+            'rising psa': 'elevated_psa',
+            'metastatic disease': 'metastatic_disease',
+            'bone metastases': 'bone_metastases',
+
+            # Procedures
+            'transrectal ultrasound': 'transrectal_ultrasound',
+            'trus': 'transrectal_ultrasound',
+            'biopsy': 'prostate_biopsy',
+            'prostate biopsy': 'prostate_biopsy',
+            'bone scan': 'bone_scan',
+            'ct scan': 'ct_scan',
+            'mri': 'magnetic_resonance_imaging',
+            'magnetic resonance imaging': 'magnetic_resonance_imaging',
         }
 
-        # Apply normalizations
-        for full, normalized_form in normalizations.items():
-            if isinstance(full, str):
-                normalized = re.sub(rf'\b{re.escape(full)}\b', normalized_form, normalized)
-            else:  # regex pattern
-                normalized = re.sub(full, normalized_form, normalized)
+        # Apply normalizations with word boundaries for precision
+        for original, normalized_form in normalizations.items():
+            if isinstance(original, str):
+                # Use word boundaries for multi-word terms
+                pattern = r'\b' + re.escape(original) + r'\b'
+                normalized = re.sub(pattern, normalized_form, normalized)
+            else:  # regex pattern for abbreviations
+                normalized = re.sub(original, normalized_form, normalized)
+
+        # Final cleanup - remove extra whitespace and normalize underscores
+        normalized = re.sub(r'\s+', ' ', normalized)
+        normalized = re.sub(r'_+', '_', normalized)
+        normalized = normalized.strip('_')
 
         return normalized
 
@@ -895,11 +1041,70 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 })
 
             # Create entity nodes with embeddings and ontology-based labels
+            # First compute content-based hashes for better deduplication
             for node in kg['nodes']:
+                # Generate content-based deduplication hash
+                original_id = node.get('properties', {}).get('original_id', node['id'])
+                normalized_content = self._normalize_entity_text(original_id)
+                content_hash = hashlib.md5(f"{node['label']}:{normalized_content}".encode()).hexdigest()
+                node['content_hash'] = content_hash
+
+            # Group nodes by content hash to merge duplicates at storage time
+            hash_to_nodes = defaultdict(list)
+            for node in kg['nodes']:
+                hash_to_nodes[node['content_hash']].append(node)
+
+            # Create or update entity nodes, merging duplicates
+            for content_hash, nodes in hash_to_nodes.items():
+                if not nodes:
+                    continue
+
+                # Take the "best" node (first in list after harmonization)
+                node = nodes[0]
                 properties = node.get('properties', {})
                 entity_type = node['label']  # This is the ontology class (Disease, Treatment, etc.)
                 # Sanitize entity type for Cypher compatibility (remove spaces and special chars)
                 cypher_safe_entity_type = entity_type.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace(',', '')
+
+                # Check if entity with same content hash already exists
+                existing_entity_query = """
+                MATCH (n:__Entity__)
+                WHERE n.content_hash = $content_hash
+                RETURN n.id AS existing_id, n.name AS existing_name
+                LIMIT 1
+                """
+                existing_result = graph.query(existing_entity_query, {"content_hash": content_hash})
+                existing_entity = existing_result[0] if existing_result else None
+
+                if existing_entity:
+                    # Update existing entity with additional information
+                    node_id = existing_entity['existing_id']
+
+                    # Merge properties and names
+                    all_names = set(properties.get('all_names', []))
+                    all_descriptions = set(properties.get('all_descriptions', []))
+
+                    all_names.add(existing_entity['existing_name'])
+                    all_names.add(properties.get('name', node['id']))
+                    original_ids = properties.get('original_ids', [])
+                    original_ids.append(node['id'])
+                    all_names.update(original_ids)
+
+                    update_query = """
+                    MATCH (n:__Entity__ {id: $node_id})
+                    SET n.all_names = $all_names,
+                        n.all_descriptions = $all_descriptions,
+                        n.original_ids = $original_ids,
+                        n.last_updated = datetime()
+                    """
+                    graph.query(update_query, {
+                        "node_id": node_id,
+                        "all_names": list(all_names),
+                        "all_descriptions": list(all_descriptions),
+                        "original_ids": list(set(original_ids))
+                    })
+                    logging.info(f"Updated existing entity '{existing_entity['existing_name']}' with variants: {list(all_names)}")
+                    continue
 
                 # Generate embedding for entity if it doesn't have one
                 entity_embedding = node.get('embedding')
@@ -916,20 +1121,32 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
                 # Use specific ontology class label first, then __Entity__ to ensure ontology class is the primary label
                 node_query = f"""
-                MERGE (n:{cypher_safe_entity_type}:__Entity__ {{id: $id}})
-                SET n.name = $name,
+                MERGE (n:{cypher_safe_entity_type}:__Entity__ {{content_hash: $content_hash}})
+                ON CREATE SET
+                    n.id = $id,
+                    n.name = $name,
                     n.type = $type,
                     n.description = $description,
                     n.embedding = $embedding,
-                    n.ontology_class = $entity_type
+                    n.ontology_class = $entity_type,
+                    n.all_names = $all_names,
+                    n.original_ids = $original_ids,
+                    n.created_at = datetime()
+                ON MATCH SET
+                    n.last_accessed = datetime(),
+                    n.all_names = coalesce(n.all_names, []) + $all_names,
+                    n.original_ids = coalesce(n.original_ids, []) + $original_ids
                 """
                 graph.query(node_query, {
+                    "content_hash": content_hash,
                     "id": node['id'],
                     "name": properties.get('name', node['id']),
                     "type": node['label'],
                     "description": properties.get('description', ''),
                     "embedding": entity_embedding,
-                    "entity_type": entity_type
+                    "entity_type": entity_type,
+                    "all_names": list(set(properties.get('all_names', [node['id']]))),
+                    "original_ids": list(set(properties.get('original_ids', [node['id']])))
                 })
 
             # Create relationships

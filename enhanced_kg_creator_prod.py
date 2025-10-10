@@ -151,26 +151,124 @@ Return ONLY the JSON object, no additional text."""),
             response = chain.invoke({"text": chunk_text})
 
             # Handle potential markdown code blocks
-            if response.startswith('```json'):
-                response = response[7:]
-            if response.startswith('```'):
-                response = response[3:]
-            if response.endswith('```'):
-                response = response[:-3]
+            json_match = re.search(r'```(?:json)?\n(.*?)\n```', response, re.DOTALL)
+            if json_match:
+                response = json_match.group(1)
+            else:
+                # Fallback: Remove markdown code blocks if present
+                if response.startswith('```json'):
+                    response = response[7:]
+                if response.startswith('```'):
+                    response = response[3:]
+                if response.endswith('```'):
+                    response = response[:-3]
 
             response = response.strip()
 
+            # Try to extract JSON from the response (sometimes LLMs add explanatory text)
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                response = response[json_start:json_end]
+
             # Parse and validate JSON
-            result = json.loads(response)
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError as json_error:
+                logging.error(f"JSON parsing failed for LLM response. Raw response:\n{response}")
+                logging.error(f"JSON error: {json_error}")
+                # Try to salvage by looking for partial JSON structure
+                return self._attempt_json_recovery(response, chunk_text)
+
+            # Validate result structure
+            if not isinstance(result, dict):
+                logging.error(f"LLM returned non-dict result: {type(result)} = {result}")
+                return {'entities': [], 'relationships': []}
+
+            entities = result.get('entities', [])
+            relationships = result.get('relationships', [])
+
+            # Basic validation
+            if not isinstance(entities, list):
+                logging.warning(f"Entities is not a list: {type(entities)}")
+                entities = []
+            if not isinstance(relationships, list):
+                logging.warning(f"Relationships is not a list: {type(relationships)}")
+                relationships = []
 
             return {
-                'entities': result.get('entities', []),
-                'relationships': result.get('relationships', [])
+                'entities': entities,
+                'relationships': relationships
             }
 
         except Exception as e:
             logging.error(f"LLM extraction failed: {e}")
             return {'entities': [], 'relationships': []}
+
+    def _attempt_json_recovery(self, malformed_response: str, chunk_text: str) -> Dict[str, Any]:
+        """
+        Attempt to recover from malformed JSON response using fallback pattern matching
+        """
+        logging.info("Attempting JSON recovery with pattern matching fallback")
+
+        try:
+            # Use simple pattern matching to extract entities from the original chunk
+            entities = self._extract_entities_pattern_matching(chunk_text)
+            return {
+                'entities': entities,
+                'relationships': []
+            }
+        except Exception as e2:
+            logging.error(f"Pattern matching fallback also failed: {e2}")
+            return {'entities': [], 'relationships': []}
+
+    def _extract_entities_pattern_matching(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Fallback entity extraction using pattern matching when LLM JSON fails
+        """
+        entities = []
+
+        # Extract potential medical entities
+        import re
+
+        # More sophisticated patterns for medical entities
+        entity_patterns = [
+            # Diseases/conditions
+            r'\b(?:cancer|diabetes|hypertension|asthma|arthritis|covid|covid-19)\b',
+            # Drugs/medications
+            r'\b(?:aspirin|ibuprofen|metformin|insulin|lisinopril|amlodipine)\b',
+            # Capitalized medical terms
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'
+        ]
+
+        found_entities = set()
+        for pattern in entity_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                match = match.strip()
+                if len(match) > 2 and match.lower() not in ['the', 'and', 'but', 'for', 'with', 'this', 'that', 'from']:
+                    found_entities.add(match)
+
+        # Convert to entity format
+        for entity_text in found_entities:
+            # Classify entity type
+            if any(word in entity_text.lower() for word in ['cancer', 'diabetes', 'asthma', 'arthritis', 'covid']):
+                entity_type = "Disease"
+            elif any(word in entity_text.lower() for word in ['aspirin', 'ibuprofen', 'metformin', 'insulin']):
+                entity_type = "Drug"
+            else:
+                entity_type = "Concept"
+
+            entities.append({
+                "id": entity_text,
+                "type": entity_type,
+                "properties": {
+                    "name": entity_text,
+                    "description": f"Medical entity: {entity_text}"
+                }
+            })
+
+        return entities
 
     def generate_knowledge_graph(self, text: str, llm=None, file_name: str = None) -> Dict[str, Any]:
         """
@@ -207,9 +305,20 @@ Return ONLY the JSON object, no additional text."""),
                 all_entities.extend(chunk_kg['entities'])
                 all_relationships.extend(chunk_kg['relationships'])
 
-            # Deduplicate entities
+            # Deduplicate entities with text hash deduplication
             entity_map = {}
             for entity in all_entities:
+                # Add text hash if not present
+                if 'properties' not in entity:
+                    entity['properties'] = {}
+                if 'text_hash' not in entity['properties']:
+                    entity_text = entity.get('id', '').strip()
+                    if entity_text:
+                        import hashlib
+                        entity['properties']['text_hash'] = hashlib.sha256(entity_text.lower().encode('utf-8')).hexdigest()
+                        entity['properties']['name'] = entity_text
+                        entity['properties']['description'] = f"Medical entity: {entity_text}"
+
                 key = f"{entity['type']}:{entity['id'].lower()}"
                 if key not in entity_map:
                     entity_map[key] = entity
@@ -271,21 +380,44 @@ Return ONLY the JSON object, no additional text."""),
                 "totalRelationships": len(kg.get('relationships', []))
             })
 
-            # Save entities
+            # Save entities with text hash deduplication
             for node in kg.get('nodes', []):
+                properties = node.get('properties', {})
+
+                # Check if we have a text hash for deduplication
+                text_hash = properties.get('text_hash')
+                if text_hash:
+                    # Try to find existing entity with same text hash
+                    existing_entity_query = """
+                    MATCH (n)
+                    WHERE n.text_hash = $text_hash
+                    RETURN n.id AS existing_id, n.name AS existing_name
+                    LIMIT 1
+                    """
+                    existing_result = graph.query(existing_entity_query, {"text_hash": text_hash})
+
+                    existing_entity = existing_result[0] if existing_result else None
+
+                    if existing_entity:
+                        # Skip creating this node - link existing entity instead
+                        logging.info(f"Skipping duplicate entity '{node['id']}' - using existing entity '{existing_entity['existing_name']}'")
+                        continue
+
                 graph.query("""
                 MERGE (n:__Entity__ {id: $id})
                 SET n.name = $name,
                     n.type = $type,
                     n.description = $description,
                     n.embedding = $embedding,
+                    n.text_hash = $text_hash,
                     n.updatedAt = datetime()
                 """, {
                     "id": node['id'],
-                    "name": node['properties'].get('name', node['id']),
+                    "name": properties.get('name', node['id']),
                     "type": node['label'],
-                    "description": node['properties'].get('description', ''),
-                    "embedding": node.get('embedding')
+                    "description": properties.get('description', ''),
+                    "embedding": node.get('embedding'),
+                    "text_hash": properties.get('text_hash')
                 })
 
             # Save relationships

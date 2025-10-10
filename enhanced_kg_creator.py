@@ -97,9 +97,11 @@ class EnhancedKGCreator:
             
         return formatted
 
+
+
     def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm) -> Dict[str, Any]:
         """
-        Extract entities and relationships using LLM with robust error handling
+        Extract entities and relationships using LLM with robust error handling and pattern matching fallback
         """
         extraction_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert knowledge graph extraction system. Extract entities and relationships from medical text.
@@ -122,38 +124,59 @@ Return response as JSON with this structure:
         ])
 
         try:
+            if llm is None:
+                # Fallback to pattern matching when LLM is not available
+                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
+
+            # Use LangChain chain structure
             chain = extraction_prompt | llm | StrOutputParser()
             response = chain.invoke({"text": chunk_text})
 
-            # Handle JSON wrapped in markdown code blocks
+            # Handle potential markdown code blocks
             json_match = re.search(r'```(?:json)?\n(.*?)\n```', response, re.DOTALL)
             if json_match:
                 response = json_match.group(1)
+            else:
+                # Fallback: Remove markdown code blocks if present
+                if response.startswith('```json'):
+                    response = response[7:]
+                if response.startswith('```'):
+                    response = response[3:]
+                if response.endswith('```'):
+                    response = response[:-3]
 
-            # Clean response
             response = response.strip()
 
+            # Try to extract JSON from the response (sometimes LLMs add explanatory text)
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                response = response[json_start:json_end]
+
+            # Parse and validate JSON
             try:
                 result = json.loads(response)
-            except json.JSONDecodeError as e:
-                logging.error(f"JSON parsing failed. Raw LLM response:\n{response}")
-                return {"entities": [], "relationships": []}
+            except json.JSONDecodeError as json_error:
+                logging.warning(f"JSON parsing failed. Raw LLM response:\n{response}")
+                logging.warning(f"JSON error: {json_error}")
+                # Try to salvage by looking for partial JSON structure
+                return self._attempt_json_recovery_from_llm_response(response, chunk_text)
 
-            # Enhanced validation - check if result has the expected structure
+            # Validate result structure
             if not isinstance(result, dict):
-                logging.warning(f"LLM returned non-dict result: {type(result)} = {result}. Skipping chunk.")
-                return {"entities": [], "relationships": []}
+                logging.warning(f"LLM returned non-dict result: {type(result)} = {result}. Using fallback.")
+                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
 
             # Safely get entities and relationships with validation
             entities_raw = result.get('entities', [])
             relationships_raw = result.get('relationships', [])
 
             if not isinstance(entities_raw, list):
-                logging.warning(f"LLM returned entities as {type(entities_raw)} instead of list: {entities_raw}. Skipping chunk.")
-                return {"entities": [], "relationships": []}
+                logging.warning(f"Entities is not a list: {type(entities_raw)}. Using fallback.")
+                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
 
             if not isinstance(relationships_raw, list):
-                logging.warning(f"LLM returned relationships as {type(relationships_raw)} instead of list: {relationships_raw}. Skipping entities.")
+                logging.warning(f"Relationships is not a list: {type(relationships_raw)}. Continuing with empty relationships.")
                 relationships_raw = []  # Allow processing to continue with empty relationships
 
             # Process entities with enhanced validation
@@ -216,7 +239,78 @@ Return response as JSON with this structure:
 
         except Exception as e:
             logging.error(f"LLM extraction failed completely: {str(e)}")
-            return {"entities": [], "relationships": []}
+            # Fallback to pattern matching
+            return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
+
+    def _attempt_json_recovery_from_llm_response(self, malformed_response: str, chunk_text: str) -> Dict[str, Any]:
+        """
+        Attempt to recover from malformed JSON response using pattern matching fallback
+        """
+        logging.info("Attempting JSON recovery with pattern matching fallback")
+
+        try:
+            # Try to extract entities from the chunk using pattern matching
+            return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
+        except Exception as e2:
+            logging.error(f"Pattern matching fallback also failed: {e2}")
+            return {'entities': [], 'relationships': []}
+
+    def _extract_entities_pattern_matching_llm_fallback(self, text: str) -> Dict[str, Any]:
+        """
+        Fallback entity extraction using pattern matching when LLM JSON fails
+        """
+        entities = []
+        relationships = []
+
+        # Extract potential medical entities using pattern matching
+        entity_patterns = [
+            r'\b(?:cancer|diabetes|hypertension|asthma|arthritis|covid|covid-19)\b',
+            r'\b(?:aspirin|ibuprofen|metformin|insulin|lisinopril|amlodipine)\b',
+            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'  # Capitalized medical terms
+        ]
+
+        found_entities = set()
+        for pattern in entity_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                match = match.strip()
+                # Filter out common words that aren't medical entities
+                if len(match) > 2 and match.lower() not in ['the', 'and', 'but', 'for', 'with', 'this', 'that', 'from']:
+                    found_entities.add(match)
+
+        # Create relationships between consecutive medical entities found
+        entity_list = list(found_entities)
+        for i in range(len(entity_list) - 1):
+            relationships.append({
+                "source": entity_list[i],
+                "target": entity_list[i + 1],
+                "type": "RELATED_TO",
+                "properties": {"description": f"Found together in medical text"}
+            })
+
+        # Convert to entity format
+        for entity_text in found_entities:
+            # Classify entity type
+            if any(word in entity_text.lower() for word in ['cancer', 'diabetes', 'asthma', 'arthritis', 'covid']):
+                entity_type = "Disease"
+            elif any(word in entity_text.lower() for word in ['aspirin', 'ibuprofen', 'metformin', 'insulin']):
+                entity_type = "Drug"
+            else:
+                entity_type = "Concept"
+
+            entities.append({
+                "id": entity_text,
+                "type": entity_type,
+                "properties": {
+                    "name": entity_text,
+                    "description": f"Medical entity extracted via pattern matching: {entity_text}"
+                }
+            })
+
+        return {
+            "entities": entities,
+            "relationships": relationships
+        }
 
     def generate_knowledge_graph(self, text: str, llm, file_name: str = None) -> Dict[str, Any]:
         """
@@ -231,7 +325,7 @@ Return response as JSON with this structure:
                 "file_name": file_name
             }
         }
-        
+
         for chunk in chunks:
             try:
                 result = self._extract_entities_and_relationships_with_llm(chunk['text'], llm)
@@ -239,7 +333,7 @@ Return response as JSON with this structure:
                 kg["relationships"].extend(result.get("relationships", []))
             except Exception as e:
                 logging.error(f"Error processing chunk {chunk['chunk_id']}: {e}")
-        
+
         return kg
 
 

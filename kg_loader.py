@@ -105,7 +105,7 @@ class KGLoader:
             
     def load_from_neo4j(self, uri: str, user: str, password: str, kg_label: str = None, query: str = None, limit: int = None, sample_mode: bool = False) -> Dict:
         """Fetch data from Neo4j database with enhanced options for complete KG import
-        
+
         Args:
             uri: Neo4j connection URI
             user: Neo4j username
@@ -115,6 +115,8 @@ class KGLoader:
             limit: Maximum number of nodes to retrieve (None = no limit)
             sample_mode: If True, loads a representative sample for large graphs
         """
+        driver = None
+        session = None
         try:
             # Set last_import_dir to kg_storage directory for consistent export behavior
             kg_storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "kg_storage"))
@@ -123,23 +125,26 @@ class KGLoader:
 
             driver = GraphDatabase.driver(uri, auth=basic_auth(user, password))
             driver.verify_connectivity()
+            session = driver.session()
 
-            with driver.session() as session:
-                # First, get database statistics
-                stats_result = session.run("MATCH (n) RETURN count(n) as node_count")
-                total_nodes = stats_result.single()["node_count"]
+            # First, get database statistics
+            stats_result = session.run("MATCH (n) RETURN count(n) as node_count")
+            total_nodes = stats_result.single()["node_count"]
 
-                stats_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
-                total_relationships = stats_result.single()["rel_count"]
+            stats_result = session.run("MATCH ()-[r]->() RETURN count(r) as rel_count")
+            total_relationships = stats_result.single()["rel_count"]
 
-                print(f"Neo4j Database Stats: {total_nodes} nodes, {total_relationships} relationships")
+            print(f"Neo4j Database Stats: {total_nodes} nodes, {total_relationships} relationships")
 
-                # Determine loading strategy based on graph size
-                if sample_mode and total_nodes > 1000:
-                    # For very large graphs, use sampling strategy
-                    return self._load_neo4j_sample(session, kg_label, total_nodes, total_relationships)
+            # Determine loading strategy based on graph size
+            if sample_mode and total_nodes > 1000:
+                # For very large graphs, use sampling strategy
+                # Note: We need to close current session before returning
+                session.close()
+                driver.close()
+                return self._load_neo4j_sample_with_driver(driver, kg_label, total_nodes, total_relationships)
 
-            # Build queries for complete or filtered loading
+
             if query:
                 # Custom query provided
                 node_query = query
@@ -149,8 +154,9 @@ class KGLoader:
                     rel_query += f" LIMIT {limit}"
             elif kg_label:
                 # Filter by specific label - include Document nodes for context but exclude Chunk nodes
-                node_query = f"MATCH (n:`{kg_label}`) WHERE NOT n:Chunk RETURN n UNION MATCH (d:Document) WHERE d.fileName IS NOT NULL RETURN d"
-                rel_query = f"MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`) WHERE NOT a:Chunk AND NOT b:Chunk RETURN r, a as start, b as end UNION MATCH (a:`{kg_label}`)-[r:PART_OF]->(d:Document) RETURN r, a as start, d as end"
+                # Use consistent column names for UNION query - alias both to same variable
+                node_query = f"MATCH (n:`{kg_label}`) WHERE NOT n:Chunk RETURN n as node UNION ALL MATCH (d:Document) WHERE d.fileName IS NOT NULL RETURN d as node"
+                rel_query = f"MATCH (a:`{kg_label}`)-[r]->(b:`{kg_label}`) WHERE NOT a:Chunk AND NOT b:Chunk RETURN r, a as start, b as end UNION ALL MATCH (a:`{kg_label}`)-[r:PART_OF]->(d:Document) RETURN r, a as start, d as end"
                 if limit:
                     node_query += f" LIMIT {limit}"
                     rel_query += f" LIMIT {limit * 2}"  # Account for potentially more relationships with documents
@@ -168,10 +174,10 @@ class KGLoader:
             node_id_map = {}  # Map Neo4j internal IDs to our node indices
 
             for record in result:
-                # Handle UNION query that returns both "n" and "d" columns
-                node = record.get("n") or record.get("d")
+                # Handle UNION query that returns "node" column (aliased from either n or d)
+                node = record.get("node")
                 if node is None:
-                    continue  # Skip if neither column exists
+                    continue  # Skip if node column is missing
 
                 properties = {}
                 for key, value in dict(node).items():
@@ -242,6 +248,26 @@ class KGLoader:
             }
             print(f"Error loading from Neo4j: {error_details}")
             return {"status": "error", "message": str(e), "details": error_details}
+        finally:
+            # Ensure resources are cleaned up properly
+            if session:
+                session.close()
+            if driver:
+                driver.close()
+
+    def _load_neo4j_sample_with_driver(self, driver, kg_label: str, total_nodes: int, total_relationships: int) -> Dict:
+        """Load a representative sample from a large Neo4j graph with proper session management"""
+        session = None
+        try:
+            session = driver.session()
+            return self._load_neo4j_sample(session, kg_label, total_nodes, total_relationships)
+        except Exception as e:
+            return {"status": "error", "message": f"Sample loading failed: {str(e)}"}
+        finally:
+            if session:
+                session.close()
+            if driver:
+                driver.close()
 
     def _load_neo4j_sample(self, session, kg_label: str, total_nodes: int, total_relationships: int) -> Dict:
         """Load a representative sample from a large Neo4j graph"""

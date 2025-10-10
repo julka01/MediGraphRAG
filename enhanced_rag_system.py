@@ -102,7 +102,7 @@ User Query: {question}"""),
             sanitize=True
         )
 
-    def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
         """
         Get comprehensive RAG context including chunks, entities, and relationships using vector search
         """
@@ -129,7 +129,7 @@ User Query: {question}"""),
 
             # Try vector search first
             logging.info("Attempting vector similarity search")
-            return self._vector_similarity_search(graph, query, document_names, similarity_threshold)
+            return self._vector_similarity_search(graph, query, document_names, similarity_threshold, max_chunks)
 
         except Exception as e:
             logging.error(f"Error getting RAG context: {e}")
@@ -179,14 +179,14 @@ User Query: {question}"""),
         
         return formatted_context, formatted_entities
 
-    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
         """
         Generate a RAG response using the knowledge graph
         """
         try:
             logging.info(f"Starting generate_response for question: {question}")
             # Get context from knowledge graph
-            context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold)
+            context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold, max_chunks=max_chunks)
             logging.info(f"Got context with {context.get('entity_count', 0)} entities")
 
             if not context["chunks"]:
@@ -386,7 +386,7 @@ User Query: {question}"""),
             logging.error(f"Error searching entities: {e}")
             return []
 
-    def _vector_similarity_search(self, graph, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08) -> Dict[str, Any]:
+    def _vector_similarity_search(self, graph, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
         """
         Vector similarity search using placeholder embeddings (to avoid import issues)
         """
@@ -401,8 +401,8 @@ User Query: {question}"""),
 
             # Vector search query
             if document_names:
-                search_query = """
-                CALL db.index.vector.queryNodes('vector', 100, $query_vector)
+                search_query = f"""
+                CALL db.index.vector.queryNodes('vector', {max_chunks}, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE d.fileName IN $document_names
@@ -416,12 +416,12 @@ User Query: {question}"""),
                     elementId(chunk) AS chunk_element_id,
                     score,
                     d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {
+                    [entity IN chunk_entities WHERE entity IS NOT NULL | {{
                         id: entity.id,
                         element_id: elementId(entity),
                         type: coalesce(entity.type, 'Unknown'),
                         description: coalesce(entity.name, '')
-                    }] AS entities
+                    }}] AS entities
                 ORDER BY score DESC
                 """
                 params = {
@@ -429,8 +429,8 @@ User Query: {question}"""),
                     "document_names": document_names
                 }
             else:
-                search_query = """
-                CALL db.index.vector.queryNodes('vector', 100, $query_vector)
+                search_query = f"""
+                CALL db.index.vector.queryNodes('vector', {max_chunks}, $query_vector)
                 YIELD node AS chunk, score
                 MATCH (chunk)-[:PART_OF]->(d:Document)
                 WHERE score >= $similarity_threshold  // Configurable similarity threshold
@@ -443,12 +443,12 @@ User Query: {question}"""),
                     elementId(chunk) AS chunk_element_id,
                     score,
                     d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {
+                    [entity IN chunk_entities WHERE entity IS NOT NULL | {{
                         id: entity.id,
                         element_id: elementId(entity),
                         type: coalesce(entity.type, 'Unknown'),
                         description: coalesce(entity.name, '')
-                    }] AS entities
+                    }}] AS entities
                 ORDER BY score DESC
                 """
                 params = {
