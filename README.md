@@ -210,37 +210,37 @@ curl -X POST "http://localhost:8004/bulk_process_csv" \
 
 ### 4. Cohort-Level Evidence Query Examples
 
-#### Cardiovascular Cohort Analysis: STEMI Treatment Outcomes
+#### Metformin Treatment Outcomes in Diabetic Population
 ```bash
-# Analyze STEMI treatment outcomes comparing primary PCI vs thrombolysis with stratification
+# Analyze metformin efficacy and adverse effects in elderly diabetic patients
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "Among patients presenting with STEMI (ST-elevation myocardial infarction) within 6 hours of symptom onset, what percentage achieved successful reperfusion and what were the 30-day mortality rates comparing primary PCI versus thrombolysis, stratified by age and Killip class at presentation?",
+    "question": "What was the observed effect of metformin on HbA1c reduction and hypoglycemia risk in our cohort of diabetic patients aged 65+ with renal impairment? How did this compare to other oral hypoglycemics in this population, and which baseline renal function markers most strongly predicted treatment response?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
 ```
 
-#### Prostate Cancer Cohort Treatment Outcomes
+#### ACE Inhibitor Effectiveness in Heart Failure Patients
 ```bash
-# Analyze biochemical recurrence-free survival rates for different prostate cancer treatments
+# Evaluate ACE inhibitor outcomes in heart failure by ejection fraction
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "Among patients with intermediate-risk prostate cancer (PSA 10.1-20, Gleason 4+3=7, clinical stage T2b), what biochemical recurrence-free survival rates are associated with active surveillance versus definitive treatments? Which baseline factors most strongly predict treatment success in our cohort?",
+    "question": "Among heart failure patients with reduced ejection fraction (HFrEF) treated with ACE inhibitors, what survival benefit was observed compared to untreated patients? Did the magnitude of benefit vary by baseline creatinine clearance or concomitant beta-blocker use?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
 ```
 
-#### Respiratory Cohort Analysis: COPD Surgery Optimization
+#### Warfarin Dosing Success in Atrial Fibrillation
 ```bash
-# Evaluate perioperative optimization strategies for severe COPD patients
+# Analyze warfarin anticoagulation quality and bleeding complications
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What predictive factors and preoperative complications have occurred in severe COPD patients undergoing major surgery? How effective have different perioperative optimization strategies (bronchodilators, smoking cessation, pulmonary rehab) been at reducing postoperative respiratory failure rates compared to patients receiving standard care?",
+    "question": "What percentage of our atrial fibrillation patients treated with warfarin achieved therapeutic INR ranges, and what major bleeding complication rates were observed? How did genetic variants (VKORC1, CYP2C9) and drug interactions predict treatment success?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
