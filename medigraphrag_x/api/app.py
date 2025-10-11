@@ -8,13 +8,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from model_providers import get_provider as get_llm_provider
-from enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
+from medigraphrag_x.providers.model_providers import get_provider as get_llm_provider
+from medigraphrag_x.kg.builders.enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
 from csv_processor import MedicalReportCSVProcessor
 
 # Import from local kg_utils
-from kg_utils.extract_graph import extract_graph_from_file_local_file
-from kg_utils.graph_query import get_graphDB_driver
+from medigraphrag_x.kg.utils.extract_graph import extract_graph_from_file_local_file
+from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
 
 # Retain actual langchain_experimental if available
 # import importlib
@@ -24,7 +24,7 @@ from kg_utils.graph_query import get_graphDB_driver
 # Core graph imports moved inside endpoint functions
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="medigraphrag_x/api/static"), name="static")
 
 # Global storage for current graph data
 current_graph_data = None
@@ -68,7 +68,7 @@ def neo4j_health():
 
 @app.get("/")
 async def root():
-    return FileResponse("static/index.html")
+    return FileResponse("medigraphrag_x/api/static/index.html")
 
 @app.post("/load_kg_from_file")
 async def load_kg_from_file(
@@ -329,7 +329,7 @@ async def create_ontology_guided_kg(
         loaded_kg = None
         if stored:
             print("🔄 Reloading KG from Neo4j to ensure proper ontology labels...")
-            from kg_loader import KGLoader
+            from medigraphrag_x.kg.loaders.kg_loader import KGLoader
 
             kg_loader = KGLoader()
             reload_success = False
@@ -426,8 +426,8 @@ async def chat(body: dict = Body(...)):
             raise HTTPException(status_code=422, detail="Missing question")
 
         # Use the EnhancedRAGSystem for strict KG-only responses
-        from enhanced_rag_system import EnhancedRAGSystem
-        from model_providers import LangChainRunnableAdapter
+        from medigraphrag_x.rag.systems.enhanced_rag_system import EnhancedRAGSystem
+        from medigraphrag_x.providers.model_providers import LangChainRunnableAdapter
 
         # Create RAG system with direct KG connection
         rag_system = EnhancedRAGSystem()

@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_neo4j import Neo4jGraph
 from sentence_transformers import SentenceTransformer
-from model_providers import get_embedding_method
+from medigraphrag_x.providers.model_providers import get_embedding_method
 
 class EnhancedRAGSystem:
     """

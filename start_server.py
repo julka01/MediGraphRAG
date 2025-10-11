@@ -22,7 +22,7 @@ try:
     print("✓ Uvicorn imported")
 
     print("Importing application...")
-    from app import app
+    from medigraphrag_x.api.app import app
     print("✓ Application imported successfully")
 
     print("Launching server on http://0.0.0.0:8004 (Press Ctrl+C to stop)")

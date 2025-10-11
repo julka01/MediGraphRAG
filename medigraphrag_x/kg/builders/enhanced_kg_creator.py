@@ -11,10 +11,10 @@ import sys
 import logging
 
 # Import from local kg_utils
-from kg_utils.common_functions import load_embedding_model
+from medigraphrag_x.kg.utils.common_functions import load_embedding_model
 
 # Import the ontology-guided creator for unification
-from ontology_guided_kg_creator import OntologyGuidedKGCreator
+from medigraphrag_x.kg.builders.ontology_guided_kg_creator import OntologyGuidedKGCreator
 
 # Import CSV processor for bulk operations
 try:

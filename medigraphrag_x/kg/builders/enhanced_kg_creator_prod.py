@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import from local kg_utils
-from kg_utils.common_functions import load_embedding_model
+from medigraphrag_x.kg.utils.common_functions import load_embedding_model
 
 
 class EnhancedKGCreatorProd:

@@ -15,7 +15,7 @@ import sys
 import logging
 
 # Import from local kg_utils
-from kg_utils.create_chunks import CreateChunksofDocument
+from medigraphrag_x.kg.utils.create_chunks import CreateChunksofDocument
 
 class ChunkedKGCreator:
     """

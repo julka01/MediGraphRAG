@@ -17,7 +17,7 @@ import logging
 import time
 
 # Import from local kg_utils
-from kg_utils.common_functions import load_embedding_model
+from medigraphrag_x.kg.utils.common_functions import load_embedding_model
 
 class OntologyGuidedKGCreator:
     """
@@ -57,9 +57,15 @@ class OntologyGuidedKGCreator:
             try:
                 self._load_ontology(ontology_path)
                 logging.info(f"✅ Successfully loaded ontology: {len(self.ontology_classes)} classes, {len(self.ontology_relationships)} relationships")
+
+                # Validate ontology structure to prevent "string indices must be integers" errors
+                self._validate_ontology_structure()
+
             except Exception as e:
                 logging.error(f"❌ Failed to load ontology: {e}")
                 # Continue with empty ontology - LLM extraction will still work
+                self.ontology_classes = []
+                self.ontology_relationships = []
         else:
             if ontology_path:
                 logging.warning(f"Ontology file not found: {ontology_path}")
@@ -113,6 +119,32 @@ class OntologyGuidedKGCreator:
         except Exception as e:
             logging.error(f"Error loading ontology: {e}")
             raise e
+
+    def _validate_ontology_structure(self):
+        """
+        Validate and clean ontology class and relationship structures to prevent "string indices must be integers" errors
+        """
+        # Clean ontology classes
+        valid_classes = []
+        for cls in self.ontology_classes:
+            if isinstance(cls, dict) and 'id' in cls and 'label' in cls:
+                valid_classes.append(cls)
+            else:
+                logging.warning(f"Removing invalid ontology class entry: {cls}")
+
+        self.ontology_classes = valid_classes
+        logging.info(f"Validated ontology classes: {len(self.ontology_classes)} valid entries")
+
+        # Clean ontology relationships
+        valid_relationships = []
+        for rel in self.ontology_relationships:
+            if isinstance(rel, dict) and 'id' in rel and 'label' in rel:
+                valid_relationships.append(rel)
+            else:
+                logging.warning(f"Removing invalid ontology relationship entry: {rel}")
+
+        self.ontology_relationships = valid_relationships
+        logging.info(f"Validated ontology relationships: {len(self.ontology_relationships)} valid entries")
 
 
 
@@ -183,9 +215,17 @@ class OntologyGuidedKGCreator:
         has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
 
         if has_ontology:
-            # Ontology-guided extraction
-            ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:50]])
-            ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:30]])
+            # Ontology-guided extraction - with error handling
+            try:
+                # Use more ontology classes for better context
+                ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:100] if isinstance(cls, dict) and 'label' in cls and 'id' in cls])
+                ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:50] if isinstance(rel, dict) and 'label' in rel and 'id' in rel])
+                logging.info(f"Ontology text generated: {len(self.ontology_classes)} classes (showing first 100), {len(self.ontology_relationships)} relationships (showing first 50)")
+            except Exception as e:
+                logging.warning(f"Error generating ontology text: {e}. Using basic extraction.")
+                ontology_classes_text = "Basic ontology - see classification for details"
+                ontology_relationships_text = "Basic relationships"
+                has_ontology = False  # Fall back to natural LLM
 
             system_message = f"""
 You are an expert medical knowledge graph extraction system.
@@ -378,32 +418,54 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 # Handle both dict and string formats from LLM response
                 if isinstance(entity, str):
                     # Convert string entity to dict format
-                    entity = {
-                        "id": entity,
-                        "type": self._classify_entity_with_ontology(entity),
-                        "properties": {
-                            "name": entity,
-                            "description": f"{self._classify_entity_with_ontology(entity)}: {entity}"
+                    try:
+                        entity_type = self._classify_entity_with_ontology(entity)
+                        entity = {
+                            "id": entity,
+                            "type": entity_type,
+                            "properties": {
+                                "name": entity,
+                                "description": f"{entity_type}: {entity}"
+                            }
                         }
-                    }
+                    except Exception as e:
+                        logging.warning(f"Error processing string entity '{entity}': {e}. Skipping.")
+                        continue
                 elif isinstance(entity, dict):
                     # Ensure required fields exist
                     if 'id' not in entity:
                         logging.warning(f"Entity missing 'id' field: {entity}. Skipping.")
                         continue
-                    if 'type' not in entity:
-                        entity['type'] = self._classify_entity_with_ontology(entity['id'])
-                    if 'properties' not in entity:
-                        entity['properties'] = {
-                            "name": entity['id'],
-                            "description": f"{entity['type']}: {entity['id']}"
-                        }
+                    # Ensure id is a string
+                    if not isinstance(entity['id'], str):
+                        logging.warning(f"Entity id is not a string: {type(entity['id'])} = {entity['id']}. Converting to string.")
+                        entity['id'] = str(entity['id'])
+
+                    try:
+                        if 'type' not in entity:
+                            entity['type'] = self._classify_entity_with_ontology(entity['id'])
+                        if 'properties' not in entity:
+                            entity['properties'] = {
+                                "name": entity['id'],
+                                "description": f"{entity['type']}: {entity['id']}"
+                            }
+                    except Exception as e:
+                        logging.warning(f"Error processing dict entity {entity}: {e}. Skipping.")
+                        continue
                 else:
                     logging.warning(f"Entity is neither string nor dict: {type(entity)} = {entity}. Skipping.")
                     continue
 
-                if self._is_medical_entity(entity):
-                    medical_entities.append(entity)
+                # Safer medical entity check with error handling
+                try:
+                    if self._is_medical_entity(entity):
+                        medical_entities.append(entity)
+                    else:
+                        logging.warning(f"Entity failed medical validation: {entity}")
+                except Exception as e:
+                    logging.warning(f"Error checking if entity is medical: {entity}, error: {e}")
+                    # Skip entities that cause validation errors
+                    continue
 
             # Filter relationships to only include medical ones
             medical_relationships = []
@@ -860,18 +922,24 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 logging.info(f"Processing chunk {i+1}/{len(chunks)}")
                 chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm, model_name)
 
-                if chunk_kg['entities'] or chunk_kg['relationships']:
-                    all_entities.extend(chunk_kg['entities'])
-                    all_relationships.extend(chunk_kg['relationships'])
-                    processed_chunks += 1
-                    logging.info(f"✓ Chunk {i+1} processed: {len(chunk_kg['entities'])} entities, {len(chunk_kg['relationships'])} relationships")
-                else:
-                    logging.warning(f"⚠ Chunk {i+1} returned no entities/relationships")
+                # Ensure chunk_kg is a dictionary with expected keys
+                try:
+                    if isinstance(chunk_kg, dict) and (chunk_kg.get('entities', []) or chunk_kg.get('relationships', [])):
+                        all_entities.extend(chunk_kg.get('entities', []))
+                        all_relationships.extend(chunk_kg.get('relationships', []))
+                        processed_chunks += 1
+                        logging.info(f"✓ Chunk {i+1} processed: {len(chunk_kg.get('entities', []))} entities, {len(chunk_kg.get('relationships', []))} relationships")
+                    else:
+                        logging.warning(f"⚠ Chunk {i+1} returned invalid or empty format: {type(chunk_kg)}")
+                        failed_chunks += 1
+                except Exception as inner_e:
+                    logging.error(f"❌ Error processing chunk result: {inner_e}")
                     failed_chunks += 1
-
 
             except Exception as e:
                 logging.error(f"❌ Failed to process chunk {i+1}: {e}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
                 failed_chunks += 1
                 continue
 
@@ -1149,32 +1217,45 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                     "original_ids": list(set(properties.get('original_ids', [node['id']])))
                 })
 
-            # Create relationships
-            for rel in kg['relationships']:
-                # Filter out 'id' property to avoid duplicate key issues in database
-                properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
+            # Create relationships with improved error handling
+            relationships_stored = 0
+            for idx, rel in enumerate(kg['relationships']):
+                try:
+                    # Filter out 'id' property to avoid duplicate key issues in database
+                    properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
 
-                # Use ontology relationship type if available, otherwise sanitize
-                sanitized_rel_type = rel['type']
-                # Check if it's one of the defined ontology relationships
-                for ont_rel in self.ontology_relationships:
-                    if ont_rel['label'].lower().replace(' ', '_') == rel['type'].lower().replace(' ', '_'):
-                        sanitized_rel_type = ont_rel['id']
-                        break
-                # Otherwise sanitize manually
-                sanitized_rel_type = sanitized_rel_type.replace(' ', '_').replace('-', '_').upper()
+                    # Use ontology relationship type if available, otherwise sanitize
+                    sanitized_rel_type = rel['type']
+                    # Check if it's one of the defined ontology relationships
+                    for ont_rel in self.ontology_relationships:
+                        if ont_rel['label'].lower().replace(' ', '_') == rel['type'].lower().replace(' ', '_'):
+                            sanitized_rel_type = ont_rel['id']
+                            break
+                    # Otherwise sanitize manually
+                    sanitized_rel_type = sanitized_rel_type.replace(' ', '_').replace('-', '_').upper()
 
-                rel_query = f"""
-                MATCH (source:__Entity__ {{id: $source_id}})
-                MATCH (target:__Entity__ {{id: $target_id}})
-                MERGE (source)-[r:{sanitized_rel_type}]->(target)
-                SET r += $properties
-                """
-                graph.query(rel_query, {
-                    "source_id": rel['source'],
-                    "target_id": rel['target'],
-                    "properties": properties_filtered
-                })
+                    rel_query = f"""
+                    MATCH (source:__Entity__ {{id: $source_id}})
+                    MATCH (target:__Entity__ {{id: $target_id}})
+                    MERGE (source)-[r:{sanitized_rel_type}]->(target)
+                    SET r += $properties
+                    """
+
+                    logging.info(f"Creating relationship {idx+1}/{len(kg['relationships'])}: {rel.get('from')} -[{sanitized_rel_type}]-> {rel.get('to')}")
+
+                    graph.query(rel_query, {
+                        "source_id": rel.get('from'),  # Use 'from' field which has the prefixed UUID
+                        "target_id": rel.get('to'),    # Use 'to' field which has the prefixed UUID
+                        "properties": properties_filtered
+                    })
+
+                    relationships_stored += 1
+
+                except Exception as rel_error:
+                    logging.error(f"Failed to store relationship {idx+1}: {rel} - Error: {rel_error}")
+                    continue
+
+            logging.info(f"Successfully stored {relationships_stored} out of {len(kg['relationships'])} relationships")
 
             # Link entities to chunks (for RAG retrieval)
             for chunk in kg['chunks']:
