@@ -30,21 +30,27 @@ MediGraph implements an ontology-guided knowledge graph creation system for stru
 TBD
 ```
 
-## What Makes MediGraph Unique
+## System Capabilities
 
-### Evidence-First Approach
-Unlike traditional AI assistants, MediGraph shows you exactly which pieces of evidence from your documents led to each conclusion. No hidden reasoning - see the complete decision trail in real-time.
+### Evidence-Based Inference
+MediGraph provides traceable reasoning by explicitly linking all responses to source document sections, enabling verification of information provenance.
 
-### Medical Data Specialization
-Purpose-built for healthcare professionals to:
-- Upload PDFs, CSV files, or text documents
-- Automatically extract medical entities, relationships, and clinical concepts
-- Query with natural language and see exactly which nodes provided each answer
-- Visualize decision logic through interactive knowledge graphs
-- Maintain compliance through ontology-guided data structuring
+### Healthcare Domain Optimization
+Designed for healthcare informatics workflows with:
+- Multi-format document ingestion (PDF, CSV, structured text)
+- Ontology-driven entity extraction and relationship identification
+- Natural language query processing with source attribution
+- Interactive graph visualisation of decision logic
+- Regulatory compliance through standardised biomedical terminology
 
-### Clinical Transparency
-When you ask *"What are the treatment options?"*, MediGraph doesn't just give you an answer - it shows you the specific sentences, entities, and relationships from your documents that informed the response, complete with citation trails.
+### Attribution Transparency
+Responses include detailed citation trails linking each conclusion to specific document sections, enabling independent verification of clinical assertions.
+
+### Key Advantages
+- **Explainability**: Source document citation trails for all generated responses
+- **Terminological Consistency**: Ontology-driven entity extraction ensures standardised medical terminology
+- **Population-level Analysis**: Support for cohort-level research queries and statistical analysis
+- **Auditability**: Comprehensive logging and compliance mechanisms for healthcare regulatory requirements
 
 ## Quick Architecture Overview
 
@@ -210,37 +216,37 @@ curl -X POST "http://localhost:8004/bulk_process_csv" \
 
 ### 4. Cohort-Level Evidence Query Examples
 
-#### Metformin Treatment Outcomes in Diabetic Population
+#### Diuretic Therapy in Heart Failure with Liver Disease
 ```bash
-# Analyze metformin efficacy and adverse effects in elderly diabetic patients
+# Evaluate diuretic combinations in heart failure patients
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What was the observed effect of metformin on HbA1c reduction and hypoglycemia risk in our cohort of diabetic patients aged 65+ with renal impairment? How did this compare to other oral hypoglycemics in this population, and which baseline renal function markers most strongly predicted treatment response?",
+    "question": "In patients admitted with heart failure signs and hepatic congestion, what diuretic combinations (furosemide + spironolactone vs furosemide alone) were more effective at resolving symptoms? What kidney function and electrolyte monitoring approaches prevented renal injury?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
 ```
 
-#### ACE Inhibitor Effectiveness in Heart Failure Patients
+#### Antibiotic Management in Hospital-Acquired Infections
 ```bash
-# Evaluate ACE inhibitor outcomes in heart failure by ejection fraction
+# Analyze antibiotic treatment patterns in ICU patients
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "Among heart failure patients with reduced ejection fraction (HFrEF) treated with ACE inhibitors, what survival benefit was observed compared to untreated patients? Did the magnitude of benefit vary by baseline creatinine clearance or concomitant beta-blocker use?",
+    "question": "Among intensive care patients developing hospital-acquired infections, what antibiotic choices and durations were associated with better outcomes? How did Clostridiodes difficile development rates vary by antibiotic class and concurrent PPI use?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
 ```
 
-#### Warfarin Dosing Success in Atrial Fibrillation
+#### Orthopedic Trauma Surgery and Complication Rates
 ```bash
-# Analyze warfarin anticoagulation quality and bleeding complications
+# Evaluate surgical outcomes in cervical spine fracture patients
 curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "What percentage of our atrial fibrillation patients treated with warfarin achieved therapeutic INR ranges, and what major bleeding complication rates were observed?",
+    "question": "In patients admitted with cervical spine fractures from falls, what preoperative factors predicted successful conservative vs surgical management? What complication rates were observed for cervical decompression procedures in anticoagulated atrial fibrillation patients?",
     "provider_rag": "openai",
     "model_rag": "gpt-4o"
   }'
@@ -368,10 +374,6 @@ This implementation draws from established work in:
 ```
 
 ```
-
-## License and Distribution
-
-Licensed under MIT terms with special provisions for healthcare applications.
 
 ---
 
