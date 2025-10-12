@@ -323,7 +323,7 @@ curl -X POST "http://localhost:8004/chat" \
   -H "Content-Type: application/json" \
   -d '{
     "question": "What are the treatment options for stage II prostate cancer?",
-    "document_names": ["urology-guidelines-2023.pdf"],
+    "document_names": ["EAU-EANM-ESTRO-ESUR-ISUP-SIOG-Pocket-on-Prostate-Cancer-2025_updated.pdf"],
     "provider_rag": "openai",
     "model_rag": "gpt-4"
   }'
@@ -378,22 +378,9 @@ curl -X POST "http://localhost:8004/chat" \
 - **📊 Evidence-Based Responses**: Every answer includes source citations and reasoning
 - **🎯 Confidence Scoring**: Quality metrics for all generations
 - **🌐 Graph Visualization**: Interactive exploration of knowledge relationships
-- **⚡ High Performance**: Optimized for clinical workflows with <5s response times
+- **⚡ High Performance**: Optimized for clinical workflows with fast response times
 
-### Advanced Capabilities
 
-- **Batch Processing**: Handle large cohorts of patient data efficiently
-- **Multi-Modal Support**: Text, images, and structured data integration
-- **Regulatory Compliance**: HIPAA-ready architecture with audit trails
-- **API-First Design**: RESTful APIs for seamless integration
-- **Extensible Architecture**: Custom modules for specialized medical domains
-
-### Quality Assurance Features
-
-- **Citation Transparency**: Every conclusion links to source documents
-- **Version Control**: Track changes in medical knowledge over time
-- **Validation Pipeline**: Automated quality checks at each processing stage
-- **Error Handling**: Comprehensive error reporting and recovery mechanisms
 
 ---
 
@@ -743,22 +730,6 @@ git push origin feature/your-feature-name
 - **Linting**: [flake8](https://flake8.pycqa.org/) + [mypy](https://mypy.readthedocs.io/)
 - **Testing**: [pytest](https://docs.pytest.org/) with >= 80% coverage
 
-### Contribution Areas
-
-- **Healthcare Domain Expertise**: Medical knowledge integration, clinical workflows
-- **Machine Learning**: Better models, evaluation metrics, bias detection
-- **Graph Algorithms**: Query optimization, visualization, analytics
-- **Infrastructure**: Deployment, scaling, monitoring
-- **Documentation**: Guides, tutorials, API documentation
-- **Testing**: Unit tests, integration tests, performance benchmarks
-
-### Research Collaboration
-
-Interested in academic partnerships? Contact us for:
-- Joint research projects
-- Dataset sharing agreements
-- Benchmarking collaborations
-- Clinical validation studies
 
 ---
 
