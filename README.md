@@ -129,7 +129,7 @@ Unlike traditional RAG systems, MediGraph provides detailed reasoning traces:
 
 - **Neo4j** 5.0+ : Graph database for knowledge persistence
 - **Docker** 20.10+ : Containerized deployment
-- **Git** : Version control and collaboration
+
 
 ### External API Requirements
 
@@ -805,16 +805,16 @@ Interested in academic partnerships? Contact us for:
 
 | Component | Version | Status | Notes |
 |-----------|---------|--------|-------|
-| **Python** | 3.11+ | ✅ Verified | Main development target |
-| **Python** | 3.8-3.10 | ⚠️ Compatible | May have limitations |
-| **Neo4j** | 5.18+ | ✅ Tested | Recommended |
-| **Neo4j** | 5.0-5.17 | ✅ Compatible | Some features limited |
-| **Docker** | 20.10+ | ✅ Verified | All deployments |
-| **Docker** | <20.10 | ⚠️ May work | Untested |
-| **CUDA** | 12.0+ | ✅ Supported | GPU acceleration |
-| **CUDA** | 11.0-11.8 | ✅ Supported | Legacy GPUs |
-| **macOS** | Monterey+ | ✅ Tested | Native and Docker |
-| **Linux** | Ubuntu 20.04+ | ✅ Tested | Primary platform |
+| **Python** | 3.11+ | Verified | Main development target |
+| **Python** | 3.8-3.10 | Compatible | May have limitations |
+| **Neo4j** | 5.18+ | Tested | Recommended |
+| **Neo4j** | 5.0-5.17 | Compatible | Some features limited |
+| **Docker** | 20.10+ | Verified | All deployments |
+| **Docker** | <20.10 | May work | Untested |
+| **CUDA** | 12.0+ | Supported | GPU acceleration |
+| **CUDA** | 11.0-11.8 | Supported | Legacy GPUs |
+| **macOS** | Monterey+ | Tested | Native and Docker |
+| **Linux** | Ubuntu 20.04+ | Tested | Primary platform |
 | **Windows** | 10/11 | ⚠️ Compatible | Docker recommended |
 
 ### Development Dependencies
