@@ -369,16 +369,19 @@ curl -X POST "http://localhost:8004/chat" \
 
 ## Features
 
-### Core Features
+### Computational Capabilities
 
-- **📄 Multi-Format Document Processing**: PDF, CSV, text files, research papers
-- **🧠 Ontology-Guided Entity Extraction**: Validates entities against biomedical ontologies
-- **🔗 Relationship Discovery**: Identifies meaningful connections between medical concepts
-- **💬 Natural Language Queries**: Ask complex medical questions in plain English
-- **📊 Evidence-Based Responses**: Every answer includes source citations and reasoning
-- **🎯 Confidence Scoring**: Quality metrics for all generations
-- **🌐 Graph Visualization**: Interactive exploration of knowledge relationships
-- **⚡ High Performance**: Optimized for clinical workflows with fast response times
+MediGraph advances clinical decision support through three core computational paradigms:
+
+- **Multi-modal Document Processing**: Automated ingestion of diverse biomedical document formats (PDF, CSV, research articles, clinical notes)
+- **Ontology-Guided Entity Extraction**: Deep learning-based identification and validation of medical concepts against established biomedical ontologies (e.g., UMLS, SNOMED CT)
+- **Evidence-Based Reasoning Framework**: Retrieval-augmented generation with full source attribution and confidence metrics
+
+### Advanced Medical Informatics Features
+
+- **Natural Language Medical Q&A**: Complex clinical question answering with temporal reasoning and uncertainty quantification
+- **Interactive Knowledge Exploration**: Dynamic visualization and traversal of clinical relationships and treatment pathways
+- **Scalable Cohort Analysis**: Batch processing of patient datasets for population-level clinical insights and research workflows
 
 
 
