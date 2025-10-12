@@ -410,7 +410,7 @@ curl -X POST "http://localhost:8004/chat" \
                                                           ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Natural       │───▶│   Vector Search  │───▶│  Evidence App   │
-│   Language      │    │   + Graph        │    │  Citations       │
+│   Language      │    │   + Graph        │    │  Citations      │
 │   Questions     │    │   Traversal      │    │                 │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
@@ -776,45 +776,10 @@ Interested in academic partnerships? Contact us for:
 
 ### Upcoming Features (v1.1.0)
 
-- **Enhanced Reasoning**
-  - Multi-hop reasoning capabilities
-  - Temporal relationship modeling
-  - Uncertainty quantification for medical recommendations
 
-- **Advanced Analytics**
-  - Population-level cohort analysis
-  - Predictive modeling integration
-  - Risk stratification algorithms
-
-- **User Experience**
-  - Web-based graph visualization interface
-  - Interactive query builder
-  - Real-time collaboration features
 
 ### Future Releases (v1.2.0+)
 
-- **Regulatory Compliance**
-  - HIPAA-compliant deployments
-  - Federated learning for privacy-preserving collaboration
-  - Automated compliance reporting
-
-- **Multi-Modal Integration**
-  - Medical imaging analysis
-  - Electronic health record (EHR) integration
-  - Wearable device data processing
-
-- **Enterprise Features**
-  - Multi-tenant architecture
-  - Advanced role-based access control
-  - Audit trail encryption
-
-### R&D Focus Areas
-
-We're actively researching:
-- Clinical decision support algorithms
-- Medical knowledge representation
-- Bias detection and mitigation
-- Interpretability in healthcare AI
 
 ---
 
@@ -869,14 +834,6 @@ coverage>=7.0.0        # Test coverage
 
 MediGraph is released under the MIT License. See [LICENSE](LICENSE) for full details.
 
-### MIT License Summary
-
-- **Commercial Use**: ✅ Permitted
-- **Modification**: ✅ Permitted
-- **Distribution**: ✅ Permitted
-- **Private Use**: ✅ Permitted
-- **Liability**: ❌ No warranties
-- **Trademark Use**: ❌ Not permitted
 
 ### Additional Terms for Healthcare Use
 
