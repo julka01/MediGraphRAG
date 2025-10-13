@@ -192,9 +192,9 @@ User Query: {question}"""),
         """
         question_type = self.classify_question_type(query)
 
-        # For statistical questions, use comprehensive but reasonable chunk limit to avoid timeouts
+        # For statistical questions, use reasonable chunk limit to avoid timeouts
         if question_type == "statistical":
-            max_chunks = 500  # Reasonable limit to prevent database timeouts while providing comprehensive data
+            max_chunks = 200  # Aggressive limit to prevent timeouts - focus on quality over quantity
         else:
             max_chunks = RAG_CONFIG[question_type]["default_max_chunks"]
 

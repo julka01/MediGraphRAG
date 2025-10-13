@@ -23,14 +23,18 @@
 
 MediGraph implements an ontology-guided knowledge graph creation system for structuring unstructured medical data, enabling transparent querying and evidence-based reasoning.
 
----
+## Overview
+
+MediGraph provides an ontology-guided approach to structuring unstructured medical data into knowledge graphs, enabling efficient querying for evidence-based reasoning. The system processes diverse biomedical document types—including patient records, clinical guidelines, and medical literature—using large language models guided by biomedical ontologies to extract entities and relationships. This structured representation supports transparent querying for clinical decision support, population health analysis, and medical research.
+
+Key contributions include:
+- **Ontology-driven data structuring**: Systematic representation of medical knowledge using established biomedical taxonomies (e.g., OWL, UMLS) to ensure semantic consistency
+- **Evidence-based querying**: Retrieval-augmented generation with full source attribution enabling traceability of clinical recommendations to original documents
+- **Multi-modal document processing**: Support for PDFs, CSV files, and research articles, with future extensions planned for medical imaging and other multimodal data.
+- **Scalable architecture**: Neo4j-based graph database with vector embeddings for semantic similarity search, supporting both individual query resolution and large-scale cohort analysis
 
 ## Table of Contents
 
-- [Welcome](#welcome)
-- [What's MediGraph?](#whats-medigraph)
-- [Table of Contents](#table-of-contents)
-- [Introduction](#introduction)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
   - [Development Environment Setup](#development-environment-setup)
@@ -42,76 +46,8 @@ MediGraph implements an ontology-guided knowledge graph creation system for stru
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [Development Roadmap](#development-roadmap)
 - [Dependencies](#dependencies)
 - [License](#license)
-- [Citing Our Work](#citing-our-work)
-- [Acknowledgments](#acknowledgments)
-
----
-
-## Welcome
-
-Welcome to MediGraph! This project provides a comprehensive, AI-powered knowledge graph system specifically designed for healthcare and medical decision support. Our goal is to bridge the gap between unstructured medical data and actionable clinical insights through transparent, evidence-based reasoning.
-
----
-
-## What's MediGraph?
-
-MediGraph is an advanced knowledge graph platform that transforms raw medical documents, research papers, clinical guidelines, and patient records into structured, queryable knowledge graphs. By leveraging large language models and biomedical ontologies, MediGraph enables healthcare professionals to ask complex questions about patient care, treatment options, and medical research while maintaining full transparency and traceability.
-
-### Philosophy
-We believe that AI-powered medical systems must be:
-- **Transparent**: Every recommendation tracks back to source evidence
-- **Explainable**: Complex reasoning is broken down into comprehensible steps
-- **Auditable**: All processing steps are logged and verifiable
-- **Evidence-Based**: Results are grounded in validated medical knowledge
-
----
-
-## Introduction
-
-### System Overview
-
-MediGraph addresses the critical challenge of knowledge discovery in healthcare by implementing a multi-stage pipeline that:
-
-1. **Processes diverse medical document formats** (PDFs, CSVs, research papers, clinical notes)
-2. **Extracts entities and relationships** using advanced language models
-3. **Validates information against biomedical ontologies** (OWL, UMLS, etc.)
-4. **Organizes knowledge into graph structures** that can be queried efficiently
-5. **Provides comprehensive reasoning** with full source attribution
-
-### Key Capabilities
-
-- **Multi-format Document Ingestion**: Support for PDFs, CSV files, research articles, and clinical guidelines
-- **Ontology-Guided Extraction**: Ensures terminological consistency with biomedical standards
-- **Evidence-Based Querying**: Natural language questions return reasoned answers with source citations
-- **Graph Visualization**: Interactive exploration of knowledge relationships
-- **Batch Processing**: Large-scale data processing for clinical research workflows
-
-### Response Transparency
-
-Unlike traditional RAG systems, MediGraph provides detailed reasoning traces:
-
-```json
-{
-  "recommendation_summary": "Evidence-based treatment plan",
-  "reasoning_path": [
-    "Patient symptoms align with clinical presentation X",
-    "Treatment Y shows effectiveness in similar cases",
-    "Evidence supports Z as recommended approach"
-  ],
-  "confidence_metrics": {
-    "similarity_score": 0.87,
-    "entity_coverage": 90.2
-  },
-  "source_citations": [
-    "Author A, Journal B (2023) Section C"
-  ]
-}
-```
-
----
 
 ## Prerequisites
 
@@ -130,16 +66,14 @@ Unlike traditional RAG systems, MediGraph provides detailed reasoning traces:
 - **Neo4j** 5.0+ : Graph database for knowledge persistence
 - **Docker** 20.10+ : Containerized deployment
 
-
 ### External API Requirements
 
 At least one language model provider:
 - **OpenAI API** (recommended for production)
 - **Anthropic Claude API** (alternative enterprise option)
 - **Google Gemini API** (cost-effective option)
+- **OpenRouter** (unified API access to multiple models)
 - **Ollama** (local model hosting for privacy/compliance)
-
----
 
 ## Installation
 
@@ -147,51 +81,61 @@ MediGraph can be installed for local development or deployed in production envir
 
 ### Development Environment Setup
 
-#### 1. Clone the Repository
+#### Step 1: Clone the Repository
 ```bash
 git clone https://github.com/julka01/MediGraphRAG.git
 cd medigraph
 ```
 
-#### 2. Set Up Python Environment
+#### Step 2: Set Up Python Environment
 ```bash
 # Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# OR
-.\venv\Scripts\activate   # Windows
+source venv/bin/activate  # On Linux/Mac
+# OR for Windows: venv\Scripts\activate
+
+# Upgrade pip (recommended)
+pip install --upgrade pip
 
 # Install Python dependencies
 pip install -r requirements-prod.txt
 ```
 
-#### 3. Set Up Neo4j Database
+#### Step 3: Set Up Neo4j Database
 
 **Option A: Docker (Recommended)**
+
+First, ensure Docker is installed and running. Then:
 ```bash
 # Start Neo4j container
 docker compose up -d neo4j
 
 # Wait for Neo4j to initialize (~30 seconds)
 # Access browser at http://localhost:7474
-# Default credentials: neo4j/neo4j
+# Default credentials: neo4j/neo4j (you'll be prompted to change password immediately)
+```
+
+To stop and remove containers later:
+```bash
+docker compose down
 ```
 
 **Option B: Native Installation**
-```bash
-# Install Neo4j locally following official documentation
-# Ensure it's running on port 7687 (bolt protocol)
-```
 
-#### 4. Configure Environment Variables
+- Download Neo4j Community Edition from the official website
+- Follow the installation guide for your OS
+- Ensure it's running on port 7687 (bolt protocol)
+- Configure authentication and plugins as needed
 
-Create a `.env` file in the project root:
+#### Step 4: Configure Environment Variables
+
+Create a `.env` file in the project root with the following content (adjust values as needed):
 
 ```bash
 # Required: Neo4j connection
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
-NEO4J_PASSWORD=your-neo4j-password
+NEO4J_PASSWORD=your-neo4j-password  # Change this to your actual password
 
 # Required: At least one LLM provider
 OPENAI_API_KEY=sk-your-openai-api-key-here
@@ -206,24 +150,38 @@ CHUNK_SIZE=2000
 VECTOR_SIMILARITY_THRESHOLD=0.08
 ```
 
-#### 5. Verify Installation
+**Important Notes:**
+- Never commit the `.env` file to version control
+- Obtain API keys from your provider's dashboard
+- Test API keys by making a small request (refer to provider docs)
+
+#### Step 5: Verify Installation
 ```bash
 # Test database connectivity
-python -c "from neo4j import GraphDatabase; driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'password')); driver.verify_connectivity(); print('Neo4j connected!')"
+python -c "from neo4j import GraphDatabase; driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'your-password')); driver.verify_connectivity(); print('Neo4j connected!')"
 
 # Start the application
 python start_server.py
 
-# Test endpoints
+# Test health endpoint (in a new terminal)
 curl "http://localhost:8004/health/neo4j"
+
+# If using API endpoints, verify they respond with 200 status
 ```
+
+**Troubleshooting Installation:**
+- If virtual environment activation fails, ensure Python 3.11+ is installed
+- For Docker issues, check `docker ps` to confirm Neo4j is running
+- API key errors usually mean invalid keys or network issues—test with provider's API directly
+- If port 7687 conflicts, modify Docker Compose to use a different port
 
 ### Production Deployment
 
 #### Option 1: Docker Compose (Complete Stack)
 
+Use the provided `docker-compose.yml`:
+
 ```yaml
-# docker-compose.yml (already provided)
 version: '3.8'
 services:
   neo4j:
@@ -255,8 +213,10 @@ docker compose up -d
 
 #### Option 2: Kubernetes Deployment
 
+For scalable production environments:
+
 ```bash
-# Install Helm chart (when available)
+# If using Helm (when available)
 helm install medigraph ./k8s/
 
 # Or deploy individual manifests
@@ -264,13 +224,19 @@ kubectl apply -f k8s/neo4j-deployment.yaml
 kubectl apply -f k8s/medigraph-deployment.yaml
 ```
 
+Ensure persistent volumes and ConfigMaps are set up for environment variables.
+
 #### Option 3: Standalone Container
 
+Useful for cloud deployments or CI/CD:
+
 ```bash
-# Build and run
+# Build the image
 docker build -t medigraph:latest .
+
+# Run the container
 docker run -p 8004:8004 \
-  -e OPENAI_API_KEY=sk-your-key \
+  --env-file .env \
   -e NEO4J_URI=bolt://external-neo4j:7687 \
   medigraph:latest
 ```
@@ -278,7 +244,7 @@ docker run -p 8004:8004 \
 #### Production Environment Variables
 
 ```bash
-# Database
+# Database (use strong passwords)
 NEO4J_URI=bolt://neo4j-cluster-url:7687
 NEO4J_USER=medigraph_prod
 NEO4J_PASSWORD=strong-password-here
@@ -297,7 +263,12 @@ LOG_LEVEL=INFO
 SENTRY_DSN=https://your-sentry-dsn
 ```
 
----
+**Production Security Considerations:**
+- Use strong, unique passwords for Neo4j
+- Rotate API keys regularly
+- Implement rate limiting and IP whitelisting
+- Enable HTTPS/TLS
+- Set up monitoring and alerting
 
 ## Getting Started
 
@@ -365,13 +336,9 @@ curl -X POST "http://localhost:8004/chat" \
   }'
 ```
 
----
-
 ## Features
 
 ### Computational Capabilities
-
-MediGraph advances clinical decision support through three core computational paradigms:
 
 - **Multi-modal Document Processing**: Automated ingestion of diverse biomedical document formats (PDF, CSV, research articles, clinical notes)
 - **Ontology-Guided Entity Extraction**: Deep learning-based identification and validation of medical concepts against established biomedical ontologies (e.g., UMLS, SNOMED CT)
@@ -382,10 +349,6 @@ MediGraph advances clinical decision support through three core computational pa
 - **Natural Language Medical Q&A**: Complex clinical question answering with temporal reasoning and uncertainty quantification
 - **Interactive Knowledge Exploration**: Dynamic visualization and traversal of clinical relationships and treatment pathways
 - **Scalable Cohort Analysis**: Batch processing of patient datasets for population-level clinical insights and research workflows
-
-
-
----
 
 ## Architecture
 
@@ -424,8 +387,6 @@ MediGraph advances clinical decision support through three core computational pa
 | **Graph Database** | Neo4j 5.0+ | Cypher query language |
 | **Vector Database** | ChromaDB | In-memory acceleration |
 | **Response Latency** | <5 seconds | Typical medical queries |
-
----
 
 ## API Reference
 
@@ -496,8 +457,6 @@ curl -X POST "http://localhost:8004/chat" \
   - Input sanitization
   - Audit logging
 
----
-
 ## Configuration
 
 ### Environment Variables
@@ -561,8 +520,6 @@ CORS_ORIGINS=*                    # In production, specify explicitly
 - `.env`: Environment variables
 - `config.yaml`: Advanced system configuration
 - `logging.conf`: Logging configuration
-
----
 
 ## Troubleshooting
 
@@ -663,8 +620,6 @@ htop  # or top
 3. **Check documentation**: Verify environment configuration
 4. **Submit issues**: Include full error logs and system information
 
----
-
 ## Contributing
 
 We welcome contributions from healthcare professionals, data scientists, and open source enthusiasts!
@@ -734,76 +689,6 @@ git push origin feature/your-feature-name
 - **Testing**: [pytest](https://docs.pytest.org/) with >= 80% coverage
 
 
----
-
-## Development Roadmap
-
-### Current Version: 1.0.0-rc1 (git: 324db44)
-
-### Recently Implemented
-- ✅ Ontology-guided knowledge graph creation
-- ✅ Multi-LLM provider support
-- ✅ Evidence-based reasoning with citations
-- ✅ Batch processing for large datasets
-- ✅ Docker containerization
-- ✅ RESTful API architecture
-
-### Upcoming Features (v1.1.0)
-
-
-
-### Future Releases (v1.2.0+)
-
-
----
-
-## Dependencies
-
-### Core Libraries
-
-| Package | Version | Purpose | License |
-|---------|---------|---------|---------|
-| `fastapi` | 0.115.9 | Web framework | MIT |
-| `uvicorn` | 0.34.2 | ASGI server | Apache 2.0 |
-| `neo4j` | 5.25.0+ | Graph database driver | Apache 2.0 |
-| `pypdf` | 5.4.0 | PDF processing | BSD-3 |
-| `transformers` | 4.51.3 | LLM framework | Apache 2.0 |
-| `chromadb` | 1.0.6 | Vector database | Apache 2.0 |
-| `sentence-transformers` | 4.1.0 | Embeddings | Apache 2.0 |
-| `langchain` | 0.3.27 | LLM orchestration | MIT |
-| `pandas` | 2.2.3 | Data processing | BSD-3 |
-| `scikit-learn` | 1.5.0 | Scientific computing | BSD-3 |
-| `owlready2` | 0.48 | Ontology processing | LGPL |
-
-### System Compatibility
-
-| Component | Version | Status | Notes |
-|-----------|---------|--------|-------|
-| **Python** | 3.11+ | Verified | Main development target |
-| **Python** | 3.8-3.10 | Compatible | May have limitations |
-| **Neo4j** | 5.18+ | Tested | Recommended |
-| **Neo4j** | 5.0-5.17 | Compatible | Some features limited |
-| **Docker** | 20.10+ | Verified | All deployments |
-| **Docker** | <20.10 | May work | Untested |
-| **CUDA** | 12.0+ | Supported | GPU acceleration |
-| **CUDA** | 11.0-11.8 | Supported | Legacy GPUs |
-| **macOS** | Monterey+ | Tested | Native and Docker |
-| **Linux** | Ubuntu 20.04+ | Tested | Primary platform |
-| **Windows** | 10/11 | ⚠️ Compatible | Docker recommended |
-
-### Development Dependencies
-
-```
-pytest>=7.4.0          # Testing framework
-black>=23.0.0          # Code formatting
-flake8>=6.0.0          # Linting
-mypy>=1.0.0            # Type checking
-pre-commit>=3.0.0      # Git hooks
-coverage>=7.0.0        # Test coverage
-```
-
----
-
 ## License
 
 MediGraph is released under the MIT License. See [LICENSE](LICENSE) for full details.
@@ -817,29 +702,6 @@ MediGraph is released under the MIT License. See [LICENSE](LICENSE) for full det
 
 ---
 
-## Citing Our Work
-
-```
-TBD
-```
-
----
-
-## Acknowledgments
-
-MediGraph builds upon foundational work in:
-
-- **Knowledge Graph Research**: Neo4j, RDF, and Semantic Web Technologies
-- **Natural Language Processing**: Transformers, BERT, and LLM architectures
-- **Healthcare Informatics**: Biomedical ontologies (UMLS, SNOMED CT)
-- **Graph Neural Networks**: Research in representation learning on graphs
-- **Clinical Decision Support**: Evidence-based medicine frameworks
-
-Special thanks to the open-source communities that made this work possible.
-
----
-
 **MediGraph v1.0.0-rc1**: Advancing clinical decision-making through transparent, evidence-based AI systems.
 
 *For support: [GitHub Issues](https://github.com/julka01/MediGraphRAG/issues)*
-274 *Research collaboration inquiries welcome.*
