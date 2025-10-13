@@ -11,6 +11,25 @@ from langchain_neo4j import Neo4jGraph
 from sentence_transformers import SentenceTransformer
 from medigraphrag_x.providers.model_providers import get_embedding_method
 
+# Configurable parameters for different question types
+RAG_CONFIG = {
+    "statistical": {
+        "default_max_chunks": 30,  # More chunks for statistical analysis
+        "threshold_floor": 0.05,
+        "threshold_factor": 0.03
+    },
+    "semantic": {
+        "default_max_chunks": 15,  # Fewer chunks for focused semantic questions
+        "threshold_floor": 0.08,
+        "threshold_ceiling": 0.15,
+        "threshold_boost": 0.02
+    },
+    "generic": {
+        "default_max_chunks": 20,  # Default chunk count
+        "default_threshold": 0.08
+    }
+}
+
 class EnhancedRAGSystem:
     """
     Enhanced RAG System that properly connects to the knowledge graph with embeddings
@@ -102,6 +121,86 @@ User Query: {question}"""),
             sanitize=True
         )
 
+    def classify_question_type(self, query: str) -> str:
+        """
+        Classify the question type to determine retrieval strategy
+        """
+        query_lower = query.lower().strip()
+
+        # Statistical indicators
+        statistical_terms = [
+            "statistic", "tendencies", "trend", "correlation", "rate", "incidence",
+            "prevalence", "distribution", "frequency", "proportion", "percentage",
+            "average", "mean", "median", "variance", "standard deviation",
+            "regression", "p-value", "significance", "confidence interval",
+            "sample size", "cohort", "meta-analysis", "epidemiology",
+            "how many", "how much", "what percentage", "what proportion",
+            "quantity", "quantity of", "number of", "count", "total", "sum"
+        ]
+
+        # Semantic indicators
+        semantic_terms = [
+            "explain", "describe", "what is", "how does", "define", "meaning",
+            "concept", "principle", "theory", "framework", "model", "interpretation",
+            "understanding", "overview", "context", "background", "history",
+            "development", "evolution", "mechanism", "process", "function"
+        ]
+
+        # Check for statistical terms (highest priority)
+        if any(term in query_lower for term in statistical_terms):
+            return "statistical"
+
+        # Check question starters for quantitative questions
+        quantitative_starters = ["how many", "how much", "what percentage", "what proportion"]
+        if any(query_lower.startswith(starter) for starter in quantitative_starters):
+            return "statistical"
+
+        # Check for semantic terms
+        if any(term in query_lower for term in semantic_terms):
+            return "semantic"
+
+        # Check question starters for semantic questions
+        semantic_starters = ["what is", "how does", "explain", "describe"]
+        if any(query_lower.startswith(starter) for starter in semantic_starters):
+            return "semantic"
+
+        return "generic"
+
+    def calculate_dynamic_threshold(self, query: str, entity_count: int = 0) -> float:
+        """
+        Calculate dynamic similarity threshold based on question type and context
+        """
+        question_type = self.classify_question_type(query)
+        config = RAG_CONFIG[question_type]
+
+        if question_type == "statistical":
+            # Lower threshold for statistical queries to catch more data
+            base_threshold = max(config["threshold_floor"], 0.08 - (entity_count * config["threshold_factor"]))
+            return min(base_threshold, 0.15)
+
+        elif question_type == "semantic":
+            # Slightly higher threshold for focused semantic questions
+            base_threshold = min(config["threshold_ceiling"], 0.08 + config["threshold_boost"])
+            return max(base_threshold, 0.06)
+
+        else:  # generic
+            return config["default_threshold"]
+
+    def get_adaptive_retrieval_params(self, query: str) -> Dict[str, Any]:
+        """
+        Get adaptive retrieval parameters based on question classification
+        """
+        question_type = self.classify_question_type(query)
+
+        params = {
+            "question_type": question_type,
+            "similarity_threshold": self.calculate_dynamic_threshold(query),
+            "max_chunks": RAG_CONFIG[question_type]["default_max_chunks"]
+        }
+
+        logging.info(f"Question '{query[:50]}...' classified as '{question_type}': threshold={params['similarity_threshold']:.3f}, max_chunks={params['max_chunks']}")
+        return params
+
     def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
         """
         Get comprehensive RAG context including chunks, entities, and relationships using vector search
@@ -179,12 +278,19 @@ User Query: {question}"""),
         
         return formatted_context, formatted_entities
 
-    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
+    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = None, max_chunks: int = None, timeout: float = 30.0) -> Dict[str, Any]:
         """
-        Generate a RAG response using the knowledge graph
+        Generate a RAG response using the knowledge graph with adaptive retrieval
         """
         try:
             logging.info(f"Starting generate_response for question: {question}")
+
+            # Use adaptive retrieval parameters if not explicitly provided
+            if similarity_threshold is None or max_chunks is None:
+                retrieval_params = self.get_adaptive_retrieval_params(question)
+                similarity_threshold = similarity_threshold or retrieval_params["similarity_threshold"]
+                max_chunks = max_chunks or retrieval_params["max_chunks"]
+
             # Get context from knowledge graph
             context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold, max_chunks=max_chunks)
             logging.info(f"Got context with {context.get('entity_count', 0)} entities")
@@ -205,13 +311,13 @@ User Query: {question}"""),
             # Format context for LLM
             formatted_context, formatted_entities = self.format_context_for_llm(context)
 
-            # Generate response using LLM
+            # Generate response using LLM with increased timeout
             chain = self.rag_prompt | llm | StrOutputParser()
             response = chain.invoke({
                 "context": formatted_context,
                 "entities": formatted_entities,
                 "question": question
-            })
+            }, config={"timeout": timeout})
 
             # Extract entities and chunks actually mentioned in the response, plus reasoning edges
             extracted_info = self._extract_used_entities_and_chunks(response, context)
@@ -235,7 +341,13 @@ User Query: {question}"""),
                 "confidence": confidence,
                 "chunk_count": len(context["chunks"]),
                 "entity_count": context["entity_count"],
-                "relationship_count": context["relationship_count"]
+                "relationship_count": context["relationship_count"],
+                "retrieval_params": {
+                    "question_type": self.classify_question_type(question),
+                    "similarity_threshold": similarity_threshold,
+                    "max_chunks": max_chunks,
+                    "timeout": timeout
+                }
             }
             
         except Exception as e:
@@ -563,8 +675,6 @@ User Query: {question}"""),
             logging.error(f"Error in vector similarity search: {e}")
             # Don't return error - let it fall back to text search
             raise Exception(f"Vector search failed: {str(e)}")
-
-
 
     def _extract_used_entities_and_chunks(self, response: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """

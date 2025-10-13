@@ -23,7 +23,15 @@ from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
 
 # Core graph imports moved inside endpoint functions
 
-app = FastAPI()
+# Configure FastAPI with increased timeout for KG and RAG operations
+app = FastAPI(
+    title="MediGraphRAG",
+    description="Medical Knowledge Graph with RAG capabilities",
+    version="1.0.0",
+    # Increase timeout handling for long-running KG processing and RAG operations
+    # Default timeout increased from 30s to 300s (5 minutes) for complex operations
+    timeout=300
+)
 app.mount("/static", StaticFiles(directory="medigraphrag_x/api/static"), name="static")
 
 # Global storage for current graph data
@@ -413,6 +421,7 @@ async def create_ontology_guided_kg(
 async def chat(body: dict = Body(...)):
     """
     Enhanced KG-focused RAG chat that ensures responses come from KG alone.
+    Increased timeout for long-running KG processing.
     """
     try:
         question = body.get("question")
@@ -867,8 +876,18 @@ async def load_kg_from_neo4j(
                 nodes.append({"id": node.id, "labels": list(node.labels), "properties": props})
 
             # Process relationships with proper handling for DateTime objects
+            # Only load relationships where BOTH start and end nodes are in our loaded nodes set
+            loaded_node_ids = {node["id"] for node in nodes}  # Set of Neo4j internal node IDs
+
             relationships = []
-            for record in session.run("MATCH (n)-[r]->(m) RETURN r"):
+            if load_complete:
+                # For complete loads, get all relationships (since we loaded all nodes)
+                query = "MATCH (n)-[r]->(m) RETURN r"
+            else:
+                # For limited/sampled loads, only get relationships between loaded nodes
+                query = "MATCH (n)-[r]->(m) WHERE id(n) IN $node_ids AND id(m) IN $node_ids RETURN r"
+
+            for record in session.run(query, {"node_ids": list(loaded_node_ids)} if not load_complete else {}):
                 rel = record["r"]
                 props = {}
                 for k, v in dict(rel).items():

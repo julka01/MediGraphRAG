@@ -1454,9 +1454,38 @@
                     </div>
                 </div>
                 <div class="graph-controls">
-                    <button class="zoom-btn" id="zoom-in">+</button>
-                    <button class="zoom-btn" id="zoom-out">-</button>
-                    <button class="zoom-btn" id="reset-zoom">↺</button>
+                    <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
+                    <button class="zoom-btn" id="zoom-out" title="Zoom Out">-</button>
+                    <button class="zoom-btn" id="reset-zoom" title="Reset View & Filters">↺</button>
+                    <select id="layout-select" class="layout-select" title="Layout Mode">
+                        <option value="force">Force-Directed</option>
+                        <option value="hierarchical">Hierarchical</option>
+                        <option value="radial">Radial/Circular</option>
+                    </select>
+                </div>
+
+                <!-- Advanced Controls -->
+                <div class="advanced-controls" id="advanced-controls" style="display: none;">
+                    <h4>Advanced Visualization</h4>
+                    <div class="control-row">
+                        <div class="control-group">
+                            <label for="node-size-metric">Node Size By:</label>
+                            <select id="node-size-metric">
+                                <option value="fixed">Fixed Size</option>
+                                <option value="degree">Connection Count (Degree Centrality)</option>
+                                <option value="importance">Importance Score</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="physics-enabled">Physics:</label>
+                            <input type="checkbox" id="physics-enabled" checked>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <button class="zoom-btn" id="cluster-nodes" title="Detect & Show Communities">🧩 Clusters</button>
+                        <button class="zoom-btn" id="show-path" title="Highlight Shortest Path">🛣️ Path Finder</button>
+                        <button class="zoom-btn" id="export-graph" title="Export Graph Data">📊 Export JSON</button>
+                    </div>
                 </div>
             </div>
 
@@ -1539,13 +1568,197 @@
         let highlightedNodes = new Set(); // Track nodes to highlight from RAG answers
         let reasoningEdges = new Set(); // Track edges that form the reasoning path
         let graphData = null; // Store current graph data for re-initialization
-        let globalNodeIdCounter = Date.now(); // Global counter for unique node IDs across all graphs
+        let fullGraphData = null; // Store complete graph data for resets
+        let uniqueIdCounter = 0; // Persistent counter for truly unique IDs
         let nodeTypeColors = {}; // Store color mapping for node types
         let relationshipTypeColors = {}; // Store color mapping for relationship types
         let currentFilters = { nodeTypes: new Set(), relationshipTypes: new Set() }; // Current active filters
-        let uniqueIdCounter = 0; // Persistent counter for truly unique IDs
+        let lastRagFilterMode = false; // Track last RAG filter state for smooth transitions
+                    let layoutMode = 'force'; // Current layout mode: 'force', 'hierarchical', 'circular'
+        let clusters = {}; // Node clustering
         let initialViewState = null; // Store initial view state for reset zoom
-        
+        let physicsEnabled = true; // Track physics state
+        let nodeSizeMetric = 'fixed'; // Track node sizing metric
+
+        // Create advanced button in graph header
+        function createAdvancedButton() {
+            const controlsDiv = document.querySelector('.graph-controls');
+            if (controlsDiv && !document.getElementById('advanced-toggle')) {
+                const advancedBtn = document.createElement('button');
+                advancedBtn.id = 'advanced-toggle';
+                advancedBtn.className = 'zoom-btn';
+                advancedBtn.textContent = '⚙️ Advanced';
+                advancedBtn.title = 'Show Advanced Visualization Controls';
+                advancedBtn.addEventListener('click', () => {
+                    const advancedControls = document.getElementById('advanced-controls');
+                    advancedControls.style.display = advancedControls.style.display === 'none' ? 'block' : 'none';
+                });
+                controlsDiv.insertBefore(advancedBtn, controlsDiv.firstChild);
+            }
+        }
+
+        // Layout mode change handler
+        function handleLayoutChange() {
+            const layoutSelect = document.getElementById('layout-select');
+            if (!layoutSelect || !network) return;
+
+            layoutMode = layoutSelect.value;
+            let options = {};
+
+            switch(layoutMode) {
+                case 'force':
+                    options = {
+                        layout: { hierarchical: false },
+                        physics: { enabled: physicsEnabled }
+                    };
+                    break;
+                case 'hierarchical':
+                    options = {
+                        layout: {
+                            hierarchical: {
+                                enabled: true,
+                                direction: 'UD',
+                                sortMethod: 'directed',
+                                shakeTowards: 'leaves',
+                                levelSeparation: 150,
+                                nodeSpacing: 100,
+                                treeSpacing: 200
+                            }
+                        },
+                        physics: { enabled: false } // Disable physics for hierarchical
+                    };
+                    break;
+                case 'radial':
+                    options = {
+                        layout: { hierarchical: { enabled: false } },
+                        physics: {
+                            enabled: physicsEnabled,
+                            barnesHut: {
+                                gravitationalConstant: -10000, // Stronger attraction for circular
+                                centralGravity: 0.8,          // Push towards center
+                                springLength: 100,
+                                springConstant: 0.08,
+                                damping: 0.2
+                            }
+                        }
+                    };
+                    break;
+            }
+
+            network.setOptions(options);
+            console.log('Layout changed to:', layoutMode);
+        }
+
+        // Node sizing change handler
+        function handleNodeSizeChange() {
+            nodeSizeMetric = document.getElementById('node-size-metric').value;
+
+            if (!network || !graphData) return;
+
+            const nodes = network.body.data.nodes;
+            graphData.nodes.forEach(node => {
+                let size = 30; // Default size
+
+                if (nodeSizeMetric === 'degree') {
+                    // Size based on connection count
+                    const nodeConnections = graphData.relationships.filter(rel =>
+                        rel.from === node.id || rel.to === node.id
+                    ).length;
+                    size = Math.max(15, Math.min(50, 30 + nodeConnections * 3));
+                } else if (nodeSizeMetric === 'importance') {
+                    // Size based on some importance metric (placeholder)
+                    // This could be improved with actual centrality calculations
+                    size = 30 + (parseInt(node.id) % 10);
+                }
+
+                nodes.update({ id: node.id, size });
+            });
+        }
+
+        // Physics toggle handler
+        function handlePhysicsToggle() {
+            physicsEnabled = document.getElementById('physics-enabled').checked;
+
+            if (layoutMode !== 'hierarchical') { // Don't change physics for hierarchical
+                network.setOptions({
+                    physics: { enabled: physicsEnabled }
+                });
+            }
+        }
+
+        // Clustering functionality
+        function detectClusters() {
+            if (!network) return;
+
+            try {
+                // Use vis.js clustering algorithm
+                const options = {
+                    joinCondition: function(nodeOptions) {
+                        return nodeOptions.group === 'Cluster'; // This would be set by community detection
+                    },
+                    clusterNodeProperties: {
+                        borderWidth: 3,
+                        shape: 'circle',
+                        size: 50,
+                        font: { size: 16 },
+                        border: 'black'
+                    }
+                };
+                network.cluster(options);
+                showError('Community clustering applied!');
+            } catch (error) {
+                console.error('Clustering error:', error);
+                showError(' Failed to cluster nodes');
+            }
+        }
+
+        // Shortest path finder (simplified)
+        function findShortestPath() {
+            if (!network) return;
+
+            // This is a placeholder - in a real implementation you'd:
+            // 1. Let user select two nodes
+            // 2. Calculate shortest path using graph algorithms
+            // 3. Highlight the path
+
+            showError('Select two nodes to find the shortest path between them');
+        }
+
+        // Export graph data
+        function exportGraphData() {
+            if (!graphData) return;
+
+            try {
+                const dataStr = JSON.stringify(graphData, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+
+                const exportFileDefaultName = `knowledge_graph_${new Date().toISOString().split('T')[0]}.json`;
+
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+
+                showError('Graph data exported successfully!');
+            } catch (error) {
+                showError('Failed to export graph data');
+            }
+        }
+
+        // Initialize advanced features after DOM load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create advanced controls button
+            setTimeout(createAdvancedButton, 1000); // Delay to ensure DOM is ready
+
+            // Set up advanced event listeners
+            document.getElementById('layout-select').addEventListener('change', handleLayoutChange);
+            document.getElementById('node-size-metric').addEventListener('change', handleNodeSizeChange);
+            document.getElementById('physics-enabled').addEventListener('change', handlePhysicsToggle);
+            document.getElementById('cluster-nodes').addEventListener('click', detectClusters);
+            document.getElementById('show-path').addEventListener('click', findShortestPath);
+            document.getElementById('export-graph').addEventListener('click', exportGraphData);
+        });
+
         // Generate colors for node types
         function generateNodeTypeColors(nodeTypes) {
             const colors = [
@@ -2018,35 +2231,49 @@
                     };
                 });
 
-            // Process relationships with filtering for RAG highlights and current filters
+            // Process relationships with strict filtering for RAG highlights
             const processedEdges = (graphData.relationships || [])
                 .filter(rel => {
                     const sourceNodeId = rel.from || rel.start || rel.source;
                     const targetNodeId = rel.to || rel.end || rel.target;
+                    const relType = rel.type || 'Unknown';
 
-                    // If no RAG query has been made yet, don't filter relationships
-                    if (highlightedNodes.size === 0) {
-                        return true;
+                    // STRICT RAG FILTERING: Only relationships where both source AND target are in highlighted nodes
+                    if (isRAGFilterMode && highlightedNodes.size > 0) {
+                        console.log('Applying STRICT RAG filtering for relationship:', rel);
+
+                        // Check if both endpoints are in highlighted nodes
+                        const sourceInHighlighted = highlightedNodes.has(sourceNodeId.toString()) ||
+                                                  (rel.source_element_id && highlightedNodes.has(rel.source_element_id.toString()));
+                        const targetInHighlighted = highlightedNodes.has(targetNodeId.toString()) ||
+                                                  (rel.target_element_id && highlightedNodes.has(rel.target_element_id.toString()));
+
+                        const isReasoningEdge = reasoningEdges.has(`${rel.source_element_id || sourceNodeId}_${relType}_${rel.target_element_id || targetNodeId}`) ||
+                                               reasoningEdges.has(`${rel.target_element_id || targetNodeId}_${relType}_${rel.source_element_id || sourceNodeId}`);
+
+                        // Include edge if BOTH nodes are in highlighted set OR it's a reasoning path edge
+                        const shouldInclude = (sourceInHighlighted && targetInHighlighted) || isReasoningEdge;
+
+                        console.log('RAG filtering check:', {
+                            sourceNodeId,
+                            targetNodeId,
+                            relType,
+                            sourceInHighlighted,
+                            targetInHighlighted,
+                            isReasoningEdge,
+                            shouldInclude
+                        });
+
+                        return shouldInclude;
                     }
 
-                    // Only include relationships where both source and target nodes are referenced
-                    if (!sourceNodeId || !targetNodeId) {
-                        return false;
-                    }
-
-                    // Find the matched node objects to get their identifiers
-                    const sourceNode = processedNodes.find(n => n.originalId === sourceNodeId);
-                    const targetNode = processedNodes.find(n => n.originalId === targetNodeId);
-
-                    // Only include relationships where both source and target nodes are in the filtered set
-                    return sourceNode && targetNode;
-                })
-                .filter(rel => {
-                    // Apply current filters
+                    // If no RAG filtering or UI filters active, apply those instead
+                    console.log('No RAG filtering - applying UI relationship filters');
                     if (currentFilters.relationshipTypes.size > 0) {
-                        const relType = rel.type || 'Unknown';
                         return currentFilters.relationshipTypes.has(relType);
                     }
+
+                    // No filters active - show all relationships (but associated nodes might still be filtered above)
                     return true;
                 })
                 .map(rel => {
@@ -2954,31 +3181,75 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                         
                     const result = await response.json();
 
+                    // Debug: Log complete response structure
+                    console.log('Full RAG response received:', JSON.stringify(result, null, 2));
+                    console.log('Info object:', result.info);
+                    console.log('Entities object:', result.info?.entities);
+                    console.log('Used entities array:', result.info?.entities?.used_entities);
+                    console.log('Used chunks array:', result.used_chunks);
+
                     // Update highlighted nodes from used_entities and used_chunks in response
                     if (result.info && result.info.entities) {
+                        console.log('Found entities object - processing filtering');
+
+                        // Store old highlighted nodes for comparison
+                        const oldHighlightedNodes = new Set(highlightedNodes);
+                        const oldReasoningEdges = new Set(reasoningEdges);
+
                         // Clear previous highlights and reasoning edges
                         highlightedNodes.clear();
                         reasoningEdges.clear();
 
-                        // Process used entities
+                        // Process used entities - check all possible locations
                         if (result.info.entities.used_entities) {
-                            result.info.entities.used_entities.forEach(entity => {
-                                highlightedNodes.add(entity.id.toString());
+                            console.log('Processing used entities (from result.info.entities.used_entities):', result.info.entities.used_entities);
+                            result.info.entities.used_entities.forEach((entity, index) => {
+                                console.log(`Entity ${index}:`, entity);
+                                const entityId = entity.id?.toString() || entity.element_id?.toString() || entity.name?.toString();
+                                console.log(`Entity ${index} selected ID:`, entityId);
+                                if (entityId) {
+                                    highlightedNodes.add(entityId);
+                                    console.log('✓ Added to highlighted nodes:', entityId);
+                                } else {
+                                    console.log('✗ No valid ID found for entity:', entity);
+                                }
                                 // Also add element_id if present as fallback
-                                if (entity.element_id) {
+                                if (entity.element_id && entity.element_id !== entity.id) {
                                     highlightedNodes.add(entity.element_id.toString());
+                                    console.log('✓ Added element_id to highlighted nodes:', entity.element_id);
                                 }
                             });
+                        } else {
+                            console.log('No used_entities found in result.info.entities.used_entities');
                         }
 
-                        // Process used chunks
-                        if (result.used_chunks) {
-                            result.used_chunks.forEach(chunk => {
-                                highlightedNodes.add(chunk.id.toString());
-                                if (chunk.element_id) {
+                        // Process used chunks - check multiple possible locations
+                        let usedChunks = result.used_chunks || result.info?.entities?.used_chunks;
+                        if (usedChunks) {
+                            console.log('Processing used chunks:', usedChunks);
+                            usedChunks.forEach((chunk, index) => {
+                                console.log(`Chunk ${index}:`, chunk);
+                                const chunkId = chunk.id?.toString() || chunk.element_id?.toString() || chunk.chunk_id?.toString() || chunk.name?.toString();
+                                console.log(`Chunk ${index} selected ID:`, chunkId);
+                                if (chunkId) {
+                                    highlightedNodes.add(chunkId);
+                                    console.log('✓ Added chunk to highlighted nodes:', chunkId);
+                                } else {
+                                    console.log('✗ No valid ID found for chunk:', chunk);
+                                }
+                                // Also add element_id if present as fallback
+                                if (chunk.element_id && chunk.element_id !== chunk.id) {
                                     highlightedNodes.add(chunk.element_id.toString());
+                                    console.log('✓ Added chunk element_id to highlighted nodes:', chunk.element_id);
+                                }
+                                // Try other common ID fields
+                                if (chunk.chunk_id && chunk.chunk_id !== chunk.id && chunk.chunk_id !== chunk.element_id) {
+                                    highlightedNodes.add(chunk.chunk_id.toString());
+                                    console.log('✓ Added chunk chunk_id to highlighted nodes:', chunk.chunk_id);
                                 }
                             });
+                        } else {
+                            console.log('No used_chunks found in result.used_chunks or result.info.entities.used_chunks');
                         }
 
                         // Process reasoning edges for highlighting
@@ -2986,6 +3257,7 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                             result.reasoning_edges.forEach(edge => {
                                 const edgeKey = `${edge.from}_${edge.relationship}_${edge.to}`;
                                 reasoningEdges.add(edgeKey);
+                                console.log('Added reasoning edge:', edgeKey);
                                 // Also store backwards direction for bidirectional edges
                                 if (edge.bidirectional) {
                                     reasoningEdges.add(`${edge.to}_${edge.relationship}_${edge.from}`);
@@ -2993,17 +3265,31 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                             });
                         }
 
-                        // Always re-initialize graph - use RAG filter mode when we have highlighted nodes
+                        console.log('Final highlighted nodes set:', Array.from(highlightedNodes));
+
+                        // Always reset graph first, then apply new filtering
                         if (graphData) {
-                            const isRAGFilterMode = highlightedNodes.size > 0;
-                            console.log('Calling initializeGraph with RAG filter mode:', isRAGFilterMode);
-                            initializeGraph(graphData, false, isRAGFilterMode);
+                            // Force reset to full view first
+                            console.log('Resetting graph to complete view first');
+                            lastRagFilterMode = false;
+                            initializeGraph(graphData, false, false);
+
+                            // Force apply RAG filtering immediately if we have highlighted nodes
+                            if (highlightedNodes.size > 0) {
+                                setTimeout(() => {
+                                    console.log('Applying RAG filter mode with', highlightedNodes.size, 'highlighted nodes');
+                                    lastRagFilterMode = true;
+                                    initializeGraph(graphData, false, true);
+                                }, 300); // Shorter delay
+                            }
                         }
 
                     } else {
                         // No structured info in response, show all nodes
+                        console.log('No structured entities found, showing full graph');
                         highlightedNodes.clear();
                         reasoningEdges.clear();
+                        lastRagFilterMode = false;
                         if (graphData) {
                             initializeGraph(graphData);
                         }
