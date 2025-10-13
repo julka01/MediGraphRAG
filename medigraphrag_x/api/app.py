@@ -29,8 +29,8 @@ app = FastAPI(
     description="Medical Knowledge Graph with RAG capabilities",
     version="1.0.0",
     # Increase timeout handling for long-running KG processing and RAG operations
-    # Default timeout increased from 30s to 300s (5 minutes) for complex operations
-    timeout=300
+    # Default timeout increased from 30s to 900s (15 minutes) for complex operations
+    timeout=900
 )
 app.mount("/static", StaticFiles(directory="medigraphrag_x/api/static"), name="static")
 

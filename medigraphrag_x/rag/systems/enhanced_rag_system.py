@@ -14,7 +14,7 @@ from medigraphrag_x.providers.model_providers import get_embedding_method
 # Configurable parameters for different question types
 RAG_CONFIG = {
     "statistical": {
-        "default_max_chunks": 30,  # More chunks for statistical analysis
+        "default_max_chunks": 100,  # More chunks for statistical analysis
         "threshold_floor": 0.05,
         "threshold_factor": 0.03
     },
@@ -192,13 +192,19 @@ User Query: {question}"""),
         """
         question_type = self.classify_question_type(query)
 
+        # For statistical questions, use comprehensive but reasonable chunk limit to avoid timeouts
+        if question_type == "statistical":
+            max_chunks = 500  # Reasonable limit to prevent database timeouts while providing comprehensive data
+        else:
+            max_chunks = RAG_CONFIG[question_type]["default_max_chunks"]
+
         params = {
             "question_type": question_type,
             "similarity_threshold": self.calculate_dynamic_threshold(query),
-            "max_chunks": RAG_CONFIG[question_type]["default_max_chunks"]
+            "max_chunks": max_chunks
         }
 
-        logging.info(f"Question '{query[:50]}...' classified as '{question_type}': threshold={params['similarity_threshold']:.3f}, max_chunks={params['max_chunks']}")
+        logging.info(f"Question '{query[:50]}...' classified as '{question_type}': threshold={params['similarity_threshold']:.3f}, max_chunks={params['max_chunks']} (total available: all for stats)")
         return params
 
     def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
@@ -278,7 +284,7 @@ User Query: {question}"""),
         
         return formatted_context, formatted_entities
 
-    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = None, max_chunks: int = None, timeout: float = 30.0) -> Dict[str, Any]:
+    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = None, max_chunks: int = None, timeout: float = None) -> Dict[str, Any]:
         """
         Generate a RAG response using the knowledge graph with adaptive retrieval
         """
@@ -311,13 +317,13 @@ User Query: {question}"""),
             # Format context for LLM
             formatted_context, formatted_entities = self.format_context_for_llm(context)
 
-            # Generate response using LLM with increased timeout
+            # Generate response using LLM without timeout limit for RAG
             chain = self.rag_prompt | llm | StrOutputParser()
             response = chain.invoke({
                 "context": formatted_context,
                 "entities": formatted_entities,
                 "question": question
-            }, config={"timeout": timeout})
+            })
 
             # Extract entities and chunks actually mentioned in the response, plus reasoning edges
             extracted_info = self._extract_used_entities_and_chunks(response, context)
