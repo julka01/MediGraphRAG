@@ -98,7 +98,7 @@ source venv/bin/activate  # On Linux/Mac
 pip install --upgrade pip
 
 # Install Python dependencies
-pip install -r requirements-prod.txt
+pip install -r requirements.txt
 ```
 
 #### Step 3: Set Up Neo4j Database
@@ -170,7 +170,7 @@ curl "http://localhost:8004/health/neo4j"
 ```
 
 **Troubleshooting Installation:**
-- If virtual environment activation fails, ensure Python 3.11+ is installed
+- If virtual environment activation fails, ensure Python 3.9+ is installed (3.11+ recommended)
 - For Docker issues, check `docker ps` to confirm Neo4j is running
 - API key errors usually mean invalid keys or network issues—test with provider's API directly
 - If port 7687 conflicts, modify Docker Compose to use a different port
