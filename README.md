@@ -55,7 +55,7 @@ Key contributions include:
 
 | Component | Minimum | Recommended | Notes |
 |-----------|---------|-------------|-------|
-| **Python** | 3.11 | 3.11+ | Required for all functionality |
+| **Python** | 3.9 | 3.11+ | Required for all functionality |
 | **RAM** | 8GB | 16GB+ | Graph operations are memory-intensive |
 | **Storage** | 10GB | 50GB+ | Depends on dataset and graph size |
 | **CPU** | 4 cores | 8+ cores | Parallel processing support |
@@ -213,18 +213,11 @@ docker compose up -d
 
 #### Option 2: Kubernetes Deployment
 
-For scalable production environments:
+ <div align="center">
+        <img alt="Visitor Stats" 
+            src="https://widgetbite.com/stats/julka01"/>  
+  </div>
 
-```bash
-# If using Helm (when available)
-helm install medigraph ./k8s/
-
-# Or deploy individual manifests
-kubectl apply -f k8s/neo4j-deployment.yaml
-kubectl apply -f k8s/medigraph-deployment.yaml
-```
-
-Ensure persistent volumes and ConfigMaps are set up for environment variables.
 
 #### Option 3: Standalone Container
 
