@@ -420,18 +420,26 @@ Return ONLY the JSON object, no additional text."""),
                     "text_hash": properties.get('text_hash')
                 })
 
-            # Save relationships
+            # Save relationships with ID normalization
             for rel in kg.get('relationships', []):
+                # Normalize IDs to match entity storage format (lowercase kg_name prefixes)
+                normalized_source = rel['source']
+                normalized_target = rel['target']
+
                 graph.query("""
-                MATCH (s:__Entity__ {id: $source_id})
-                MATCH (t:__Entity__ {id: $target_id})
+                MATCH (s:__Entity__)
+                WHERE toLower(s.id) = toLower($source_id)
+                MATCH (t:__Entity__)
+                WHERE toLower(t.id) = toLower($target_id)
                 MERGE (s)-[r:{rel_type}]->(t)
-                SET r.description = $description,
+                SET r += $properties,
+                    r.source = $file_name,
                     r.updatedAt = datetime()
                 """.format(rel_type=rel['type']), {
-                    "source_id": rel['source'],
-                    "target_id": rel['target'],
-                    "description": rel.get('properties', {}).get('description', '')
+                    "source_id": normalized_source,
+                    "target_id": normalized_target,
+                    "properties": rel.get('properties', {}),
+                    "file_name": file_name
                 })
 
             logging.info(f"✅ Saved KG with {len(kg.get('nodes', []))} entities and {len(kg.get('relationships', []))} relationships")
