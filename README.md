@@ -88,6 +88,30 @@ cd medigraph
 ```
 
 #### Step 2: Set Up Python Environment
+
+**Option A: Using uv (Recommended)**
+
+uv is a fast, reliable Python package manager written in Rust. It's recommended for new projects due to its superior performance and dependency management.
+
+```bash
+# Install uv (if not already installed)
+# macOS/Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows:
+powershell -c "irm https://astral.sh/uv/install.sh | iex"
+
+# Create virtual environment and install dependencies
+uv sync
+```
+
+This will create a virtual environment and install all dependencies in one step. Activate the environment with:
+```bash
+source .venv/bin/activate  # On Linux/Mac
+# OR for Windows: .venv\Scripts\activate
+```
+
+**Option B: Using pip (Legacy)**
 ```bash
 # Create and activate virtual environment
 python -m venv venv
