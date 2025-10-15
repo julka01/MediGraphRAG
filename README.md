@@ -1,28 +1,24 @@
-# MediGraph: AI-Powered Knowledge Graph for Medical Decision Support
+# MediGraphX: AI-Powered Knowledge Graph for Medical Decision Support
 
 [![Version](https://img.shields.io/badge/version-1.0.0--rc1--324db44-blue.svg)](https://github.com/julka01/MediGraphRAG)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/neo4j-5.0+-brightgreen.svg)](https://neo4j.com/)
 
-```
-   _______  _______  _______  ______    ___   ___   _____
-  / __/ _ \/  _/ _ \/_  __/ |/ / __/ |_/ // _ \ / ___/
- _\ \/ , _/ // ___/ / / /|_/ / _//   / // // // (_ /
-/___/_/|_||_//   /_/_ /_/|__/_/ |_/|_|\/\___/\___/
-```
 
-MediGraph structures medical data into ontology-guided knowledge graphs for evidence-based reasoning and clinical decision support.
+
+MediGraphX structures medical data into ontology-guided knowledge graphs for evidence-based reasoning and clinical decision support.
 
 ## Quick Start
 
 1. **Clone & Install** (Recommended setup)
    ```bash
    git clone https://github.com/julka01/MediGraphRAG.git
-   cd medigraph
+   cd MediGraphRAG  # Project directory
    curl -LsSf https://astral.sh/uv/install.sh | sh  # Install uv
    uv sync  # Create venv & install deps
-   source .venv/bin/activate
+   source .venv/bin/activate  # Linux/Mac
+   # OR: .venv\Scripts\activate  # Windows
    ```
 
 2. **Start Neo4j** (with Docker)
@@ -108,7 +104,7 @@ docker compose up -d  # Full stack via docker-compose.yml
 
 ## Getting Started
 
-Assuming setup complete (see Quick Start), try these core functions. All examples use `{{BASE_URL}}=http://localhost:8004`.
+Assuming setup complete (see Quick Start), try these core functions. All examples use `{{BASE_URL}} = http://localhost:8004`.
 
 ### Build Knowledge Graph
 ```bash
@@ -145,6 +141,20 @@ curl -X POST "{{BASE_URL}}/bulk_process_csv" \
 
 ## Architecture
 
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Medical       │───▶│   LLM Parser     │───▶│   Knowledge     │
+│   Documents     │    │   + Ontology     │    │   Graph Store   │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                                          │
+                                                          ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Natural       │───▶│   Vector Search  │───▶│  Evidence App   │
+│   Language      │    │   + Graph        │    │  Citations      │
+│   Questions     │    │   Traversal      │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
+
 **System Flow**: Medical Documents → LLM + Ontology Parser → Knowledge Graph (Neo4j) → Vector Search + Graph Traversal → Evidence Citations.
 
 **Pipeline**:
@@ -155,9 +165,10 @@ curl -X POST "{{BASE_URL}}/bulk_process_csv" \
 
 **Key Specs**:
 - **Chunking**: 1000-4000 chars (semantic boundaries)
-- **Embedding**: 384-dim Sentence-BERT (cosine similarity)
-- **Database**: Neo4j 5.0+ with ChromaDB accelerator
-- **Latency**: <5s for typical queries
+- **Embedding Options**: Sentence-BERT (384-dim), OpenAI embeddings, local models via Ollama
+- **Similarity**: Cosine distance, configurable thresholds (0.08 default)
+- **Database**: Neo4j 5.0+ with ChromaDB vector acceleration
+- **Latency**: <5s for typical medical queries
 
 ## API Reference
 
@@ -246,26 +257,24 @@ OPENAI_API_KEY=sk-...
 # GEMINI_API_KEY=...
 ```
 
-#### Optional Processing Parameters
+#### Processing Configuration
 
 ```bash
 # Document processing
 CHUNK_SIZE=2000                    # Character chunks (1000-4000)
 CHUNK_OVERLAP=300                  # Overlap between chunks
-MAX_CHUNKS=50                      # Processing limit
+MAX_CHUNKS=50                      # Processing limit per document
 
-# Similarity search
-VECTOR_SIMILARITY_THRESHOLD=0.08   # Similarity cutoff
-EMBEDDING_MODEL=sentence_transformers
-EMBEDDING_BATCH_SIZE=32
+# Vector embeddings & search
+EMBEDDING_MODEL=sentence_transformers  # Options: sentence_transformers, openai, local
+VECTOR_SIMILARITY_THRESHOLD=0.08   # Relevance threshold (0.0-1.0)
+EMBEDDING_BATCH_SIZE=32            # Batch size for embedding generation
 
-# Model configurations
-LLM_MODEL_CONFIG_gpt_4=gpt-4,openai-key
-LLM_MODEL_CONFIG_claude=claude-3-sonnet-20240229,anthropic-key
-
-# Local model hosting
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=llama2:7b
+# LLM configurations (provider-specific)
+OPENAI_API_KEY=sk-your-key         # Required for OpenAI models
+ANTHROPIC_API_KEY=sk-ant-your-key  # Required for Anthropic models
+OLLAMA_HOST=http://localhost:11434 # Required for local Ollama models
+OLLAMA_MODEL=mistral:7b            # Local model name
 ```
 
 #### System Configuration
@@ -401,7 +410,7 @@ We welcome contributions from healthcare professionals, data scientists, and ope
 #### 1. Fork and Clone
 ```bash
 git clone https://github.com/YOUR-USERNAME/MediGraphRAG.git
-cd medigraph
+cd MediGraphRAG
 ```
 
 #### 2. Set Up Development Environment
