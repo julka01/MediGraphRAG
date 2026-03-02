@@ -86,7 +86,7 @@ The main experiment script compares KG-RAG against Vanilla RAG on biomedical QA 
 source venv/bin/activate
 
 # Run on PubMedQA with 20 samples
-python experiments/run_mirage_evaluation.py \
+python experiments/experiment.py \
   --num-samples 20 \
   --entropy-samples 4 \
   --llm-provider openrouter \
@@ -111,13 +111,13 @@ python experiments/run_mirage_evaluation.py \
 
 ```bash
 # Quick test (5 samples, 3 entropy samples)
-python experiments/run_mirage_evaluation.py \
+python experiments/experiment.py \
   --num-samples 5 \
   --entropy-samples 3 \
   --datasets pubmedqa
 
 # Full evaluation on multiple datasets
-python experiments/run_mirage_evaluation.py \
+python experiments/experiment.py \
   --num-samples 50 \
   --entropy-samples 4 \
   --similarity-thresholds 0.1 0.15 0.2 \
@@ -125,13 +125,13 @@ python experiments/run_mirage_evaluation.py \
   --datasets pubmedqa bioasq medqa medmcqa
 
 # Reuse existing KG (faster, no rebuild)
-python experiments/run_mirage_evaluation.py \
+python experiments/experiment.py \
   --num-samples 20 \
   --datasets pubmedqa \
   --skip-kg-build
 
 # Use different LLM
-python experiments/run_mirage_evaluation.py \
+python experiments/experiment.py \
   --num-samples 10 \
   --llm-provider openai \
   --llm-model gpt-4o \
@@ -144,23 +144,6 @@ python experiments/run_mirage_evaluation.py \
 - **bioasq** - Biomedical fact-based QA
 - **medqa** - USMLE-style medical exam questions
 - **medmcqa** - Indian medical exam questions
-
-### Other Experiment Scripts
-
-#### KG RAG Full Experiment
-```bash
-python experiments/kg_rag_full_experiment.py \
-  --num-samples 10 \
-  --similarity-thresholds 0.1 0.15 \
-  --max-chunks 5 10
-```
-
-#### RAG Comparison
-```bash
-python experiments/rag_comparison_experiment.py \
-  --num-samples 5 \
-  --dataset path/to/dataset.json
-```
 
 ---
 
@@ -211,6 +194,42 @@ MAX_WORKERS=4
 
 ---
 
+## Other Utility Scripts
+
+- `start_server.py` - API server (http://localhost:8004)
+- `run_kg_generation.py` - Standalone KG generation
+- `populate_neo4j.py` / `clear_neo4j.py` - Neo4j data management
+- `cleanup_and_rebuild_kg.py` - KG cleanup and rebuild utility
+- `fix_indexes.py` - Fix Neo4j vector indexes
+- `experiments/visualize_results.py` - Visualize experiment results
+- `experiments/rag_metrics.py` - RAG metrics library
+- `experiments/data_loading.py` - Data loading utilities
+
+## Docker Commands
+
+```bash
+# Start Neo4j only
+docker compose up -d neo4j
+
+# Start full stack (Neo4j + API)
+docker compose up -d
+
+# View Neo4j browser
+# Open http://localhost:7474 (browser), connect with bolt://localhost:7687
+
+# Stop all
+docker compose down
+```
+
+## Data Processing
+
+```bash
+# Process CSV with medical data
+python csv_processor.py --input data/medical_reports.csv --output processed/
+```
+
+---
+
 ## Architecture
 
 ```
@@ -229,6 +248,7 @@ Query → Vector Search + Graph Traversal → Evidence + Citations
 - Chunking: 1500 chars with 200 overlap
 - Embeddings: all-MiniLM-L6-v2 (384-dim) or OpenAI
 - Database: Neo4j 5.0+ with vector indexes
+- Neo4j Browser: http://localhost:7474
 
 ---
 
