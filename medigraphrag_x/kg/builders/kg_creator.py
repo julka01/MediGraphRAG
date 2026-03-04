@@ -204,7 +204,7 @@ class ChunkedKGCreator:
         
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free", kg_name: str = None) -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", kg_name: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text using chunking and the app's chosen LLM
         Prevents duplicate nodes when same text appears multiple times
@@ -306,15 +306,62 @@ class ChunkedKGCreator:
         }
         return color_map.get(entity_type, "#a6cee3")
 
+    def _ensure_kg_exists(self, session, kg_name: str, description: str = None) -> str:
+        """
+        Ensure a KG node exists in the database. Creates it if it doesn't exist.
+        Returns the KG name.
+        """
+        if not kg_name:
+            return None
+            
+        # Check if KG exists
+        check_query = """
+        MATCH (k:KG {name: $kg_name})
+        RETURN k
+        """
+        result = session.run(check_query, {"kg_name": kg_name})
+        
+        if result.peek():
+            # KG exists, return
+            return kg_name
+        
+        # Create KG node
+        import uuid
+        from datetime import datetime
+        kg_id = str(uuid.uuid4())
+        created_at = datetime.now().isoformat()
+        
+        create_query = """
+        CREATE (k:KG {
+            id: $kg_id,
+            name: $kg_name,
+            description: $description,
+            created_at: $created_at,
+            updated_at: $created_at
+        })
+        RETURN k
+        """
+        session.run(create_query, {
+            "kg_id": kg_id,
+            "kg_name": kg_name,
+            "description": description or f"Knowledge Graph: {kg_name}",
+            "created_at": created_at
+        })
+        
+        return kg_name
+
     def store_knowledge_graph(self, kg: Dict[str, Any], file_name: str = None, version_name: str = None, version_description: str = None, kg_name: str = None) -> bool:
         """
-        Store the knowledge graph in Neo4j database with optional version tracking
+        Store the knowledge graph in Neo4j database with optional version tracking and KG naming
         """
         driver = None
         session = None
         try:
             driver = self._create_neo4j_connection()
             session = driver.session(database=self.neo4j_database)
+
+            # Ensure KG exists (creates it if it doesn't exist)
+            actual_kg_name = self._ensure_kg_exists(session, kg_name, f"Knowledge Graph: {kg_name}")
 
             # Create KG version node if version_name is provided
             version_id = None
@@ -334,13 +381,14 @@ class ChunkedKGCreator:
                     "version_description": version_description or f"KG version: {version_name}"
                 })
 
-            # Create document node if file_name is provided
+            # Create document node if file_name is provided, linked to KG
             if file_name:
                 doc_query = """
                 MERGE (d:Document {fileName: $fileName})
-                SET d.createdAt = datetime()
+                SET d.createdAt = datetime(),
+                    d.kgName = $kg_name
                 """
-                session.run(doc_query, {"fileName": file_name})
+                session.run(doc_query, {"fileName": file_name, "kg_name": actual_kg_name})
 
             # Create entity nodes with text hash deduplication
             for node in kg['nodes']:

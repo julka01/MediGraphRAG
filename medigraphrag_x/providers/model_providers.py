@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from openai import OpenAI as OpenAIClient
 import google.generativeai as genai
 from huggingface_hub import InferenceClient
-import ollama
 from typing import Dict, Any
 
 from langchain_core.runnables.base import Runnable
@@ -86,31 +85,45 @@ class OpenAIProvider(ModelProvider):
 
 class OllamaProvider(ModelProvider):
     def generate(self, system_prompt: str, user_prompt: str, model: str, **kwargs) -> str:
+        import ollama
         try:
-            # Use Ollama's built-in JSON format enforcement
-            response = ollama.chat(
-                model=model,
-                messages=[
+            # Check if JSON format is explicitly requested in kwargs
+            force_json = kwargs.pop('force_json', False)
+            
+            # Build the chat request
+            chat_kwargs = {
+                "model": model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                format='json',
-                **kwargs
-            )
+            }
+            
+            # Only enforce JSON format if explicitly requested
+            if force_json:
+                chat_kwargs['format'] = 'json'
+            
+            # Add any remaining kwargs
+            chat_kwargs.update(kwargs)
+            
+            response = ollama.chat(**chat_kwargs)
             content = response['message']['content']
             
-            # Validate JSON format
-            json.loads(content)
+            # If JSON was requested, validate the response
+            if force_json:
+                try:
+                    json.loads(content)
+                except json.JSONDecodeError:
+                    raise ValueError(f"Invalid JSON response from model: {content}")
+            
             return content
         except json.JSONDecodeError:
             raise ValueError(f"Invalid JSON response from model: {content}")
-        except ollama.ResponseError as e:
+        except Exception as e:
             if "not found" in str(e).lower():
                 return f"Error: Model '{model}' not found. Please run 'ollama pull {model}' to download it."
             else:
                 return f"Ollama error: {str(e)}"
-        except Exception as e:
-            return f"Error generating response: {str(e)}"
 
 class GeminiProvider(ModelProvider):
     def __init__(self):

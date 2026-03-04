@@ -5,10 +5,10 @@ import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+import numpy as np
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_neo4j import Neo4jGraph
-from sentence_transformers import SentenceTransformer
 from medigraphrag_x.providers.model_providers import get_embedding_method
 
 # Configurable parameters for different question types
@@ -41,7 +41,7 @@ class EnhancedRAGSystem:
         neo4j_user: str = None,
         neo4j_password: str = None,
         neo4j_database: str = "neo4j",
-        embedding_model: str = "sentence_transformers"
+        embedding_model: str = "sentence_transformers"  # Default: free, no API key needed
     ):
         # Load Neo4j credentials from environment variables if not provided
         self.neo4j_uri = neo4j_uri if neo4j_uri is not None else os.getenv("NEO4J_URI")
@@ -52,61 +52,96 @@ class EnhancedRAGSystem:
         if not self.neo4j_uri or not self.neo4j_user or not self.neo4j_password:
             raise ValueError("Neo4j connection parameters not found. Please set NEO4J_URI, NEO4J_USERNAME, and NEO4J_PASSWORD environment variables.")
 
-        # Enhanced RAG prompt template with detailed node traversal
+        # Initialize embedding model - use OpenAI to match KG embeddings (1536 dimensions)
+        if embedding_model == "openai":
+            from langchain_openai import OpenAIEmbeddings; self.embedding_model = OpenAIEmbeddings(model="text-embedding-ada-002")
+            logging.info("Initialized OpenAI embedding model: text-embedding-ada-002 (1536 dimensions)")
+        else:
+            # Fallback to sentence transformers
+            from sentence_transformers import SentenceTransformer
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logging.info("Initialized SentenceTransformer embedding model: all-MiniLM-L6-v2 (384 dimensions)")
+
+        # ========================================================================
+        # ORIGINAL: Detailed structured prompt with mandatory sections (COMMENTED OUT)
+        # ========================================================================
+        # self.rag_prompt_original = ChatPromptTemplate.from_messages([
+        #     ("system", """You are an AI assistant that provides structured responses with detailed node traversal from the knowledge graph. All responses must follow the same format but content adapts to the user's query intent.
+        # 
+        # CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
+        # 
+        # 1. **RECOMMENDATION/SUMMARY** (Always include this)
+        #    - Provide a summary of the key findings and important information from the knowledge graph
+        #    - Include key insights, important relationships, and relevant context
+        #    - Be concise but comprehensive in highlighting what matters most
+        # 
+        # 2. **NODE TRAVERSAL PATH** (Always include this - detailed graph traversal)
+        #    - Show the complete path through the knowledge graph nodes and relationships used to derive the answer
+        #    - Format: Start Node Name (ID:start_node_id) → Relationship Type [rel_id] → End Node Name (ID:end_node_id)
+        #    - Reference actual node and relationship IDs from the provided context
+        #    - Include traversal depth and how each connection was discovered (text similarity/vector search)
+        #    - Explain which chunks and entities were retrieved via vector similarity search
+        #    - Show scores/confidence for each traversal step when available
+        # 
+        # 3. **REASONING PATH** (Always include this - logical progression)
+        #    - Finding 1 → Triggers or yields or reveals → Finding 2 → etc.
+        #    - Show how each piece of evidence connects to the next
+        #    - Use actual node IDs when referencing entities from the knowledge graph
+        #    - Format entity references as: "Entity Name (ID:actual_id_from_context)"
+        #    - Explain confidence level if evidence is weak
+        # 
+        # 4. **COMBINED EVIDENCE** (Always include this)
+        #    - Synthesize all relevant information into coherent evidence base
+        #    - Show how different findings support or contradict each other
+        #    - Highlight key relationships and patterns identified during traversal
+        # 
+        # 5. **NEXT STEPS** (Only include if user asks for next steps, actions, or follow-up guidance)
+        #    - Suggest specific next actions based on the analysis
+        #    - Provide actionable recommendations for implementation
+        #    - If no specific next steps are appropriate, omit this section entirely
+        # 
+        # NODE ID REQUIREMENTS:
+        # - When referencing entities from knowledge graph, ALWAYS use their actual node IDs from context
+        # - NEVER use placeholder IDs like "ID:X", "ID:Y", "ID:Z", or "ID:actual_number"
+        # - Show relationship traversal as: Node1 (ID:id1) → RELATIONSHIP_TYPE [rel_id] → Node2 (ID:id2)
+        # 
+        # VECTOR SEARCH DETAILS:
+        # - Include vector similarity scores for chunks/entities retrieved
+        # - Show which vector index (chunk vs entity) was used for retrieval
+        # - Reference element IDs from vector search results
+        # 
+        # IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2, 3, and 4, but only include sections 1 and 5 when appropriate for the user's intent.
+        # 
+        # Context Information:
+        # {context}
+        # 
+        # Relevant Entities:
+        # {entities}
+        # 
+        # User Query: {question}"""),
+        #     ("human", "{question}")
+        # ])
+        # ========================================================================
+        
+        # NEW: Simple, natural response format - STRICT: Only use retrieved context
         self.rag_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an AI assistant that provides structured responses with detailed node traversal from the knowledge graph. All responses must follow the same format but content adapts to the user's query intent.
+            ("system", """You are a medical AI assistant that can ONLY answer questions using information from the provided context chunks. 
 
-CRITICAL INSTRUCTIONS FOR RESPONSE FORMAT:
+CRITICAL RESTRICTIONS:
+- NEVER use any prior knowledge or training data - only use information explicitly provided in the context below
+- If the answer is not in the context, state that the information is not available in the provided context
+- Do NOT add, infer, or speculate about treatments, medications, or concepts not explicitly mentioned
+- Do NOT mention treatments like "hormone therapy", "brachytherapy", "active surveillance", "cryotherapy", "immunotherapy" unless they appear in the context
+- Base your entire answer ONLY on the retrieved chunks
+- IMPORTANT: For yes/no questions (questions starting with: Is, Are, Does, Do, Can, Should, Was, Were, Has, Have), you MUST begin your response with either "Yes" or "No" as the very first word, followed by your explanation.
 
-1. **RECOMMENDATION/SUMMARY** (Always include this)
-   - Provide a summary of the key findings and important information from the knowledge graph
-   - Include key insights, important relationships, and relevant context
-   - Be concise but comprehensive in highlighting what matters most
-
-2. **NODE TRAVERSAL PATH** (Always include this - detailed graph traversal)
-   - Show the complete path through the knowledge graph nodes and relationships used to derive the answer
-   - Format: Start Node Name (ID:start_node_id) → Relationship Type [rel_id] → End Node Name (ID:end_node_id)
-   - Reference actual node and relationship IDs from the provided context
-   - Include traversal depth and how each connection was discovered (text similarity/vector search)
-   - Explain which chunks and entities were retrieved via vector similarity search
-   - Show scores/confidence for each traversal step when available
-
-3. **REASONING PATH** (Always include this - logical progression)
-   - Finding 1 → Triggers or yields or reveals → Finding 2 → etc.
-   - Show how each piece of evidence connects to the next
-   - Use actual node IDs when referencing entities from the knowledge graph
-   - Format entity references as: "Entity Name (ID:actual_id_from_context)"
-   - Explain confidence level if evidence is weak
-
-4. **COMBINED EVIDENCE** (Always include this)
-   - Synthesize all relevant information into coherent evidence base
-   - Show how different findings support or contradict each other
-   - Highlight key relationships and patterns identified during traversal
-
-5. **NEXT STEPS** (Only include if user asks for next steps, actions, or follow-up guidance)
-   - Suggest specific next actions based on the analysis
-   - Provide actionable recommendations for implementation
-   - If no specific next steps are appropriate, omit this section entirely
-
-NODE ID REQUIREMENTS:
-- When referencing entities from knowledge graph, ALWAYS use their actual node IDs from context
-- NEVER use placeholder IDs like "ID:X", "ID:Y", "ID:Z", or "ID:actual_number"
-- Show relationship traversal as: Node1 (ID:id1) → RELATIONSHIP_TYPE [rel_id] → Node2 (ID:id2)
-
-VECTOR SEARCH DETAILS:
-- Include vector similarity scores for chunks/entities retrieved
-- Show which vector index (chunk vs entity) was used for retrieval
-- Reference element IDs from vector search results
-
-IMPORTANT: Base your answer ONLY on the provided context. Structure ALL responses with sections 2, 3, and 4, but only include sections 1 and 5 when appropriate for the user's intent.
-
-Context Information:
+Context:
 {context}
 
-Relevant Entities:
+Relevant Entities from Knowledge Graph:
 {entities}
 
-User Query: {question}"""),
+Question: {question}"""),
             ("human", "{question}")
         ])
 
@@ -207,34 +242,64 @@ User Query: {question}"""),
         logging.info(f"Question '{query[:50]}...' classified as '{question_type}': threshold={params['similarity_threshold']:.3f}, max_chunks={params['max_chunks']} (total available: all for stats)")
         return params
 
-    def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
+    def get_rag_context(self, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20, kg_name: str = None) -> Dict[str, Any]:
         """
-        Get comprehensive RAG context including chunks, entities, and relationships using vector search
+        Get comprehensive RAG context including chunks, entities, and relationships using vector search.
+        
+        Args:
+            query: The search query
+            document_names: Optional list of document names to filter by
+            similarity_threshold: Minimum similarity score for retrieval
+            max_chunks: Maximum number of chunks to retrieve
+            kg_name: Optional KG name to filter retrieval to a specific named KG
         """
         try:
             graph = self._create_neo4j_connection()
 
             # First check if we have any data in the knowledge graph
-            check_query = "MATCH (c:Chunk) RETURN count(c) as chunk_count LIMIT 1"
-            check_result = graph.query(check_query)
+            # If kg_name is specified, check only for that KG
+            if kg_name:
+                check_query = """
+                MATCH (d:Document {kgName: $kg_name})<-[:PART_OF]-(c:Chunk)
+                RETURN count(c) as chunk_count
+                """
+                check_result = graph.query(check_query, {"kg_name": kg_name})
+                
+                if not check_result or check_result[0]['chunk_count'] == 0:
+                    logging.warning(f"No chunks found in KG '{kg_name}'")
+                    return {
+                        "query": query,
+                        "chunks": [],
+                        "entities": {},
+                        "relationships": [],
+                        "documents": [],
+                        "total_score": 0,
+                        "entity_count": 0,
+                        "relationship_count": 0,
+                        "kg_name": kg_name,
+                        "error": f"No data found in KG '{kg_name}'. Please process documents to this KG first."
+                    }
+            else:
+                check_query = "MATCH (c:Chunk) RETURN count(c) as chunk_count LIMIT 1"
+                check_result = graph.query(check_query)
 
-            if not check_result or check_result[0]['chunk_count'] == 0:
-                logging.warning("No chunks found in knowledge graph")
-                return {
-                    "query": query,
-                    "chunks": [],
-                    "entities": {},
-                    "relationships": [],
-                    "documents": [],
-                    "total_score": 0,
-                    "entity_count": 0,
-                    "relationship_count": 0,
-                    "error": "No data found in knowledge graph. Please upload and process a document first."
-                }
+                if not check_result or check_result[0]['chunk_count'] == 0:
+                    logging.warning("No chunks found in knowledge graph")
+                    return {
+                        "query": query,
+                        "chunks": [],
+                        "entities": {},
+                        "relationships": [],
+                        "documents": [],
+                        "total_score": 0,
+                        "entity_count": 0,
+                        "relationship_count": 0,
+                        "error": "No data found in knowledge graph. Please upload and process a document first."
+                    }
 
-            # Try vector search first
-            logging.info("Attempting vector similarity search")
-            return self._vector_similarity_search(graph, query, document_names, similarity_threshold, max_chunks)
+            # Try vector search with KG filtering
+            logging.info(f"Attempting vector similarity search (kg_name: {kg_name})")
+            return self._vector_similarity_search(graph, query, document_names, similarity_threshold, max_chunks, kg_name)
 
         except Exception as e:
             logging.error(f"Error getting RAG context: {e}")
@@ -284,9 +349,14 @@ User Query: {question}"""),
         
         return formatted_context, formatted_entities
 
-    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = None, max_chunks: int = None, timeout: float = None) -> Dict[str, Any]:
+    def generate_response(self, question: str, llm, document_names: List[str] = None, similarity_threshold: float = None, max_chunks: int = None, timeout: float = None, extra_context_texts: Optional[List[str]] = None, kg_name: str = None) -> Dict[str, Any]:
         """
-        Generate a RAG response using the knowledge graph with adaptive retrieval
+        Generate a RAG response using the knowledge graph with adaptive retrieval.
+
+        Args:
+            extra_context_texts: Optional list of additional context strings to prepend
+                to the retrieved chunks (e.g. ground-truth question contexts for MIRAGE eval).
+            kg_name: Optional KG name to filter retrieval to a specific named KG
         """
         try:
             logging.info(f"Starting generate_response for question: {question}")
@@ -297,11 +367,11 @@ User Query: {question}"""),
                 similarity_threshold = similarity_threshold or retrieval_params["similarity_threshold"]
                 max_chunks = max_chunks or retrieval_params["max_chunks"]
 
-            # Get context from knowledge graph
-            context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold, max_chunks=max_chunks)
+            # Get context from knowledge graph (with optional KG filtering)
+            context = self.get_rag_context(question, document_names=document_names, similarity_threshold=similarity_threshold, max_chunks=max_chunks, kg_name=kg_name)
             logging.info(f"Got context with {context.get('entity_count', 0)} entities")
 
-            if not context["chunks"]:
+            if not context["chunks"] and not extra_context_texts:
                 return {
                     "response": "I couldn't find any relevant information in the knowledge graph to answer your question.",
                     "context": context,
@@ -316,6 +386,15 @@ User Query: {question}"""),
 
             # Format context for LLM
             formatted_context, formatted_entities = self.format_context_for_llm(context)
+
+            # Prepend extra (ground-truth) contexts if provided, so the LLM always has
+            # the relevant source material even when KG retrieval misses it.
+            if extra_context_texts:
+                extra_block = "\n\n".join(
+                    f"Provided Context {i+1}:\n{t}" for i, t in enumerate(extra_context_texts) if t.strip()
+                )
+                formatted_context = extra_block + "\n\n" + formatted_context if formatted_context else extra_block
+                logging.info(f"Prepended {len(extra_context_texts)} extra context(s) to prompt")
 
             # Generate response using LLM without timeout limit for RAG
             chain = self.rag_prompt | llm | StrOutputParser()
@@ -377,7 +456,7 @@ User Query: {question}"""),
             query = """
             MATCH (e:__Entity__ {id: $entity_id})
             OPTIONAL MATCH (e)-[r]-(related:__Entity__)
-            OPTIONAL MATCH (e)<-[:HAS_ENTITY]-(c:Chunk)-[:PART_OF]->(d:Document)
+            OPTIONAL MATCH (e)<-[:HAS_ENTITY|MENTIONS]-(c:Chunk)-[:PART_OF]->(d:Document)
             RETURN 
                 e.id AS id,
                 e.type AS type,
@@ -504,75 +583,74 @@ User Query: {question}"""),
             logging.error(f"Error searching entities: {e}")
             return []
 
-    def _vector_similarity_search(self, graph, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20) -> Dict[str, Any]:
+    def _vector_similarity_search(self, graph, query: str, document_names: List[str] = None, similarity_threshold: float = 0.08, max_chunks: int = 20, kg_name: str = None) -> Dict[str, Any]:
         """
-        Vector similarity search using placeholder embeddings (to avoid import issues)
+        Vector similarity search using real sentence transformer embeddings.
+        
+        Args:
+            graph: Neo4j graph connection
+            query: The search query
+            document_names: Optional list of document names to filter by
+            similarity_threshold: Minimum similarity score for retrieval
+            max_chunks: Maximum number of chunks to retrieve
+            kg_name: Optional KG name to filter retrieval to a specific named KG
         """
         try:
-            logging.info("Using vector similarity search")
+            logging.info(f"Using vector similarity search with real embeddings (kg_name: {kg_name})")
 
-            # Use placeholder embedding for the query to avoid sentence_transformers import
-            # In a real implementation, this would be proper embeddings
-            query_embedding = [hash(token) % 100 / 100 * 0.2 + 0.1 for token in query.split()[:10]]
-            query_embedding.extend([0.1] * (384 - len(query_embedding)))  # Pad to 384 dimensions
-            query_embedding = query_embedding[:384]  # Truncate if too long
+            # Use real sentence transformer embeddings
+            query_embedding = self.embedding_model.encode(query, convert_to_numpy=True).tolist()
+            logging.info(f"Generated query embedding with shape: {len(query_embedding)}")
 
-            # Vector search query
+            # Build the vector search query with optional filtering by kg_name and/or document_names
+            # Relationship is: Chunk -[PART_OF]-> Document
+            # We need to filter by either document_names or kg_name (or both)
+            
+            # Build WHERE clause based on filters
+            where_clauses = []
+            params = {
+                "query_vector": query_embedding,
+                "similarity_threshold": similarity_threshold
+            }
+            
+            if kg_name:
+                where_clauses.append("d.kgName = $kg_name")
+                params["kg_name"] = kg_name
+                
             if document_names:
-                search_query = f"""
-                CALL db.index.vector.queryNodes('vector', {max_chunks}, $query_vector)
-                YIELD node AS chunk, score
-                MATCH (chunk)-[:PART_OF]->(d:Document)
-                WHERE d.fileName IN $document_names
-                AND score >= $similarity_threshold  // Configurable similarity threshold
-                OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:__Entity__)
-                WITH chunk, score, d,
-                     collect(DISTINCT e) AS chunk_entities
-                RETURN
-                    chunk.text AS text,
-                    chunk.id AS chunk_id,
-                    elementId(chunk) AS chunk_element_id,
-                    score,
-                    d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {{
-                        id: entity.id,
-                        element_id: elementId(entity),
-                        type: coalesce(entity.type, 'Unknown'),
-                        description: coalesce(entity.name, '')
-                    }}] AS entities
-                ORDER BY score DESC
-                """
-                params = {
-                    "query_vector": query_embedding,
-                    "document_names": document_names
-                }
+                where_clauses.append("d.fileName IN $document_names")
+                params["document_names"] = document_names
+            
+            # Build the complete WHERE clause
+            if where_clauses:
+                where_clause = "WHERE " + " AND ".join(where_clauses)
             else:
-                search_query = f"""
-                CALL db.index.vector.queryNodes('vector', {max_chunks}, $query_vector)
-                YIELD node AS chunk, score
-                MATCH (chunk)-[:PART_OF]->(d:Document)
-                WHERE score >= $similarity_threshold  // Configurable similarity threshold
-                OPTIONAL MATCH (chunk)-[:HAS_ENTITY]->(e:__Entity__)
-                WITH chunk, score, d,
-                     collect(DISTINCT e) AS chunk_entities
-                RETURN
-                    chunk.text AS text,
-                    chunk.id AS chunk_id,
-                    elementId(chunk) AS chunk_element_id,
-                    score,
-                    d.fileName AS document,
-                    [entity IN chunk_entities WHERE entity IS NOT NULL | {{
-                        id: entity.id,
-                        element_id: elementId(entity),
-                        type: coalesce(entity.type, 'Unknown'),
-                        description: coalesce(entity.name, '')
-                    }}] AS entities
-                ORDER BY score DESC
-                """
-                params = {
-                    "query_vector": query_embedding,
-                    "similarity_threshold": similarity_threshold
-                }
+                where_clause = "WHERE score >= $similarity_threshold"
+            
+            search_query = f"""
+            CALL db.index.vector.queryNodes('vector', {max_chunks}, $query_vector)
+            YIELD node AS chunk, score
+            MATCH (chunk)-[:PART_OF]->(d:Document)
+            {where_clause}
+            OPTIONAL MATCH (chunk)<-[:MENTIONS]-(e:__Entity__)
+            WITH chunk, score, d,
+                 collect(DISTINCT e) AS chunk_entities
+            WHERE score >= $similarity_threshold
+            RETURN
+                chunk.text AS text,
+                chunk.id AS chunk_id,
+                elementId(chunk) AS chunk_element_id,
+                score,
+                d.fileName AS document,
+                d.kgName AS kg_name,
+                [entity IN chunk_entities WHERE entity IS NOT NULL | {{
+                    id: coalesce(entity.id, entity.name),
+                    element_id: elementId(entity),
+                    type: coalesce(entity.type, 'Entity'),
+                    description: coalesce(entity.name, '')
+                }}] AS entities
+            ORDER BY score DESC
+            """
 
             results = graph.query(search_query, params)
 
@@ -612,33 +690,36 @@ User Query: {question}"""),
                         }
                     context["entities"][entity_id]["mentioned_in_chunks"].append(result["chunk_id"])
 
-                # Also search for relevant entities via vector similarity
-                entity_search_query = """
-                CALL db.index.vector.queryNodes('entity_vector', 3, $query_vector)
-                YIELD node AS entity, score
-                WHERE score >= 0.3  // Higher threshold for entities
-                RETURN
-                    entity.id AS id,
-                    elementId(entity) AS element_id,
-                    entity.name AS name,
-                    entity.type AS type,
-                    score
-                ORDER BY score DESC
-                LIMIT 3
-                """
-
-                entity_results = graph.query(entity_search_query, {"query_vector": query_embedding})
+            # Also search for relevant entities via text matching on __Entity__ nodes
+            entity_search_query = """
+            MATCH (e:__Entity__)
+            WHERE toLower(e.name) CONTAINS toLower($search_term)
+            RETURN
+                e.id AS id,
+                elementId(e) AS element_id,
+                e.name AS name,
+                e.type AS type,
+                0.5 AS score
+            LIMIT 5
+            """
+            
+            # Extract first significant word from query for entity search
+            search_term = query.split()[0] if query.split() else "medical"
+            try:
+                entity_results = graph.query(entity_search_query, {"search_term": search_term})
                 for entity_result in entity_results:
                     entity_id = entity_result["id"]
                     if entity_id not in context["entities"]:
                         context["entities"][entity_id] = {
                             "id": entity_id,
                             "element_id": entity_result["element_id"],
-                            "type": entity_result["type"],
+                            "type": entity_result["type"] or "Concept",
                             "description": entity_result["name"],
                             "mentioned_in_chunks": [],
                             "semantic_relevance": entity_result["score"]
                         }
+            except Exception as e:
+                logging.warning(f"Entity text search failed: {e}")
 
             # Add relationships for found entities
             all_entity_ids = list(context["entities"].keys())

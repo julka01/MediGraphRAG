@@ -207,10 +207,14 @@ class OntologyGuidedKGCreator:
 
         return formatted
 
-    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm, model_name: str = "openai/gpt-oss-20b:free") -> Dict[str, Any]:
+    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm, model_name: str = "openai/gpt-oss-120b:free") -> Dict[str, Any]:
         """
         Extract entities and relationships using LLM with ontology guidance (if ontology available) or natural LLM detection
         """
+        # Unified fallback path when no LLM is supplied (used by some experiment pipelines)
+        if llm is None:
+            return self._ontology_fallback_entity_extraction(chunk_text)
+
         # Check if ontology is available
         has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
 
@@ -884,7 +888,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-20b:free", max_chunks: int = None, kg_name: str = None) -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", max_chunks: int = None, kg_name: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text with ontology-guided entity extraction
 
@@ -943,8 +947,8 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 failed_chunks += 1
                 continue
 
-            # Add small delay between chunks to avoid rate limiting
-            if i < len(chunks) - 1:  # Don't delay after the last chunk
+            # Add small delay between chunks only when an external LLM is in use
+            if llm is not None and i < len(chunks) - 1:  # Don't delay after the last chunk
                 time.sleep(1.0)  # 1 second delay between API calls
 
         logging.info(f"Processing complete: {processed_chunks} successful, {failed_chunks} failed")
@@ -1057,10 +1061,14 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
             # Create document node with versioning
             import uuid
             kg_version = str(uuid.uuid4())
+            # Get kgName from metadata (set during KG generation)
+            kg_name_value = kg['metadata'].get('kg_name', file_name)
             doc_query = """
             MERGE (d:Document {fileName: $fileName})
             SET d.kgVersion = $kgVersion,
+                d.kgName = $kgName,
                 d.createdAt = datetime(),
+                d.updatedAt = datetime(),
                 d.totalChunks = $totalChunks,
                 d.totalEntities = $totalEntities,
                 d.totalRelationships = $totalRelationships,
@@ -1069,6 +1077,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
             """
             graph.query(doc_query, {
                 "kgVersion": kg_version,
+                "kgName": kg_name_value,
                 "fileName": file_name,
                 "totalChunks": kg['metadata']['total_chunks'],
                 "totalEntities": kg['metadata']['total_entities'],
@@ -1132,7 +1141,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 properties = node.get('properties', {})
                 entity_type = node['label']  # This is the ontology class (Disease, Treatment, etc.)
                 # Sanitize entity type for Cypher compatibility (remove spaces and special chars)
-                cypher_safe_entity_type = entity_type.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace(',', '')
+                cypher_safe_entity_type = entity_type.replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('/', '_').replace(',', '')
 
                 # Check if entity with same content hash already exists
                 existing_entity_query = """
@@ -1263,12 +1272,20 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                 chunk_text = chunk['text'].lower()
 
                 for node in kg['nodes']:
-                    entity_name = node['id'].lower()
-                    if entity_name in chunk_text:
+                    properties = node.get('properties', {})
+                    candidate_names = []
+                    candidate_names.extend(properties.get('all_names', []) if isinstance(properties.get('all_names', []), list) else [])
+                    candidate_names.append(properties.get('name', ''))
+                    candidate_names.append(properties.get('original_id', ''))
+
+                    # Keep meaningful normalized names only
+                    normalized_names = [n.strip().lower() for n in candidate_names if isinstance(n, str) and len(n.strip()) > 2]
+                    if any(name in chunk_text for name in normalized_names):
                         entity_chunk_query = """
                         MATCH (c:Chunk {id: $chunk_id})
                         MATCH (e:__Entity__ {id: $entity_id})
                         MERGE (c)-[:HAS_ENTITY]->(e)
+                        MERGE (c)-[:MENTIONS]->(e)
                         """
                         graph.query(entity_chunk_query, {
                             "chunk_id": chunk_id,

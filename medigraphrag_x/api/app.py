@@ -10,7 +10,41 @@ load_dotenv()
 
 from medigraphrag_x.providers.model_providers import get_provider as get_llm_provider
 from medigraphrag_x.kg.builders.enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
-from csv_processor import MedicalReportCSVProcessor
+
+# Handle csv_processor import - works when running from project root or as module
+try:
+    from csv_processor import MedicalReportCSVProcessor
+except ImportError:
+    from medigraphrag_x.api.csv_processor import MedicalReportCSVProcessor
+
+# Configuration constants for input validation
+MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_FILE_EXTENSIONS = {'.pdf', '.txt', '.csv', '.json', '.xml'}
+ALLOWED_ONTOLOGY_EXTENSIONS = {'.owl', '.rdf', '.ttl', '.xml'}
+
+def validate_file_upload(file: UploadFile, max_size_bytes: int = MAX_FILE_SIZE_BYTES, allowed_extensions: set = None) -> None:
+    """
+    Validate file upload for size and extension.
+    Raises HTTPException if validation fails.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Check file extension
+    if allowed_extensions:
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            logger.warning(f"Invalid file extension: {file_ext}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed extensions: {', '.join(allowed_extensions)}"
+            )
+    
+    # Check file size (peek at beginning)
+    # Note: For full validation, we'd need to read the entire file which we do in the endpoint
+    # This is a preliminary check that can be enhanced with streaming size validation
+    logger.info(f"Validating file: {file.filename}")
 
 # Import from local kg_utils
 from medigraphrag_x.kg.utils.extract_graph import extract_graph_from_file_local_file
@@ -30,7 +64,7 @@ app = FastAPI(
     version="1.0.0",
     # Increase timeout handling for long-running KG processing and RAG operations
     # Default timeout increased from 30s to 900s (15 minutes) for complex operations
-    timeout=900
+    timeout=1000
 )
 app.mount("/static", StaticFiles(directory="medigraphrag_x/api/static"), name="static")
 
@@ -54,6 +88,179 @@ def check_neo4j_connection():
         print(f"⚠️ Neo4j health check failed: {e}", file=sys.stderr)
         print("⚠️ Continuing without Neo4j connection - some features may not work", file=sys.stderr)
         # Don't raise error - allow app to start
+
+# ========== Named KG Management Endpoints ==========
+
+@app.post("/kg/create")
+async def create_kg(
+    kg_name: str = Form(...),
+    description: str = Form(None),
+    data_source: str = Form(None)
+):
+    """
+    Create a new named Knowledge Graph.
+    """
+    try:
+        from graphDB_dataAccess import graphDBdataAccess
+        from langchain_neo4j import Neo4jGraph
+        
+        # Create Neo4jGraph (langchain) instead of driver
+        graph = Neo4jGraph(
+            url=os.getenv("NEO4J_URI"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD"),
+            database=os.getenv("NEO4J_DATABASE")
+        )
+        
+        db_access = graphDBdataAccess(graph)
+        
+        result = db_access.create_kg(
+            kg_name=kg_name,
+            description=description,
+            data_source=data_source
+        )
+        
+        return JSONResponse(content={
+            "status": "success",
+            "kg": result
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create KG: {str(e)}")
+
+
+@app.get("/kg/list")
+async def list_kgs():
+    """
+    List all named Knowledge Graphs by querying Document nodes with kgName property.
+    """
+    try:
+        from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
+        
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
+        
+        with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
+            # Query for distinct kgName values from Document nodes
+            result = session.run("""
+                MATCH (d:Document)
+                WHERE d.kgName IS NOT NULL AND d.kgName <> ''
+                RETURN DISTINCT d.kgName AS kgName, count(d) AS documentCount, max(d.updatedAt) AS lastUpdated
+                ORDER BY d.kgName
+            """)
+            
+            kgs = []
+            for record in result:
+                kgs.append({
+                    "name": record["kgName"],
+                    "kg_name": record["kgName"],
+                    "document_count": record["documentCount"],
+                    "last_updated": record["lastUpdated"].isoformat() if record["lastUpdated"] else None
+                })
+        
+        return JSONResponse(content={
+            "status": "success",
+            "kgs": kgs
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list KGs: {str(e)}")
+
+
+@app.get("/kg/{kg_name}")
+async def get_kg(kg_name: str):
+    """
+    Get details of a specific Knowledge Graph.
+    """
+    try:
+        from graphDBdataAccess import graphDBdataAccess
+        from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
+        
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
+        
+        db_access = graphDBdataAccess(driver)
+        kg = db_access.get_kg(kg_name)
+        
+        if not kg:
+            raise HTTPException(status_code=404, detail=f"KG '{kg_name}' not found")
+        
+        # Also get stats
+        stats = db_access.get_kg_stats(kg_name)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "kg": kg,
+            "stats": stats[0] if stats else {}
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get KG: {str(e)}")
+
+
+@app.delete("/kg/{kg_name}")
+async def delete_kg(kg_name: str, delete_entities: bool = Form(True)):
+    """
+    Delete a named Knowledge Graph.
+    """
+    try:
+        from graphDB_dataAccess import graphDBdataAccess
+        from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
+        
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
+        
+        db_access = graphDBdataAccess(driver)
+        deleted_count = db_access.delete_kg_by_name(kg_name, delete_entities)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Deleted KG '{kg_name}' with {deleted_count} documents",
+            "deleted_documents": deleted_count
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete KG: {str(e)}")
+
+
+@app.get("/kg/{kg_name}/entities")
+async def get_kg_entities(kg_name: str, limit: int = 100):
+    """
+    Get entities from a specific Knowledge Graph.
+    """
+    try:
+        from graphDB_dataAccess import graphDBdataAccess
+        from medigraphrag_x.kg.utils.graph_query import get_graphDB_driver
+        
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
+        
+        db_access = graphDBdataAccess(driver)
+        entities = db_access.get_kg_entities(kg_name, limit)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "kg_name": kg_name,
+            "entities": entities,
+            "count": len(entities)
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get KG entities: {str(e)}")
+
 
 @app.get("/health/neo4j")
 def neo4j_health():
@@ -234,7 +441,7 @@ async def create_ontology_guided_kg(
 
         # Get LLM provider (use defaults matching test if not specified)
         provider = provider or "openrouter"
-        model = model or "openai/gpt-oss-20b:free"
+        model = model or "openai/gpt-oss-120b:free"
         llm = get_llm_provider(provider, model)
 
         # DEBUG: Log ontology file information early
@@ -421,6 +628,7 @@ async def create_ontology_guided_kg(
 async def chat(body: dict = Body(...)):
     """
     Enhanced KG-focused RAG chat that ensures responses come from KG alone.
+    Supports optional kg_name parameter to filter retrieval to a specific named KG.
     Increased timeout for long-running KG processing.
     """
     try:
@@ -429,7 +637,8 @@ async def chat(body: dict = Body(...)):
         session = body.get("session_id", "default_session")
         mode = body.get("mode", "default")
         provider = body.get("provider_rag", "openrouter")
-        model = body.get("model_rag", "openai/gpt-oss-20b:free")
+        model = body.get("model_rag", "openai/gpt-oss-120b:free")
+        kg_name = body.get("kg_name", None)  # NEW: Optional KG name to filter retrieval
 
         if not question:
             raise HTTPException(status_code=422, detail="Missing question")
@@ -444,8 +653,8 @@ async def chat(body: dict = Body(...)):
         # Get LLM provider
         llm = LangChainRunnableAdapter(get_llm_provider(provider, model), model)
 
-        # Generate response using KG data only
-        result = rag_system.generate_response(question, llm, docs)
+        # Generate response using KG data only (with optional KG filtering)
+        result = rag_system.generate_response(question, llm, docs, kg_name=kg_name)
 
         # Format response to match expected structure
         if "error" in result:
@@ -513,7 +722,7 @@ def list_models(provider: str):
     """
     model_map = {
         "openai": ["gpt-4", "gpt-3.5-turbo"],
-        "openrouter": ["openai/gpt-oss-20b:free", "meta-llama/llama-3.3-8b-instruct:free", "deepseek/deepseek-chat-v3.1:free", "x-ai/grok-4-fast:free"]
+        "openrouter": ["openai/gpt-oss-120b:free", "meta-llama/llama-3.3-8b-instruct:free", "deepseek/deepseek-chat-v3.1:free", "x-ai/grok-4-fast:free"]
     }
     return {"models": model_map.get(provider.lower(), [])}
 
@@ -990,7 +1199,7 @@ async def bulk_process_csv(
 
         # Initialize enhanced KG creator for bulk processing
         provider = "openrouter"
-        model = "openai/gpt-oss-20b:free"
+        model = "openai/gpt-oss-120b:free"
         llm = get_llm_provider(provider, model)
 
         kg_creator = UnifiedOntologyGuidedKGCreator(

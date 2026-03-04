@@ -442,7 +442,54 @@ Return ONLY the JSON object, no additional text."""),
                     "file_name": file_name
                 })
 
-            logging.info(f"✅ Saved KG with {len(kg.get('nodes', []))} entities and {len(kg.get('relationships', []))} relationships")
+            # Save chunks with embeddings (required for vector search)
+            for chunk in kg.get('chunks', []):
+                chunk_id = chunk.get('id', hashlib.sha1(chunk['text'].encode()).hexdigest())
+                graph.query("""
+                MERGE (c:Chunk {id: $chunk_id})
+                SET c.text = $text,
+                    c.position = $position,
+                    c.start_pos = $start_pos,
+                    c.end_pos = $end_pos,
+                    c.embedding = $embedding
+                """, {
+                    "chunk_id": chunk_id,
+                    "text": chunk.get('text', ''),
+                    "position": chunk.get('chunk_id', 0),
+                    "start_pos": chunk.get('start_pos', 0),
+                    "end_pos": chunk.get('end_pos', 0),
+                    "embedding": chunk.get('embedding')
+                })
+
+                # Link chunk to document
+                graph.query("""
+                MATCH (c:Chunk {id: $chunk_id})
+                MATCH (d:Document {fileName: $file_name})
+                MERGE (c)-[:PART_OF]->(d)
+                """, {
+                    "chunk_id": chunk_id,
+                    "file_name": file_name
+                })
+
+                # Link chunk to entities mentioned in it
+                chunk_text_lower = chunk.get('text', '').lower()
+                for node in kg.get('nodes', []):
+                    node_id = node.get('id', '')
+                    node_name = node.get('properties', {}).get('name', '').lower()
+                    node_desc = node.get('properties', {}).get('description', '').lower()
+                    
+                    # Check if entity name or description appears in chunk text
+                    if node_id and (node_name in chunk_text_lower or node_desc in chunk_text_lower):
+                        graph.query("""
+                        MATCH (c:Chunk {id: $chunk_id})
+                        MATCH (e:__Entity__ {id: $entity_id})
+                        MERGE (c)-[:MENTIONS]->(e)
+                        """, {
+                            "chunk_id": chunk_id,
+                            "entity_id": node_id
+                        })
+
+            logging.info(f"✅ Saved KG with {len(kg.get('nodes', []))} entities, {len(kg.get('chunks', []))} chunks, and {len(kg.get('relationships', []))} relationships")
             return True
 
         except Exception as e:

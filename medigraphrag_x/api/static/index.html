@@ -1283,7 +1283,7 @@
             <div class="control-group">
                 <label for="kg-provider">Vendor:</label>
                 <select id="kg-provider">
-                    <option value="openai">OpenAI</option>
+                    <option value="ai">OpenAI</option>
                     <option value="openrouter">OpenRouter</option>
                     <option value="lmu_lightllm">LMU Lightllm</option>
                     <option value="ollama">Ollama</option>
@@ -1334,11 +1334,22 @@
 
             <div id="file-selection">
                 <div id="selected-file"></div>
+                
+                <!-- KG Name Selection for creation -->
+                <div class="control-group" style="margin-top: 12px;">
+                    <label for="kg-name-create">KG Name:</label>
+                    <select id="kg-name-create">
+                        <option value="">-- New KG --</option>
+                    </select>
+                    <input type="text" id="kg-name-new" placeholder="Enter new KG name" style="display: none; margin-top: 5px; width: 100%; padding: 6px 8px; border: 1px solid #34495e; border-radius: 4px; background: #34495e; color: #ecf0f1; font-size: 12px;">
+                </div>
+                
                 <div class="action-buttons">
                     <button class="btn-primary" id="create-kg-btn">Create KG</button>
                 </div>
             </div>
         </div>
+
 
         <!-- RAG Configuration -->
         <div class="panel-section">
@@ -1540,8 +1551,10 @@
         </div>
         
         <div style="margin-bottom: 15px;">
-            <label for="kg-label-filter" style="display: block; margin-bottom: 5px;">Filter by Label (optional):</label>
-            <input type="text" id="kg-label-filter" placeholder="e.g., Person, Disease" style="width: 100%;">
+            <label for="kg-label-filter" style="display: block; margin-bottom: 5px;">Filter by KG Name:</label>
+            <select id="kg-label-filter" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="">All KGs</option>
+            </select>
         </div>
         
         <button id="connect-neo4j" style="width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Load Knowledge Graph</button>
@@ -2810,8 +2823,8 @@
                         
             // Preselect first model
             if (data.models.length > 0) {
-                if (vendor === 'openrouter' && data.models.includes('openai/gpt-oss-20b:free')) {
-                    modelSelect.value = 'openai/gpt-oss-20b:free';
+                if (vendor === 'openrouter' && data.models.includes('openai/gpt-oss-120b:free')) {
+                    modelSelect.value = 'openai/gpt-oss-120b:free';
                 } else {
                     modelSelect.value = data.models[0];
                 }
@@ -2832,6 +2845,67 @@
             document.getElementById('temperature').addEventListener('input', function() {
                 document.getElementById('temp-value').textContent = this.value;
             });
+            
+            // KG List loading functionality
+            async function loadKGList() {
+                try {
+                    const response = await fetch('/kg/list');
+                    if (!response.ok) throw new Error('Failed to fetch KG list');
+                    
+                    const data = await response.json();
+                    const kgNameCreate = document.getElementById('kg-name-create');
+                    const kgLabelFilter = document.getElementById('kg-label-filter');
+                    
+                    // Clear the creation dropdown (keep first option)
+                    while (kgNameCreate.options.length > 1) {
+                        kgNameCreate.remove(1);
+                    }
+                    
+                    // Clear the filter dropdown in neo4j form (keep first option)
+                    while (kgLabelFilter.options.length > 1) {
+                        kgLabelFilter.remove(1);
+                    }
+                    
+                    // Add KGs from the response to all dropdowns
+                    if (data.kgs && data.kgs.length > 0) {
+                        data.kgs.forEach(kg => {
+                            // Add to creation dropdown
+                            const option2 = document.createElement('option');
+                            option2.value = kg.name;
+                            option2.textContent = kg.name;
+                            kgNameCreate.appendChild(option2);
+                            
+                            // Add to filter dropdown in neo4j form
+                            const option3 = document.createElement('option');
+                            option3.value = kg.name;
+                            option3.textContent = kg.name;
+                            kgLabelFilter.appendChild(option3);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error loading KG list:', error);
+                }
+            }
+            
+            // KG name create dropdown change handler
+            document.getElementById('kg-name-create').addEventListener('change', function() {
+                const select = this;
+                const input = document.getElementById('kg-name-new');
+                
+                if (select.value === '') {
+                    // "New KG" selected - show input
+                    input.style.display = 'block';
+                    input.required = true;
+                } else {
+                    // Existing KG selected - hide input
+                    input.style.display = 'none';
+                    input.required = false;
+                    input.value = '';
+                }
+            });
+            
+            // Load KG list on page load
+            loadKGList();
                 
             // View toggling functionality
             const kgView = document.getElementById('kg-view');
@@ -2878,6 +2952,8 @@
             
             // Neo4j loading functionality
             document.getElementById('load-neo4j').addEventListener('click', function() {
+                // Refresh KG list when opening the form
+                loadKGList();
                 document.getElementById('neo4j-form').style.display = 'block';
             });
             
@@ -2951,12 +3027,25 @@
                     const embeddingModel = document.getElementById('embedding-model').value;
                     const maxChunks = document.getElementById('max-chunks').value;
 
+                    // Get KG name - either from dropdown (existing KG) or input (new KG)
+                    const kgNameSelect = document.getElementById('kg-name-create');
+                    const kgNameInput = document.getElementById('kg-name-new');
+                    let kgName = kgNameSelect.value;
+                    
+                    // If "New KG" selected, use the input value
+                    if (!kgName && kgNameInput.value.trim()) {
+                        kgName = kgNameInput.value.trim();
+                    }
+                    
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('provider', provider);
                     formData.append('model', model);
                     formData.append('embedding_model', embeddingModel);
                     formData.append('max_chunks', maxChunks);
+                    if (kgName) {
+                        formData.append('kg_name', kgName);
+                    }
                     if (ontologyFile) {
                         formData.append('ontology_file', ontologyFile);
                     }
@@ -3164,7 +3253,7 @@ let successMsg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes
                         model_rag: model
                     };
                     
-                    // Add kg_id if available
+                    // Add kg_id if available (from Neo4j load)
                     if (currentKGId) {
                         payload.kg_id = currentKGId;
                     }
