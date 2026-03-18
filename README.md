@@ -1,47 +1,100 @@
-# MediGraphX: AI-Powered Knowledge Graph for Medical Decision Support
+# MediGraphRAG
 
-[![Version](https://img.shields.io/badge/version-1.0.0--rc1--324db44-blue.svg)](https://github.com/julka01/MediGraphRAG)
+[![Version](https://img.shields.io/badge/version-1.0.0--rc1-blue.svg)](https://github.com/julka01/MediGraphRAG)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/neo4j-5.0+-brightgreen.svg)](https://neo4j.com/)
 
-MediGraphX structures medical data into ontology-guided knowledge graphs for evidence-based reasoning and clinical decision support.
+**Turn unstructured documents into schema-consistent knowledge graphs. Query them with RAG. Measure how much to trust the answers.**
 
-## Quick Start
+MediGraphRAG extracts entities and relationships from raw text guided by a custom ontology, stores the result in Neo4j, and answers natural-language questions using hybrid vector + graph retrieval. A built-in uncertainty pipeline flags answers the model isn't confident in before they reach users.
 
-1. **Clone & Install**
-   ```bash
-   git clone https://github.com/julka01/MediGraphRAG.git
-   cd MediGraphRAG
-   uv sync  # Create venv & install deps
-   source .venv/bin/activate
-   ```
+---
 
-2. **Start Neo4j**
-   ```bash
-   docker compose up -d neo4j
-   ```
+## What makes this different
 
-3. **Configure** (Create `.env`)
-   ```bash
-   NEO4J_URI=bolt://localhost:7687
-   NEO4J_USER=neo4j
-   NEO4J_PASSWORD=your-password
-   OPENROUTER_API_KEY=your-key  # Recommended for free access
-   ```
+Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microsoft/graphrag)) let an LLM freely decide what to extract — producing inconsistent entity types, duplicate concepts, and graphs that drift between documents. MediGraphRAG takes the opposite approach: **you define the schema, the system respects it.**
 
-4. **Run**
-   ```bash
-   python start_server.py  # API at http://localhost:8004
-   ```
+| | MediGraphRAG | Microsoft GraphRAG |
+|---|---|---|
+| **Schema control** | Bring your own OWL/RDF ontology — entities and relationships are constrained to your types | LLM decides freely; no schema enforcement |
+| **Graph storage** | Neo4j — production graph DB with Cypher, vector indexes, persistent named KGs | Parquet files in a local directory |
+| **Hallucination detection** | 8 uncertainty metrics including RS-UQ (novel) and semantic entropy | None |
+| **LLM providers** | OpenRouter, OpenAI, Gemini, Anthropic, Ollama, DeepSeek, HuggingFace | OpenAI / Azure OpenAI only |
+| **Retrieval** | Hybrid: vector similarity + graph traversal in one query | Community summarisation (global) or entity search (local) |
+| **Interface** | Web UI + REST API + Python library | CLI + Python library |
+| **Domain** | Any domain; ontology is user-supplied | General purpose but tuned for summarisation |
 
-## Table of Contents
+---
+
+## Key features
+
+### 1. Ontology-guided KG construction
+Supply a `.owl` / `.rdf` / `.ttl` ontology file and every extracted entity and relationship is validated against your schema. The same document processed twice produces the same graph shape. Without an ontology, extraction still works — the LLM infers types — but schema-constrained extraction is the differentiating capability.
+
+### 2. Neo4j as the graph store
+Graphs are persisted in Neo4j with:
+- **Vector indexes** (384-dim `all-MiniLM-L6-v2` by default) for semantic search over chunks
+- **Named KGs** — multiple independent graphs in one database, scoped by name tag
+- **Full Cypher access** — query or extend the graph with any Cypher statement
+
+### 3. Hybrid retrieval
+Queries run vector similarity search over chunk embeddings *and* graph traversal over entity neighborhoods simultaneously. The combined context is richer than either alone — the vector index finds relevant passages, the graph finds related concepts those passages didn't mention.
+
+### 4. Uncertainty quantification and hallucination detection
+A dedicated pipeline computes 8 metrics per answer to flag low-confidence responses:
+
+| Metric | What it measures |
+|--------|-----------------|
+| `semantic_entropy` | Shannon entropy over meaning-clusters of N sampled responses (Farquhar et al., *Nature* 2023) |
+| `discrete_semantic_entropy` | Same with hard cluster boundaries |
+| `token_entropy` | Surface-level diversity across responses |
+| `p_true` | NLI-based probability responses are supported by context |
+| `embedding_consistency` | Pairwise NLI contradiction rate between response pairs |
+| `spuq` | Semantic entropy weighted by variance under probability perturbation |
+| `rs_uq` ⭐ | **Novel.** Cosine dissimilarity between the LLM's last-layer hidden state for the prompt alone vs. prompt + response. A large shift signals the model's answer diverges from its internal encoding of the question — no multiple samples needed. |
+
+**Hypothesis:** ontology-constrained, deduplicated graph context lowers semantic entropy compared to vanilla RAG because the model receives less contradictory evidence.
+
+### 5. Provider-agnostic LLM support
+Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRouter (free tier available), OpenAI, Google Gemini, Anthropic, Ollama (local), DeepSeek, HuggingFace. Switch model per request with no code changes.
+
+---
+
+## Quick start
+
+```bash
+# 1. Clone and install
+git clone https://github.com/julka01/MediGraphRAG.git
+cd MediGraphRAG
+uv sync          # creates .venv and installs all dependencies
+source .venv/bin/activate
+
+# 2. Start Neo4j
+docker compose up -d neo4j
+
+# 3. Configure
+cp .env.example .env
+# Edit .env — set NEO4J_PASSWORD and at least one LLM provider key
+
+# 4. Start server
+python start_server.py
+# → Web UI at http://localhost:8004
+# → API docs at http://localhost:8004/docs
+```
+
+---
+
+## Table of contents
 
 - [Setup](#setup)
+- [Web UI](#web-ui)
+- [API Reference](#api-reference)
 - [Experiments](#experiments)
-- [API](#api)
-- [Configuration](#configuration)
 - [Architecture](#architecture)
+- [Utility scripts](#utility-scripts)
+- [Docker](#docker)
+- [Configuration](#configuration)
 
 ---
 
@@ -50,210 +103,450 @@ MediGraphX structures medical data into ontology-guided knowledge graphs for evi
 ### Requirements
 
 - Python 3.11+
-- Neo4j 5.0+ (via Docker)
-- 8GB RAM minimum
+- Neo4j 5.0+ (via Docker or local install)
+- 8 GB RAM minimum (16 GB recommended for large documents)
 
-### Environment Variables
+### Installation
 
-Create `.env`:
 ```bash
-# Database
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
+uv sync          # recommended
+# or
+pip install -r requirements.txt
+```
 
-# LLM Providers (at least one required)
-OPENROUTER_API_KEY=your-key    # Recommended - free access
-# OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
-# OLLAMA_HOST=http://localhost:11434
+### Environment variables
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+# ── Neo4j ───────────────────────────────────────────────────────────────────
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+NEO4J_DATABASE=neo4j
+
+# ── LLM providers (at least one required) ───────────────────────────────────
+OPENROUTER_API_KEY=your-key   # free-tier models available
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+DEEPSEEK_API_KEY=...
+HF_API_TOKEN=...
+OLLAMA_HOST=http://localhost:11434
+
+# ── Embeddings ───────────────────────────────────────────────────────────────
+EMBEDDING_PROVIDER=huggingface   # huggingface | openai | vertexai
+
+# ── Document processing ──────────────────────────────────────────────────────
+CHUNK_SIZE=1500
+CHUNK_OVERLAP=200
+MAX_CHUNKS=50
+
+# ── Retrieval ────────────────────────────────────────────────────────────────
+VECTOR_SIMILARITY_THRESHOLD=0.1
+
+# ── Security (production) ────────────────────────────────────────────────────
+APP_API_KEY=               # set to enforce API key auth on all endpoints
+ALLOWED_ORIGINS=*          # comma-separated origins for CORS
+
+# ── Server ───────────────────────────────────────────────────────────────────
+LOG_LEVEL=INFO
+MAX_WORKERS=4
+LLM_TIMEOUT_SECONDS=120
+```
+
+---
+
+## Web UI
+
+The web interface is served at `http://localhost:8004`.
+
+### Knowledge graph panel
+
+- **Build KG** — upload a document (PDF, TXT, CSV, JSON, XML ≤ 50 MB), choose provider/model, optionally attach an ontology file. Extraction progress streams to the UI in real time via SSE and the graph loads automatically on completion.
+- **Graph visualisation** — interactive vis.js network. Node size scales with degree. Click a node to open its detail panel (type, properties, connected nodes).
+- **Search** — dims non-matching nodes rather than hiding them; shows match count.
+- **Filter** — per-type checkboxes with node/edge counts.
+- **Named KG management** — create, list, and switch between multiple saved graphs.
+
+### Chat panel
+
+- Ask questions against the active knowledge graph; answers cite source chunks.
+- Chat history persisted in `localStorage`.
+- Highlighted nodes — entities used in the answer are highlighted in the graph.
+- Thinking indicator while waiting for the LLM response.
+
+---
+
+## API Reference
+
+Server runs on **port 8004**. Interactive docs at `http://localhost:8004/docs`.
+
+> **Authentication**: set `APP_API_KEY` in `.env` to require `X-API-Key: <key>` on all requests. Unset = open (development mode).
+
+### Knowledge graph — build & query
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/create_ontology_guided_kg` | Build an ontology-guided KG from a file upload |
+| `POST` | `/extract_graph` | Extract a raw KG (no ontology) from a file |
+| `POST` | `/load_kg_from_file` | Load a graph from file into Neo4j |
+| `GET`  | `/kg_progress_stream` | SSE stream of KG build progress |
+
+#### `POST /create_ontology_guided_kg`
+
+Multipart form:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file` | file | required | Document (PDF/TXT/CSV/JSON/XML, ≤ 50 MB) |
+| `provider` | string | `openai` | LLM provider |
+| `model` | string | `gpt-3.5-turbo` | Model name |
+| `ontology_file` | file | optional | Custom ontology (.owl/.rdf/.ttl/.xml) |
+| `max_chunks` | int | `50` | Max text chunks to process |
+| `kg_name` | string | optional | Name tag for the resulting KG |
+
+Response:
+```json
+{
+  "kg_id": "uuid",
+  "kg_name": "my-kg",
+  "graph_data": { "nodes": [...], "relationships": [...] },
+  "method": "ontology_guided"
+}
+```
+
+#### `GET /kg_progress_stream`
+
+Server-Sent Events. Connect with `EventSource`:
+```
+data: {"line": "✓ Extracted 42 entities from chunk 3/10"}
+data: {"done": true}
+```
+
+---
+
+### Named KG management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST`   | `/kg/create` | Create a named KG record |
+| `GET`    | `/kg/list` | List all KGs with document counts |
+| `GET`    | `/kg/{kg_name}` | Stats for a specific KG |
+| `DELETE` | `/kg/{kg_name}` | Delete a KG |
+| `GET`    | `/kg/{kg_name}/entities` | List entities in a KG |
+
+---
+
+### Neo4j management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/save_kg_to_neo4j` | Persist an in-memory KG to Neo4j |
+| `POST` | `/load_kg_from_neo4j` | Load a KG from Neo4j by name |
+| `POST` | `/clear_kg` | Delete all nodes and relationships |
+| `GET`  | `/health/neo4j` | Connectivity check |
+
+---
+
+### Chat / RAG
+
+#### `POST /chat`
+
+Rate limited: 30 requests/minute per IP.
+
+JSON body:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `question` | string | required | Question to answer (max 4096 chars) |
+| `provider_rag` | string | `openrouter` | LLM provider |
+| `model_rag` | string | `openai/gpt-oss-120b:free` | Model name |
+| `kg_name` | string | optional | Restrict retrieval to a specific KG |
+| `document_names` | string[] | `[]` | Restrict to specific documents |
+| `session_id` | string | `default_session` | Session identifier |
+
+Response:
+```json
+{
+  "session_id": "default_session",
+  "message": "...",
+  "info": {
+    "sources": ["chunk_id_1"],
+    "model": "openai/gpt-oss-120b:free",
+    "confidence": 0.87,
+    "chunk_count": 5,
+    "entity_count": 12,
+    "relationship_count": 8,
+    "entities": { "used_entities": [...] }
+  }
+}
+```
+
+---
+
+### CSV bulk processing
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/validate_csv` | Validate a CSV before bulk processing |
+| `POST` | `/bulk_process_csv` | Build KGs from all rows of a CSV |
+
+#### `POST /bulk_process_csv`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file` | file | required | CSV file |
+| `provider` | string | `openai` | LLM provider |
+| `model` | string | `gpt-3.5-turbo` | LLM model |
+| `text_column` | string | `full_report_text` | Column containing the text to process |
+| `id_column` | string | optional | Column to use as document ID |
+| `start_row` | int | `0` | First row to process |
+| `batch_size` | int | `50` | Rows per batch |
+
+---
+
+### Models
+
+`GET /models/{provider}` — lists available models for a provider.
+
+---
+
+### cURL examples
+
+```bash
+# Build a KG with ontology
+curl -X POST http://localhost:8004/create_ontology_guided_kg \
+  -F "file=@document.pdf" \
+  -F "provider=openrouter" \
+  -F "model=openai/gpt-4o-mini" \
+  -F "ontology_file=@schema.owl" \
+  -F "kg_name=my-kg"
+
+# Ask a question
+curl -X POST http://localhost:8004/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What are the main concepts?", "kg_name": "my-kg", "provider_rag": "openrouter", "model_rag": "openai/gpt-4o-mini"}'
+
+# Stream build progress
+curl -N http://localhost:8004/kg_progress_stream
+
+# List KGs
+curl http://localhost:8004/kg/list
+
+# Health check
+curl http://localhost:8004/health/neo4j
 ```
 
 ---
 
 ## Experiments
 
-This section documents how to run KG RAG vs Vanilla RAG evaluation experiments.
-
-### MIRAGE Evaluation (Recommended)
-
-The main experiment script compares KG-RAG against Vanilla RAG on biomedical QA datasets.
-
-#### Basic Usage
+The `experiments/` directory evaluates KG-RAG vs Vanilla RAG on biomedical QA benchmarks, measuring answer quality and hallucination via semantic uncertainty. See [experiments/README.md](experiments/README.md) for full details.
 
 ```bash
-# Activate venv
-source venv/bin/activate
+# 5-question smoke test
+python experiments/experiment.py --num-samples 5 --entropy-samples 3 --datasets pubmedqa
 
-# Run on PubMedQA with 20 samples
+# Sweep thresholds and chunk sizes
 python experiments/experiment.py \
-  --num-samples 20 \
-  --entropy-samples 4 \
-  --llm-provider openrouter \
-  --llm-model gpt-oss-20b \
-  --datasets pubmedqa
-```
-
-#### All Available Flags
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--num-samples` | int | all | Number of questions to evaluate per dataset |
-| `--entropy-samples` | int | 3 | Number of response generations for semantic entropy (max: 8) |
-| `--similarity-thresholds` | float[] | [0.1] | Similarity thresholds to test |
-| `--max-chunks-values` | int[] | [10] | Max chunks to retrieve per query |
-| `--llm-provider` | str | openrouter | LLM provider (openrouter, openai, anthropic, ollama) |
-| `--llm-model` | str | openai/gpt-oss-120b:free | Model name for the provider |
-| `--datasets` | str[] | pubmedqa bioasq | Datasets to evaluate |
-| `--skip-kg-build` | flag | False | Skip KG rebuild, reuse existing Neo4j data |
-
-#### Example Experiments
-
-```bash
-# Quick test (5 samples, 3 entropy samples)
-python experiments/experiment.py \
-  --num-samples 5 \
-  --entropy-samples 3 \
-  --datasets pubmedqa
-
-# Full evaluation on multiple datasets
-python experiments/experiment.py \
-  --num-samples 50 \
-  --entropy-samples 4 \
+  --num-samples 50 --entropy-samples 4 \
   --similarity-thresholds 0.1 0.15 0.2 \
   --max-chunks-values 5 10 15 \
-  --datasets pubmedqa bioasq medqa medmcqa
-
-# Reuse existing KG (faster, no rebuild)
-python experiments/experiment.py \
-  --num-samples 20 \
-  --datasets pubmedqa \
-  --skip-kg-build
-
-# Use different LLM
-python experiments/experiment.py \
-  --num-samples 10 \
-  --llm-provider openai \
-  --llm-model gpt-4o \
-  --datasets pubmedqa
+  --datasets pubmedqa bioasq
 ```
 
-### Available Datasets
+### Supported datasets
 
-- **pubmedqa** - Yes/no questions from PubMed abstracts (recommended for initial testing)
-- **bioasq** - Biomedical fact-based QA
-- **medqa** - USMLE-style medical exam questions
-- **medmcqa** - Indian medical exam questions
+| Dataset | Task | Download |
+|---------|------|----------|
+| `pubmedqa` | Yes/no QA from PubMed abstracts | [pubmedqa/pubmedqa](https://github.com/pubmedqa/pubmedqa) |
+| `bioasq` | Biomedical factoid QA | [bioasq.org](http://bioasq.org/participate/challenges) (free registration) |
 
----
+Place downloaded files under `MIRAGE/rawdata/` — see [experiments/README.md](experiments/README.md) for exact paths.
 
-## API
+### Evaluation flags
 
-### Core Endpoints
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--num-samples` | all | Questions per dataset |
+| `--entropy-samples` | `3` | Responses per question for uncertainty metrics |
+| `--similarity-thresholds` | `[0.1]` | Cosine similarity cutoffs to sweep |
+| `--max-chunks-values` | `[10]` | Retrieved chunk counts to sweep |
+| `--llm-provider` | `openrouter` | LLM provider |
+| `--llm-model` | `openai/gpt-oss-120b:free` | Model |
+| `--datasets` | `pubmedqa bioasq` | Datasets to run |
+| `--skip-kg-build` | `False` | Reuse existing Neo4j graph |
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/create_ontology_guided_kg` | POST | Build knowledge graph |
-| `/chat` | POST | Medical Q&A |
-| `/bulk_process_csv` | POST | Batch processing |
-| `/health/neo4j` | GET | Database status |
-
-### Example Usage
-
-```bash
-# Create KG from document
-curl -X POST "http://localhost:8004/create_ontology_guided_kg" \
-  -F "file=@medical_doc.pdf"
-
-# Query
-curl -X POST "http://localhost:8004/chat" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Treatment for prostate cancer?"}'
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Processing
-CHUNK_SIZE=1500
-CHUNK_OVERLAP=200
-MAX_CHUNKS=50
-
-# Embeddings
-EMBEDDING_MODEL=sentence_transformers
-VECTOR_SIMILARITY_THRESHOLD=0.1
-
-# System
-LOG_LEVEL=INFO
-MAX_WORKERS=4
-```
-
----
-
-## Other Utility Scripts
-
-- `start_server.py` - API server (http://localhost:8004)
-- `run_kg_generation.py` - Standalone KG generation
-- `populate_neo4j.py` / `clear_neo4j.py` - Neo4j data management
-- `cleanup_and_rebuild_kg.py` - KG cleanup and rebuild utility
-- `fix_indexes.py` - Fix Neo4j vector indexes
-- `experiments/visualize_results.py` - Visualize experiment results
-- `experiments/rag_metrics.py` - RAG metrics library
-- `experiments/data_loading.py` - Data loading utilities
-
-## Docker Commands
-
-```bash
-# Start Neo4j only
-docker compose up -d neo4j
-
-# Start full stack (Neo4j + API)
-docker compose up -d
-
-# View Neo4j browser
-# Open http://localhost:7474 (browser), connect with bolt://localhost:7687
-
-# Stop all
-docker compose down
-```
-
-## Data Processing
-
-```bash
-# Process CSV with medical data
-python csv_processor.py --input data/medical_reports.csv --output processed/
-```
+Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced to Weights & Biases.
 
 ---
 
 ## Architecture
 
 ```
-Medical Docs → LLM Parser → Knowledge Graph (Neo4j)
-                                           │
-Query → Vector Search + Graph Traversal → Evidence + Citations
+┌─────────────────────────────────────────────────────────────┐
+│                     Web UI (index.html)                     │
+│   Graph panel (vis.js)  │  Chat panel  │  KG progress SSE   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ HTTP / SSE
+┌────────────────────────▼────────────────────────────────────┐
+│               FastAPI server  ·  port 8004                   │
+│        CORS  ·  rate limiting  ·  optional API key auth      │
+└──────┬──────────────────────────────────────┬───────────────┘
+       │                                      │
+┌──────▼──────────────┐            ┌──────────▼──────────────┐
+│    KG builder        │            │      RAG system          │
+│                      │            │                          │
+│ OntologyGuidedKG     │            │ EnhancedRAGSystem        │
+│ Creator              │            │  ├ Vector search         │
+│  ├ Chunking          │            │  ├ Graph traversal       │
+│  ├ LLM extraction    │            │  └ LLM synthesis         │
+│  ├ Ontology filter   │            │                          │
+│  └ Neo4j write       │            │ VanillaRAGSystem         │
+└──────┬───────────────┘            └──────────┬──────────────┘
+       │                                       │
+┌──────▼───────────────────────────────────────▼─────────────┐
+│                     Neo4j graph database                     │
+│   Nodes: Entity · Document · Chunk                          │
+│   Relationships: typed and constrained by ontology          │
+│   Indexes: vector (384-dim) + full-text                     │
+└──────────────────────────────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────┐
+│                   LLM provider layer                         │
+│  OpenRouter · OpenAI · Gemini · Ollama · HuggingFace        │
+│  DeepSeek · Anthropic  (configured per request)             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Pipeline**:
-1. Document ingestion & chunking
-2. Entity/relationship extraction via LLM
-3. Graph construction with embeddings
-4. Query with hybrid retrieval (vector + graph)
+### KG build pipeline
 
-**Key Specs**:
-- Chunking: 1500 chars with 200 overlap
-- Embeddings: all-MiniLM-L6-v2 (384-dim) or OpenAI
-- Database: Neo4j 5.0+ with vector indexes
-- Neo4j Browser: http://localhost:7474
+1. **Ingest** — file uploaded; PDF text extracted via PyMuPDF, plaintext decoded
+2. **Chunk** — overlapping text windows (`CHUNK_SIZE=1500`, `CHUNK_OVERLAP=200`)
+3. **Ontology load** — custom `.owl`/`.ttl` parsed (owlready2), or free-form extraction if none supplied
+4. **LLM extraction** — each chunk sent with an ontology-constrained prompt; entities and relationships returned as structured JSON
+5. **Ontology filter** — extracted types validated and normalised against the ontology schema
+6. **Embed** — chunk embeddings computed with `all-MiniLM-L6-v2` (384-dim, CPU) or OpenAI
+7. **Write** — nodes, relationships, and embeddings stored in Neo4j; progress streamed via SSE
+
+### RAG query pipeline
+
+1. **Embed query** — same model as build time
+2. **Vector search** — top-K chunks by cosine similarity
+3. **Graph traversal** — neighbour entities fetched via Cypher for each retrieved chunk
+4. **Assemble context** — chunk text + entity graph merged into LLM prompt
+5. **Synthesise** — LLM generates a grounded answer with citations
+
+### Module layout
+
+```
+medigraphrag_x/
+├── api/
+│   ├── app.py                         # FastAPI application, all endpoints
+│   ├── csv_processor.py               # CSV bulk processing
+│   └── static/
+│       └── index.html                 # Single-page web UI
+├── kg/
+│   └── builders/
+│       ├── ontology_guided_kg_creator.py   # Ontology-aware extraction (base)
+│       └── enhanced_kg_creator.py          # UnifiedOntologyGuidedKGCreator (API-facing)
+├── rag/
+│   └── systems/
+│       ├── enhanced_rag_system.py     # KG-RAG: hybrid vector + graph retrieval
+│       └── vanilla_rag_system.py      # Vanilla RAG: vector-only baseline
+└── providers/
+    └── model_providers.py             # LLM + embedding provider abstractions
+```
+
+### Key specs
+
+| Component | Detail |
+|-----------|--------|
+| Embeddings | `all-MiniLM-L6-v2` (384-dim), runs locally on CPU |
+| Vector similarity | Cosine, default threshold 0.1 |
+| Chunk size | 1500 chars, 200 overlap |
+| Graph database | Neo4j 5.0+ with vector indexes |
+| Graph visualisation | vis.js 9.1.0 |
+| File upload limit | 50 MB |
+| Chat rate limit | 30 req/min per IP |
+| KG build rate limit | 5 req/min per IP |
+
+---
+
+## Utility scripts
+
+| Script | Purpose |
+|--------|---------|
+| `start_server.py` | Start the FastAPI server on port 8004 |
+| `run_kg_generation.py` | Build a KG from the command line without the API |
+| `populate_neo4j.py` | Seed Neo4j with sample data |
+| `clear_neo4j.py` | Delete all nodes and relationships |
+| `cleanup_and_rebuild_kg.py` | Clear Neo4j and rebuild a KG in one step |
+| `graphDB_dataAccess.py` | Low-level Neo4j data access layer (named KG CRUD) |
+| `csv_processor.py` | `MedicalReportCSVProcessor` for medical-report CSVs |
+| `compare_extraction_methods.py` | Compare ontology-guided vs free-form LLM extraction |
+| `test_named_kg.py` | Integration test for named KG creation and retrieval |
+| `MIRAGE_adaptation.py` | Adapter for the MIRAGE biomedical benchmark |
+
+---
+
+## Docker
+
+```bash
+# Neo4j only (recommended for development)
+docker compose up -d neo4j
+
+# Full stack (Neo4j + API server)
+docker compose up -d
+
+# Logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Neo4j Browser → http://localhost:7474
+# Connect to bolt://localhost:7687
+```
+
+---
+
+## Configuration reference
+
+### LLM providers
+
+| Provider | Env var | Notes |
+|----------|---------|-------|
+| `openrouter` | `OPENROUTER_API_KEY` | Recommended; free-tier models available |
+| `openai` | `OPENAI_API_KEY` | GPT-3.5, GPT-4, GPT-4o |
+| `gemini` | `GEMINI_API_KEY` | Gemini Pro, Flash |
+| `ollama` | — | Local models; set `OLLAMA_HOST` if non-default |
+| `huggingface` | `HF_API_TOKEN` | HuggingFace Inference API |
+| `deepseek` | `DEEPSEEK_API_KEY` | DeepSeek Chat/Coder |
+
+### Embedding providers
+
+| Provider | Env var | Model |
+|----------|---------|-------|
+| `huggingface` (default) | — | `all-MiniLM-L6-v2`, runs locally |
+| `openai` | `OPENAI_API_KEY` | `text-embedding-ada-002` |
+| `vertexai` | GCP credentials | `textembedding-gecko` |
+
+### Processing tuning
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `CHUNK_SIZE` | `1500` | Characters per chunk |
+| `CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
+| `MAX_CHUNKS` | `50` | Max chunks processed per document |
+| `VECTOR_SIMILARITY_THRESHOLD` | `0.1` | Minimum cosine similarity for retrieval |
+| `MAX_WORKERS` | `4` | Parallel workers for batch processing |
+| `LLM_TIMEOUT_SECONDS` | `120` | Per-request LLM timeout |
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE) for details.
 
-*For support: [GitHub Issues](https://github.com/julka01/MediGraphRAG/issues)*
+*Issues and feature requests: [GitHub Issues](https://github.com/julka01/MediGraphRAG/issues)*
