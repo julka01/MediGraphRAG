@@ -1,21 +1,46 @@
-# MediGraphRAG
+# OntographRAG
 
-[![Version](https://img.shields.io/badge/version-1.0.0--rc1-blue.svg)](https://github.com/julka01/MediGraphRAG)
+[![Version](https://img.shields.io/badge/version-1.0.0--rc1-blue.svg)](https://github.com/julka01/OntographRAG)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/neo4j-5.0+-brightgreen.svg)](https://neo4j.com/)
 
 **Turn unstructured documents into schema-consistent knowledge graphs. Query them with RAG. Measure how much to trust the answers.**
 
-MediGraphRAG extracts entities and relationships from raw text guided by a custom ontology, stores the result in Neo4j, and answers natural-language questions using hybrid vector + graph retrieval. A built-in uncertainty pipeline flags answers the model isn't confident in before they reach users.
+OntographRAG extracts entities and relationships from raw text guided by a custom ontology, stores the result in Neo4j, and answers natural-language questions using hybrid vector + graph retrieval. A built-in uncertainty pipeline flags answers the model isn't confident in before they reach users.
+
+Works for any domain — research literature, legal documents, financial reports, technical manuals. Particularly powerful for **clinical and biomedical data**, where ontology-constrained extraction enables population-level evidence generation from patient records at scale.
+
+---
+
+## Use cases
+
+### Clinical intelligence and population-level evidence
+Supply a clinical ontology (SNOMED CT, ICD-10, HPO) and process patient notes, discharge summaries, or EHR exports in bulk. Because every patient's data is extracted into the *same schema*, the entire population becomes queryable as a single graph:
+
+```cypher
+-- Which comorbidities most frequently co-occur with hypertension in patients over 60?
+MATCH (p:Patient)-[:HAS_DIAGNOSIS]->(d:Diagnosis {name: "Hypertension"})
+      -[:CO_OCCURS_WITH]->(c:Diagnosis)
+WHERE p.age > 60
+RETURN c.name, count(*) AS frequency ORDER BY frequency DESC
+```
+
+Ask the same question in plain English via the RAG layer. The ontology is what makes this possible — without schema enforcement, "T2DM", "type 2 diabetes", and "DM2" land as different nodes and aggregation breaks.
+
+### Research and knowledge synthesis
+Process a corpus of papers, extract entities and relationships consistently across all documents, then ask cross-paper questions the individual documents couldn't answer alone.
+
+### Any domain with structured knowledge requirements
+Legal (case law entities), finance (company relationships), engineering (component hierarchies). Supply the domain ontology; OntographRAG handles the rest.
 
 ---
 
 ## What makes this different
 
-Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microsoft/graphrag)) let an LLM freely decide what to extract — producing inconsistent entity types, duplicate concepts, and graphs that drift between documents. MediGraphRAG takes the opposite approach: **you define the schema, the system respects it.**
+Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microsoft/graphrag)) let an LLM freely decide what to extract — producing inconsistent entity types, duplicate concepts, and graphs that drift between documents. OntographRAG takes the opposite approach: **you define the schema, the system respects it.**
 
-| | MediGraphRAG | Microsoft GraphRAG |
+| | OntographRAG | Microsoft GraphRAG |
 |---|---|---|
 | **Schema control** | Bring your own OWL/RDF ontology — entities and relationships are constrained to your types | LLM decides freely; no schema enforcement |
 | **Graph storage** | Neo4j — production graph DB with Cypher, vector indexes, persistent named KGs | Parquet files in a local directory |
@@ -30,7 +55,11 @@ Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microso
 ## Key features
 
 ### 1. Ontology-guided KG construction
-Supply a `.owl` / `.rdf` / `.ttl` ontology file and every extracted entity and relationship is validated against your schema. The same document processed twice produces the same graph shape. Without an ontology, extraction still works — the LLM infers types — but schema-constrained extraction is the differentiating capability.
+Supply a `.owl` / `.rdf` / `.ttl` ontology file and every extracted entity and relationship is validated against your schema. The same document processed twice produces the same graph shape. Across a corpus of documents, every entity lands in the same type hierarchy — enabling aggregation, comparison, and population-level queries that are impossible with free-form extraction.
+
+This is the core differentiator. Without schema enforcement, LLMs produce synonym explosion ("myocardial infarction", "heart attack", "MI", "AMI" as four separate nodes), type drift (the same concept classified differently across documents), and graphs that can't be meaningfully queried at scale. The ontology collapses all of this into a consistent, traversable structure.
+
+Without an ontology, extraction still works — the LLM infers types — but schema-constrained extraction is what unlocks population-level reasoning.
 
 ### 2. Neo4j as the graph store
 Graphs are persisted in Neo4j with:
@@ -65,8 +94,8 @@ Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRou
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/julka01/MediGraphRAG.git
-cd MediGraphRAG
+git clone https://github.com/julka01/OntographRAG.git
+cd OntographRAG
 uv sync          # creates .venv and installs all dependencies
 source .venv/bin/activate
 
@@ -440,7 +469,7 @@ Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced 
 ### Module layout
 
 ```
-medigraphrag_x/
+ontographrag/
 ├── api/
 │   ├── app.py                         # FastAPI application, all endpoints
 │   ├── csv_processor.py               # CSV bulk processing
@@ -549,4 +578,4 @@ docker compose down
 
 MIT. See [LICENSE](LICENSE) for details.
 
-*Issues and feature requests: [GitHub Issues](https://github.com/julka01/MediGraphRAG/issues)*
+*Issues and feature requests: [GitHub Issues](https://github.com/julka01/OntographRAG/issues)*
