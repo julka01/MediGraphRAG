@@ -1,6 +1,6 @@
 # OntographRAG
 
-[![Version](https://img.shields.io/badge/version-1.0.0--rc1-blue.svg)](https://github.com/julka01/OntographRAG)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/julka01/OntographRAG)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/neo4j-5.0+-brightgreen.svg)](https://neo4j.com/)
@@ -453,10 +453,12 @@ Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced 
 1. **Ingest** — file uploaded; PDF text extracted via PyMuPDF, plaintext decoded
 2. **Chunk** — overlapping text windows (`CHUNK_SIZE=1500`, `CHUNK_OVERLAP=200`)
 3. **Ontology load** — custom `.owl`/`.ttl` parsed (owlready2), or free-form extraction if none supplied
-4. **LLM extraction** — each chunk sent with an ontology-constrained prompt; entities and relationships returned as structured JSON
-5. **Ontology filter** — extracted types validated and normalised against the ontology schema
-6. **Embed** — chunk embeddings computed with `all-MiniLM-L6-v2` (384-dim, CPU) or OpenAI
-7. **Write** — nodes, relationships, and embeddings stored in Neo4j; progress streamed via SSE
+4. **LLM extraction** — each chunk sent with an ontology-constrained prompt; relationships and entities returned as structured JSON (relationships-first ordering prevents truncation data loss)
+5. **Cross-chunk extraction** — sliding window over adjacent chunk pairs; a second LLM call extracts relationships that span chunk boundaries
+6. **Entity harmonization** — duplicate entities merged by normalized text; most specific ontology type wins; stable UUID assigned per entity
+7. **Confidence filtering** — each relationship triple is scored by co-occurrence in source chunks; hallucinated triples (score < 0.25) are dropped
+8. **Embed** — chunk and entity embeddings computed with `all-MiniLM-L6-v2` (384-dim, CPU) or OpenAI
+9. **Write** — nodes, relationships, and embeddings stored in Neo4j; entities tagged with `kgName` for scoped loading; progress streamed via SSE
 
 ### RAG query pipeline
 
@@ -472,13 +474,17 @@ Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced 
 ontographrag/
 ├── api/
 │   ├── app.py                         # FastAPI application, all endpoints
-│   ├── csv_processor.py               # CSV bulk processing
 │   └── static/
 │       └── index.html                 # Single-page web UI
 ├── kg/
-│   └── builders/
-│       ├── ontology_guided_kg_creator.py   # Ontology-aware extraction (base)
-│       └── enhanced_kg_creator.py          # UnifiedOntologyGuidedKGCreator (API-facing)
+│   ├── builders/
+│   │   ├── ontology_guided_kg_creator.py   # OntologyGuidedKGCreator — core extraction, harmonization, Neo4j write
+│   │   └── enhanced_kg_creator.py          # UnifiedOntologyGuidedKGCreator — API-facing wrapper + CSV bulk ops
+│   ├── loaders/
+│   │   └── kg_loader.py               # KGLoader — reads KG from Neo4j by kgName
+│   └── utils/
+│       ├── common_functions.py        # Shared helpers (embedding, text normalization)
+│       └── constants.py               # Default values and Neo4j label constants
 ├── rag/
 │   └── systems/
 │       ├── enhanced_rag_system.py     # KG-RAG: hybrid vector + graph retrieval
