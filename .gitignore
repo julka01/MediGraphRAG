@@ -1,47 +1,65 @@
-# Python cache files
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
 
-# Environment files
+# Virtual environments
 .env
 .venv
 venv/
 env/
 
-# OS files
+# OS
 .DS_Store
 *.DS_Store
+Thumbs.db
 
-# Editor files
+# Editors
 .idea/
 .vscode/
+*.swp
+*.swo
 
-# Log files
+# Logs
 *.log
+logs/
 
-# Test files and generated outputs
+# ── Experiment datasets ─────────────────────────────────────────────────────
+# Raw dataset files (download instructions in experiments/README.md)
+MIRAGE/rawdata/
+data/
+
+# ── Experiment outputs ──────────────────────────────────────────────────────
+results/
+wandb/
+
+# ── Uploaded / processed files ──────────────────────────────────────────────
+uploads/
+chroma_db/
+vector_stores/
+kg_storage/
+*.sqlite3
+
+# ── Generated test/output artefacts ─────────────────────────────────────────
 test_*.txt
 test_*.json
 test_*.pdf
 kg_test.txt
 *_output.json
 
-# Uploads directory
-uploads/
+# ── Internal / generated docs ────────────────────────────────────────────────
+code_review.md
+KG_GENERATION_PIPELINE.md
 
-# Node modules
+# ── Nested repos / vendored libraries ────────────────────────────────────────
+semantic_uncertainty/
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
 node_modules/
-
-# Documentation and summary files
-BUG_FIXES_SUMMARY.md
-IMPROVEMENTS_README.md
-*_SUMMARY.md
-*_README.md
-
-# Temporary and generated files
-chroma_db/
-vector_stores/
-kg_storage/
-*.sqlite3
+apoc/
+*.tmp
