@@ -45,7 +45,7 @@ Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microso
 | **Schema control** | Bring your own OWL/RDF ontology — entities and relationships are constrained to your types | LLM decides freely; no schema enforcement |
 | **Graph storage** | Neo4j — production graph DB with Cypher, vector indexes, persistent named KGs | Parquet files in a local directory |
 | **Hallucination detection** | 8 uncertainty metrics including RS-UQ (novel) and semantic entropy | None |
-| **LLM providers** | OpenRouter, OpenAI, Gemini, Anthropic, Ollama, DeepSeek, HuggingFace | OpenAI / Azure OpenAI only |
+| **LLM providers** | OpenRouter, OpenAI, Gemini, Ollama, DeepSeek, HuggingFace | OpenAI / Azure OpenAI only |
 | **Retrieval** | Hybrid: vector similarity + graph traversal in one query | Community summarisation (global) or entity search (local) |
 | **Interface** | Web UI + REST API + Python library | CLI + Python library |
 | **Domain** | Any domain; ontology is user-supplied | General purpose but tuned for summarisation |
@@ -86,7 +86,7 @@ A dedicated pipeline computes 8 metrics per answer to flag low-confidence respon
 **Hypothesis:** ontology-constrained, deduplicated graph context lowers semantic entropy compared to vanilla RAG because the model receives less contradictory evidence.
 
 ### 5. Provider-agnostic LLM support
-Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRouter (free tier available), OpenAI, Google Gemini, Anthropic, Ollama (local), DeepSeek, HuggingFace. Switch model per request with no code changes.
+Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRouter (free tier available), OpenAI, Google Gemini, Ollama (local), DeepSeek, HuggingFace. Switch model per request with no code changes.
 
 ---
 
@@ -412,42 +412,6 @@ Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Web UI (index.html)                     │
-│   Graph panel (vis.js)  │  Chat panel  │  KG progress SSE   │
-└────────────────────────┬────────────────────────────────────┘
-                         │ HTTP / SSE
-┌────────────────────────▼────────────────────────────────────┐
-│               FastAPI server  ·  port 8004                   │
-│        CORS  ·  rate limiting  ·  optional API key auth      │
-└──────┬──────────────────────────────────────┬───────────────┘
-       │                                      │
-┌──────▼──────────────┐            ┌──────────▼──────────────┐
-│    KG builder        │            │      RAG system          │
-│                      │            │                          │
-│ OntologyGuidedKG     │            │ EnhancedRAGSystem        │
-│ Creator              │            │  ├ Vector search         │
-│  ├ Chunking          │            │  ├ Graph traversal       │
-│  ├ LLM extraction    │            │  └ LLM synthesis         │
-│  ├ Ontology filter   │            │                          │
-│  └ Neo4j write       │            │ VanillaRAGSystem         │
-└──────┬───────────────┘            └──────────┬──────────────┘
-       │                                       │
-┌──────▼───────────────────────────────────────▼─────────────┐
-│                     Neo4j graph database                     │
-│   Nodes: Entity · Document · Chunk                          │
-│   Relationships: typed and constrained by ontology          │
-│   Indexes: vector (384-dim) + full-text                     │
-└──────────────────────────────────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────────┐
-│                   LLM provider layer                         │
-│  OpenRouter · OpenAI · Gemini · Ollama · HuggingFace        │
-│  DeepSeek · Anthropic  (configured per request)             │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ### KG build pipeline
 
 1. **Ingest** — file uploaded; PDF text extracted via PyMuPDF, plaintext decoded
@@ -571,8 +535,8 @@ docker compose down
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `CHUNK_SIZE` | `1500` | Characters per chunk |
-| `CHUNK_OVERLAP` | `200` | Overlap between consecutive chunks |
+| `CHUNK_SIZE` | `1500` | Tokens per chunk |
+| `CHUNK_OVERLAP` | `200` | Token overlap between consecutive chunks |
 | `MAX_CHUNKS` | `50` | Max chunks processed per document |
 | `VECTOR_SIMILARITY_THRESHOLD` | `0.1` | Minimum cosine similarity for retrieval |
 | `MAX_WORKERS` | `4` | Parallel workers for batch processing |
