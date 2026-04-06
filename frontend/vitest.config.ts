@@ -10,6 +10,11 @@ export default mergeConfig(
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
       passWithNoTests: true,
+      environmentOptions: {
+        jsdom: {
+          url: 'http://localhost',
+        },
+      },
     },
   }),
 );

@@ -1,5 +1,28 @@
 import '@testing-library/jest-dom';
 
+// Node 25 exposes a native `localStorage` stub that lacks .clear/.setItem/.getItem
+// unless --localstorage-file is supplied. Override it with a real in-memory implementation
+// so that tests using jsdom localStorage work correctly.
+const localStorageStore: Record<string, string> = {};
+const localStorageMock: Storage = {
+  length: 0,
+  key: (index: number) => Object.keys(localStorageStore)[index] ?? null,
+  getItem: (key: string) => localStorageStore[key] ?? null,
+  setItem: (key: string, value: string) => {
+    localStorageStore[key] = value;
+    (localStorageMock as { length: number }).length = Object.keys(localStorageStore).length;
+  },
+  removeItem: (key: string) => {
+    delete localStorageStore[key];
+    (localStorageMock as { length: number }).length = Object.keys(localStorageStore).length;
+  },
+  clear: () => {
+    for (const k of Object.keys(localStorageStore)) delete localStorageStore[k];
+    (localStorageMock as { length: number }).length = 0;
+  },
+};
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
+
 // Stub vis-network CDN global
 const noop = () => {};
 
