@@ -26,7 +26,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4",
     "daisyui": "^5",
-    "jsdom": "^29.0.1",
+    "jsdom": "26",
     "tailwindcss": "^4",
     "typescript": "^6.0.2",
     "vite": "^6",

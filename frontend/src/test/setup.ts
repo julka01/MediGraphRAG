@@ -3,7 +3,7 @@ import '@testing-library/jest-dom';
 // Stub vis-network CDN global
 const noop = () => {};
 
-const mockCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : {};
+const mockCanvas = document.createElement('canvas');
 
 const mockNetwork = {
   destroy: noop,
