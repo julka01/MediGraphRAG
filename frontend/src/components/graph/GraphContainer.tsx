@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
 import { ProgressPanel } from '../kg/ProgressPanel';
@@ -19,9 +19,9 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<Record<string, unknown> | null>(null);
 
-  const handleNodeClick = (node: Record<string, unknown> | null) => {
+  const handleNodeClick = useCallback((node: Record<string, unknown> | null) => {
     setSelectedNode(node);
-  };
+  }, []);
 
   useGraph({
     containerRef,
