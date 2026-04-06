@@ -1,4 +1,4 @@
-export function confidenceEdgeColor(conf) {
+export function confidenceEdgeColor(conf: number | null | undefined): string | null {
   if (conf == null) return null;
   if (conf >= 0.8) return '#f1c40f';
   if (conf >= 0.5) return '#e67e22';
@@ -6,7 +6,17 @@ export function confidenceEdgeColor(conf) {
   return '#555e68';
 }
 
-export function getGraphTheme() {
+interface GraphTheme {
+  nodeText: string;
+  nodeTextDimmed: string;
+  edgeText: string;
+  edgeLabelBg: string;
+  dimmedNodeBg: string;
+  dimmedNodeBdr: string;
+  dimmedEdge: string;
+}
+
+export function getGraphTheme(): GraphTheme {
   const dark = document.body.dataset.theme === 'dark';
   return {
     nodeText:       dark ? '#ffffff' : '#1a1a1a',
@@ -19,6 +29,6 @@ export function getGraphTheme() {
   };
 }
 
-export function normName(s) {
+export function normName(s: string | undefined | null): string {
   return (s || '').toLowerCase().replace(/[_\s]+/g, ' ').trim();
 }

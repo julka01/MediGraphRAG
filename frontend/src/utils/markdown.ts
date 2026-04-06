@@ -1,11 +1,11 @@
-export function formatReasoningPath(text) {
+export function formatReasoningPath(text: string): string {
   return text
     .replace(/\n/g, '<br>')
     .replace(/[→—>⇒]/g, '<span class="reason-arrow">→</span>')
     .replace(/\b(triggers|yields|reveals|leads to|results in)\b/gi, '<span class="reason-connector">$1</span>');
 }
 
-export function formatMarkdown(text) {
+export function formatMarkdown(text: string): string {
   return text
     .replace(/\n/g, '<br>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
