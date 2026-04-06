@@ -8,11 +8,13 @@ const mockNetwork = {
   on: noop,
   off: noop,
   setOptions: noop,
+  redraw: noop,
   getScale: () => 1,
   getViewPosition: () => ({ x: 0, y: 0 }),
   fit: noop,
   moveTo: noop,
   body: { data: { nodes: { get: () => null }, edges: { get: () => null } } },
+  canvas: { frame: { canvas: document.createElement('canvas') } },
 };
 
 globalThis.vis = {
