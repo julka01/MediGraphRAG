@@ -1,7 +1,8 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
-/* View Transition animations */
+/* View Transition animations — CSS is ready but ViewTransition JSX is deferred
+   until React ships the component in stable (not available in React 19.2.x). */
 ::view-transition-old(.slide-from-right),
 ::view-transition-old(.slide-to-right) {
   animation: slide-to-right 200ms ease-in both;

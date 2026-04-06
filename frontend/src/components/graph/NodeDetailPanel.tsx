@@ -13,7 +13,12 @@ export function NodeDetailPanel({ node, nodeColor, onClose }: NodeDetailPanelPro
 
   return (
     <div className="absolute top-0 right-0 w-72 h-full bg-base-100 border-l border-base-300 shadow-lg z-20 overflow-y-auto p-4">
-      <button type="button" className="btn btn-ghost btn-xs btn-circle absolute top-2 right-2" onClick={onClose}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs btn-circle absolute top-2 right-2"
+        onClick={onClose}
+        aria-label="Close node details"
+      >
         ✕
       </button>
 

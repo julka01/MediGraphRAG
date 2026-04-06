@@ -16,16 +16,15 @@ export function useModels(defaultVendor: string, initialModels?: string[]): UseM
   const [selectedModel, setSelectedModel] = useState(() => selectDefault(defaultVendor, initialModels || []));
   const [loading, setLoading] = useState(false);
   const synced = useRef(!!initialModels?.length);
-  const vendorRef = useRef(defaultVendor);
 
   // Sync initial models when startup data arrives after first render
   useEffect(() => {
     if (!synced.current && initialModels && initialModels.length > 0) {
       synced.current = true;
       setModels(initialModels);
-      setSelectedModel(selectDefault(vendorRef.current, initialModels));
+      setSelectedModel(selectDefault(defaultVendor, initialModels));
     }
-  }, [initialModels]);
+  }, [initialModels, defaultVendor]);
 
   const fetchModels = useCallback(
     async (v?: string) => {
