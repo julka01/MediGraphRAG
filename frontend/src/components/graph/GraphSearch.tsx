@@ -4,9 +4,9 @@ import { useApp } from '../../context/AppContext';
 export function GraphSearch() {
   const { networkRef } = useApp();
   const [term, setTerm] = useState('');
-  const [matchCount, setMatchCount] = useState(null);
+  const [matchCount, setMatchCount] = useState<number | null>(null);
 
-  const performSearch = useCallback((searchTerm) => {
+  const performSearch = useCallback((searchTerm: string) => {
     const network = networkRef.current;
     if (!network) return;
 
@@ -15,28 +15,28 @@ export function GraphSearch() {
     const t = (searchTerm || '').toLowerCase().trim();
 
     if (!t) {
-      nodeDS.update(nodeDS.get().map((n) => ({ id: n.id, opacity: 1, hidden: false })));
-      edgeDS.update(edgeDS.get().map((e) => ({ id: e.id, opacity: 1, hidden: false })));
+      nodeDS.update(nodeDS.get().map((n: Record<string, unknown>) => ({ id: n.id, opacity: 1, hidden: false })));
+      edgeDS.update(edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })));
       setMatchCount(null);
       network.redraw();
       return;
     }
 
-    const matched = new Set();
-    const nodeUpdates = nodeDS.get().map((node) => {
+    const matched = new Set<string | number>();
+    const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
       const hit =
-        (node.label || '').toLowerCase().includes(t) ||
-        (node.title || '').toLowerCase().includes(t) ||
+        ((node.label as string) || '').toLowerCase().includes(t) ||
+        ((node.title as string) || '').toLowerCase().includes(t) ||
         JSON.stringify(node.properties || {}).toLowerCase().includes(t);
-      if (hit) matched.add(node.id);
+      if (hit) matched.add(node.id as string | number);
       return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
     });
     nodeDS.update(nodeUpdates);
 
-    const edgeUpdates = edgeDS.get().map((edge) => ({
+    const edgeUpdates = edgeDS.get().map((edge: Record<string, unknown>) => ({
       id: edge.id,
       hidden: false,
-      opacity: matched.has(edge.from) || matched.has(edge.to) ? 1 : 0.06,
+      opacity: matched.has(edge.from as string | number) || matched.has(edge.to as string | number) ? 1 : 0.06,
     }));
     edgeDS.update(edgeUpdates);
 
@@ -44,7 +44,7 @@ export function GraphSearch() {
     network.redraw();
   }, [networkRef]);
 
-  const handleInput = (e) => {
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setTerm(value);
     performSearch(value);

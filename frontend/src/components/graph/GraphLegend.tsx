@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import type { GraphNode, GraphRelationship } from '../../types/app';
 
 export function GraphLegend() {
   const { state } = useApp();
@@ -62,13 +63,13 @@ export function OverviewPanel() {
   const [collapsed, setCollapsed] = useState(false);
 
   const { nodeCounts, relCounts } = useMemo(() => {
-    const nc = {};
-    const rc = {};
-    (state.graphData?.nodes || []).forEach((n) => {
+    const nc: Record<string, number> = {};
+    const rc: Record<string, number> = {};
+    (state.graphData?.nodes || []).forEach((n: GraphNode) => {
       const label = n.labels?.[0] || 'Unknown';
       nc[label] = (nc[label] || 0) + 1;
     });
-    (state.graphData?.relationships || []).forEach((r) => {
+    (state.graphData?.relationships || []).forEach((r: GraphRelationship) => {
       const type = r.type || 'Unknown';
       rc[type] = (rc[type] || 0) + 1;
     });
@@ -77,11 +78,11 @@ export function OverviewPanel() {
 
   if (!state.graphData) return null;
 
-  const handleNodeFilter = (label) => {
+  const handleNodeFilter = (label: string) => {
     dispatch({ type: 'SET_FILTERS', nodeTypes: [label], relationshipTypes: [] });
   };
 
-  const handleRelFilter = (type) => {
+  const handleRelFilter = (type: string) => {
     dispatch({ type: 'SET_FILTERS', nodeTypes: [], relationshipTypes: [type] });
   };
 

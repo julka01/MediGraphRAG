@@ -8,20 +8,25 @@ import { GraphControls } from './GraphControls';
 import { NodeDetailPanel } from './NodeDetailPanel';
 import { ProgressPanel } from '../kg/ProgressPanel';
 
-export function GraphContainer({ progressActive, onProgressClose }) {
-  const { state, dispatch, networkRef, idCounterRef, initialViewRef } = useApp();
-  const containerRef = useRef(null);
-  const [selectedNode, setSelectedNode] = useState(null);
+interface GraphContainerProps {
+  progressActive: boolean;
+  onProgressClose: () => void;
+}
 
-  const handleNodeClick = (node) => {
+export function GraphContainer({ progressActive, onProgressClose }: GraphContainerProps) {
+  const { state, dispatch, networkRef, idCounterRef, initialViewRef } = useApp();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [selectedNode, setSelectedNode] = useState<Record<string, unknown> | null>(null);
+
+  const handleNodeClick = (node: Record<string, unknown> | null) => {
     setSelectedNode(node);
   };
 
-  useGraph(containerRef, state, dispatch, networkRef, idCounterRef, initialViewRef, handleNodeClick);
+  useGraph({ containerRef, appState: state, dispatch, networkRef, idCounterRef, initialViewRef, onNodeClick: handleNodeClick });
 
   const hasGraph = !!state.graphData;
   const nodeColor = selectedNode
-    ? state.nodeTypeColors[selectedNode.labels?.[0] || 'Unknown'] || '#428bca'
+    ? state.nodeTypeColors[(selectedNode.labels as string[] | undefined)?.[0] || 'Unknown'] || '#428bca'
     : '#428bca';
 
   return (

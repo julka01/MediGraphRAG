@@ -4,8 +4,8 @@ import { useApp } from '../../context/AppContext';
 export function GraphFilters() {
   const { state, dispatch } = useApp();
   const [open, setOpen] = useState(false);
-  const [checkedNodes, setCheckedNodes] = useState(new Set());
-  const [checkedRels, setCheckedRels] = useState(new Set());
+  const [checkedNodes, setCheckedNodes] = useState<Set<string>>(new Set());
+  const [checkedRels, setCheckedRels] = useState<Set<string>>(new Set());
   const [initialized, setInitialized] = useState(false);
 
   const nodeTypes = useMemo(() => Object.keys(state.nodeTypeColors), [state.nodeTypeColors]);
@@ -17,7 +17,7 @@ export function GraphFilters() {
     setInitialized(true);
   }
 
-  const toggleNode = (type) => {
+  const toggleNode = (type: string) => {
     setCheckedNodes((prev) => {
       const next = new Set(prev);
       if (next.has(type)) next.delete(type);
@@ -26,7 +26,7 @@ export function GraphFilters() {
     });
   };
 
-  const toggleRel = (type) => {
+  const toggleRel = (type: string) => {
     setCheckedRels((prev) => {
       const next = new Set(prev);
       if (next.has(type)) next.delete(type);

@@ -48,7 +48,8 @@ export function GraphControls() {
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (error) {
-      showError(dispatch, 'PNG export failed: ' + error.message);
+      const msg = error instanceof Error ? error.message : String(error);
+      showError(dispatch, 'PNG export failed: ' + msg);
     }
   };
 
