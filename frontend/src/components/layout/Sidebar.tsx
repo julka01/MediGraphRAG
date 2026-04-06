@@ -4,8 +4,17 @@ import { KGPanel } from '../kg/KGPanel';
 import { OverviewPanel } from '../graph/GraphLegend';
 import { HealthDot } from '../ui/HealthDot';
 import { useTheme } from '../../context/ThemeContext';
+import type { UseModelsReturn } from '../../types/app';
 
-export function Sidebar({ kgModelHook, ragModelHook, onNeo4jOpen, onProgressStart, onProgressStop }) {
+interface SidebarProps {
+  kgModelHook: UseModelsReturn;
+  ragModelHook: UseModelsReturn;
+  onNeo4jOpen: () => void;
+  onProgressStart: () => void;
+  onProgressStop: () => void;
+}
+
+export function Sidebar({ kgModelHook, ragModelHook, onNeo4jOpen, onProgressStart, onProgressStop }: SidebarProps) {
   const { state, dispatch } = useApp();
   const { theme, toggleTheme } = useTheme();
 

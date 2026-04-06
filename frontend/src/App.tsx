@@ -8,6 +8,7 @@ import { GraphContainer } from './components/graph/GraphContainer';
 import { ChatPanel } from './components/chat/ChatPanel';
 import { Neo4jForm } from './components/kg/Neo4jForm';
 import { Notifications, showSuccess } from './components/ui/Notifications';
+import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
 
 export default function App() {
   const { state, dispatch } = useApp();
@@ -25,10 +26,10 @@ export default function App() {
   }, [dispatch]);
 
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        const textarea = document.querySelector('textarea[placeholder="Ask a question…"]');
+        const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Ask a question…"]');
         if (textarea) { textarea.focus(); textarea.select(); }
       }
     };
@@ -36,7 +37,7 @@ export default function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleNeo4jLoaded = useCallback((result, kgFilter, stats) => {
+  const handleNeo4jLoaded = useCallback((result: LoadNeo4jResponse, kgFilter: string, stats: Neo4jStats) => {
     dispatch({ type: 'SET_KG', kgId: result.kg_id, kgName: result.kg_name || kgFilter || null });
     if (result.kg_name) localStorage.setItem('currentKGName', result.kg_name);
     dispatch({ type: 'SET_GRAPH_DATA', data: result.graph_data });
@@ -53,6 +54,8 @@ export default function App() {
 
   const kgFlex = state.kgExpanded ? 1 : 1.6;
   const chatHidden = state.kgExpanded;
+
+  void theme; // used by ThemeContext to apply data-theme attribute
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base-100 text-base-content">

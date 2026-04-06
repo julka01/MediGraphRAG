@@ -1,3 +1,9 @@
+/* CSS modules */
+declare module '*.css' {
+  const styles: Record<string, string>;
+  export default styles;
+}
+
 /* vis-network (loaded via CDN) */
 declare namespace vis {
   class DataSet<T = Record<string, unknown>> {
