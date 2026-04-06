@@ -1,8 +1,9 @@
 import { createContext, useContext, useReducer, useRef } from 'react';
+import type { AppState, AppAction, AppContextValue, ViewState } from '../types/app';
 
-const AppContext = createContext();
+const AppContext = createContext<AppContextValue | null>(null);
 
-const initialState = {
+const initialState: AppState = {
   currentKGId: null,
   currentKGName: null,
   kgList: [],
@@ -22,7 +23,7 @@ const initialState = {
   notification: null,
 };
 
-function appReducer(state, action) {
+function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_KG':
       return { ...state, currentKGId: action.kgId, currentKGName: action.kgName };
@@ -83,11 +84,11 @@ function appReducer(state, action) {
   }
 }
 
-export function AppProvider({ children }) {
+export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
-  const networkRef = useRef(null);
-  const idCounterRef = useRef(0);
-  const initialViewRef = useRef(null);
+  const networkRef = useRef<vis.Network | null>(null);
+  const idCounterRef = useRef<number>(0);
+  const initialViewRef = useRef<ViewState | null>(null);
 
   return (
     <AppContext.Provider value={{ state, dispatch, networkRef, idCounterRef, initialViewRef }}>
@@ -96,7 +97,7 @@ export function AppProvider({ children }) {
   );
 }
 
-export function useApp() {
+export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
