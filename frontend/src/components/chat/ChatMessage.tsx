@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 interface ChatMessageProps {
   message: string;
@@ -6,7 +6,7 @@ interface ChatMessageProps {
   timestamp?: string;
 }
 
-export function ChatMessage({ message, type, timestamp }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, type, timestamp }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const isUser = type === 'user';
   const isAI = type === 'ai';
@@ -43,4 +43,4 @@ export function ChatMessage({ message, type, timestamp }: ChatMessageProps) {
       {timestamp && <div className="chat-footer opacity-50 text-xs">{timestamp}</div>}
     </div>
   );
-}
+});

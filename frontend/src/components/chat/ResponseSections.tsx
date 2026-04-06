@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
 import { formatMarkdown, formatReasoningPath } from '../../utils/markdown';
 
@@ -35,7 +35,7 @@ interface ResponseSectionsProps {
   sourceChip?: string;
 }
 
-export function ResponseSections({ sections, sourceChip }: ResponseSectionsProps) {
+export const ResponseSections = memo(function ResponseSections({ sections, sourceChip }: ResponseSectionsProps) {
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
@@ -54,14 +54,14 @@ export function ResponseSections({ sections, sourceChip }: ResponseSectionsProps
       )}
     </div>
   );
-}
+});
 
 interface SourcesSectionProps {
   reasoningEdges?: ReasoningEdge[];
   sourceEntities?: SourceEntity[];
 }
 
-export function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectionProps) {
+export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectionProps) {
   const [expanded, setExpanded] = useState(false);
   if (!reasoningEdges?.length && !sourceEntities?.length) return null;
 
@@ -108,4 +108,4 @@ export function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectio
       )}
     </div>
   );
-}
+});
