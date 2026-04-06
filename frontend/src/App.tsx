@@ -1,4 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { OverviewPanel } from './components/graph/GraphLegend';
+import { KGPanel } from './components/kg/KGPanel';
+import { ModelSelector } from './components/kg/ModelSelector';
 import { Neo4jForm } from './components/kg/Neo4jForm';
 import { MainLayout } from './components/layout/MainLayout';
 import { Sidebar } from './components/layout/Sidebar';
@@ -88,14 +91,24 @@ export default function App() {
         </button>
       )}
 
-      <Sidebar
-        kgModelHook={kgModelHook}
-        ragModelHook={ragModelHook}
-        onNeo4jOpen={() => setNeo4jOpen(true)}
-        onProgressStart={() => setProgressActive(true)}
-        onProgressStop={() => setProgressActive(false)}
-        healthData={startup.health}
-      />
+      <Sidebar>
+        <Sidebar.Header healthData={startup.health} />
+        <Sidebar.Section title="Knowledge Graph">
+          <ModelSelector label="KG" vendorHook={kgModelHook} />
+          <div className="mt-2">
+            <KGPanel
+              kgModelHook={kgModelHook}
+              onNeo4jOpen={() => setNeo4jOpen(true)}
+              onProgressStart={() => setProgressActive(true)}
+              onProgressStop={() => setProgressActive(false)}
+            />
+          </div>
+        </Sidebar.Section>
+        <Sidebar.Section title="RAG Model">
+          <ModelSelector label="RAG" vendorHook={ragModelHook} />
+        </Sidebar.Section>
+        <OverviewPanel />
+      </Sidebar>
 
       <MainLayout
         layout={state.layout ?? (state.kgExpanded ? 'graph-only' : 'split')}

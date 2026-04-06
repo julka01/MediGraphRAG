@@ -1,30 +1,15 @@
+import type { ReactNode } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
-import type { HealthResponse, UseModelsReturn } from '../../types/app';
-import { OverviewPanel } from '../graph/GraphLegend';
-import { KGPanel } from '../kg/KGPanel';
-import { ModelSelector } from '../kg/ModelSelector';
+import type { HealthResponse } from '../../types/app';
 import { HealthDot } from '../ui/HealthDot';
 
 interface SidebarProps {
-  kgModelHook: UseModelsReturn;
-  ragModelHook: UseModelsReturn;
-  onNeo4jOpen: () => void;
-  onProgressStart: () => void;
-  onProgressStop: () => void;
-  healthData?: HealthResponse | null;
+  children: ReactNode;
 }
 
-export function Sidebar({
-  kgModelHook,
-  ragModelHook,
-  onNeo4jOpen,
-  onProgressStart,
-  onProgressStop,
-  healthData,
-}: SidebarProps) {
+function SidebarRoot({ children }: SidebarProps) {
   const { state, dispatch } = useApp();
-  const { theme, toggleTheme } = useTheme();
 
   return (
     <div
@@ -37,38 +22,48 @@ export function Sidebar({
         className="absolute top-2 -right-6 z-30 btn btn-ghost btn-xs"
         onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
         title={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {state.sidebarCollapsed ? '›' : '‹'}
       </button>
 
-      <div className="p-3 space-y-4">
-        <div className="flex items-center justify-between">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme}>
-            {theme === 'dark' ? '🌙' : '☀️'}
-          </button>
-          <HealthDot initialData={healthData} />
-        </div>
-
-        <div>
-          <h3 className="font-semibold text-sm mb-2">Knowledge Graph</h3>
-          <ModelSelector label="KG" vendorHook={kgModelHook} />
-          <div className="mt-2">
-            <KGPanel
-              kgModelHook={kgModelHook}
-              onNeo4jOpen={onNeo4jOpen}
-              onProgressStart={onProgressStart}
-              onProgressStop={onProgressStop}
-            />
-          </div>
-        </div>
-
-        <div>
-          <h3 className="font-semibold text-sm mb-2">RAG Model</h3>
-          <ModelSelector label="RAG" vendorHook={ragModelHook} />
-        </div>
-
-        <OverviewPanel />
-      </div>
+      <div className="p-3 space-y-4">{children}</div>
     </div>
   );
 }
+
+interface SidebarHeaderProps {
+  healthData?: HealthResponse | null;
+}
+
+function SidebarHeader({ healthData }: SidebarHeaderProps) {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <div className="flex items-center justify-between">
+      <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme} aria-label="Toggle theme">
+        {theme === 'dark' ? '🌙' : '☀️'}
+      </button>
+      <HealthDot initialData={healthData} />
+    </div>
+  );
+}
+
+interface SidebarSectionProps {
+  title: string;
+  children: ReactNode;
+}
+
+function SidebarSection({ title, children }: SidebarSectionProps) {
+  return (
+    <div>
+      <h3 className="font-semibold text-sm mb-2">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+export const Sidebar = Object.assign(SidebarRoot, {
+  Header: SidebarHeader,
+  Section: SidebarSection,
+});
