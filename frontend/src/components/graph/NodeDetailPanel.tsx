@@ -13,11 +13,16 @@ export function NodeDetailPanel({ node, nodeColor, onClose }: NodeDetailPanelPro
 
   return (
     <div className="absolute top-0 right-0 w-72 h-full bg-base-100 border-l border-base-300 shadow-lg z-20 overflow-y-auto p-4">
-      <button className="btn btn-ghost btn-xs btn-circle absolute top-2 right-2" onClick={onClose}>✕</button>
+      <button type="button" className="btn btn-ghost btn-xs btn-circle absolute top-2 right-2" onClick={onClose}>
+        ✕
+      </button>
 
       <div className="font-bold text-sm mt-4 mb-1">{(node.label as string) || String(node.originalId)}</div>
 
-      <span className="badge badge-sm" style={{ background: nodeColor + '33', color: nodeColor, border: `1px solid ${nodeColor}55` }}>
+      <span
+        className="badge badge-sm"
+        style={{ background: `${nodeColor}33`, color: nodeColor, border: `1px solid ${nodeColor}55` }}
+      >
         {nodeType}
       </span>
 

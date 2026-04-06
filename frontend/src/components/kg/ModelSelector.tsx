@@ -21,28 +21,41 @@ export function ModelSelector({ label, vendorHook }: ModelSelectorProps) {
 
   useEffect(() => {
     fetchModels(vendor);
-  }, []);
+  }, [vendor, fetchModels]);
 
   return (
     <div className="space-y-2">
       <fieldset className="fieldset">
         <legend className="fieldset-legend text-xs">{label} Vendor</legend>
-        <select className="select select-bordered select-sm w-full" value={vendor} onChange={(e) => changeVendor(e.target.value)}>
+        <select
+          className="select select-bordered select-sm w-full"
+          value={vendor}
+          onChange={(e) => changeVendor(e.target.value)}
+        >
           {VENDORS.map((v) => (
-            <option key={v.value} value={v.value}>{v.label}</option>
+            <option key={v.value} value={v.value}>
+              {v.label}
+            </option>
           ))}
         </select>
       </fieldset>
       <fieldset className="fieldset">
         <legend className="fieldset-legend text-xs">{label} Model</legend>
-        <select className="select select-bordered select-sm w-full" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} disabled={loading}>
+        <select
+          className="select select-bordered select-sm w-full"
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+          disabled={loading}
+        >
           {loading ? (
             <option value="">Loading models...</option>
           ) : models.length === 0 ? (
             <option value="">No models available</option>
           ) : (
             models.map((m) => (
-              <option key={m} value={m}>{formatModelName(m, vendor)}</option>
+              <option key={m} value={m}>
+                {formatModelName(m, vendor)}
+              </option>
             ))
           )}
         </select>

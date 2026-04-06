@@ -1,6 +1,6 @@
 import { useState } from 'react';
+import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
 import { formatMarkdown, formatReasoningPath } from '../../utils/markdown';
-import type { ResponseSections as ResponseSectionsType, ReasoningEdge, SourceEntity } from '../../types/app';
 
 interface SectionProps {
   title: string;
@@ -15,10 +15,17 @@ function Section({ title, content, defaultExpanded = false, formatter = formatMa
 
   return (
     <div className="mt-2">
-      <button className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start" onClick={() => setExpanded(!expanded)}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
+        onClick={() => setExpanded(!expanded)}
+      >
         {expanded ? '▾' : '▸'} {title}
       </button>
-      {expanded && <div className="pl-4 text-sm mt-1" dangerouslySetInnerHTML={{ __html: formatter(content) }} />}
+      {expanded && (
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: content is sanitized markdown HTML from the server
+        <div className="pl-4 text-sm mt-1" dangerouslySetInnerHTML={{ __html: formatter(content) }} />
+      )}
     </div>
   );
 }
@@ -42,6 +49,7 @@ export function ResponseSections({ sections, sourceChip }: ResponseSectionsProps
           <Section title="Reasoning path" content={sections.reasoning} formatter={formatReasoningPath} />
         </>
       ) : (
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: fallback is sanitized markdown HTML from the server
         <div className="text-sm" dangerouslySetInnerHTML={{ __html: formatMarkdown(sections.fallback || '') }} />
       )}
     </div>
@@ -67,14 +75,21 @@ export function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectio
 
   return (
     <div className="mt-2">
-      <button className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start" onClick={() => setExpanded(!expanded)}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
+        onClick={() => setExpanded(!expanded)}
+      >
         {expanded ? '▾' : '▸'} Sources
       </button>
       {expanded && (
         <div className="pl-4 mt-1 space-y-1 text-xs">
           {uniqueEdges.length > 0 ? (
-            uniqueEdges.map((edge, i) => (
-              <div key={i} className="flex items-center gap-1 flex-wrap">
+            uniqueEdges.map((edge) => (
+              <div
+                key={`${edge.from_name || edge.from}|${edge.relationship}|${edge.to_name || edge.to}`}
+                className="flex items-center gap-1 flex-wrap"
+              >
                 <span className="badge badge-xs badge-outline">{edge.from_name || edge.from || '?'}</span>
                 <span className="opacity-50">──{(edge.relationship || 'CONNECTED_TO').replace(/_/g, ' ')}──▶</span>
                 <span className="badge badge-xs badge-outline">{edge.to_name || edge.to || '?'}</span>
@@ -83,7 +98,9 @@ export function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectio
           ) : (
             <div className="flex flex-wrap gap-1">
               {[...new Set((sourceEntities || []).map((e) => e.description || e.id).filter(Boolean))].map((name) => (
-                <span key={name} className="badge badge-xs badge-outline">{name}</span>
+                <span key={name} className="badge badge-xs badge-outline">
+                  {name}
+                </span>
               ))}
             </div>
           )}

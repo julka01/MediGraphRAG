@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useRef } from 'react';
-import type { AppState, AppAction, AppContextValue, ViewState } from '../types/app';
+import type { AppAction, AppContextValue, AppState, ViewState } from '../types/app';
 
 const AppContext = createContext<AppContextValue | null>(null);
 
@@ -75,9 +75,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'CLEAR_KG':
       return {
         ...state,
-        currentKGId: null, currentKGName: null, graphData: null, fullGraphData: null,
-        highlightedNodes: new Set(), nodeTypeColors: {}, relationshipTypeColors: {},
-        currentFilters: { nodeTypes: new Set(), relationshipTypes: new Set() }, clusters: {},
+        currentKGId: null,
+        currentKGName: null,
+        graphData: null,
+        fullGraphData: null,
+        highlightedNodes: new Set(),
+        nodeTypeColors: {},
+        relationshipTypeColors: {},
+        currentFilters: { nodeTypes: new Set(), relationshipTypes: new Set() },
+        clusters: {},
       };
     default:
       return state;

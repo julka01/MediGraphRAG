@@ -1,14 +1,20 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
-import { ChatMessage } from './ChatMessage';
+import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
 import { ChatInput } from './ChatInput';
+import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
 import { ResponseSections, SourcesSection } from './ResponseSections';
-import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
 
 function parseResponse(text: string): ResponseSectionsType {
-  const sections: ResponseSectionsType = { recommendation: '', reasoning: '', evidence: '', nextSteps: '', fallback: '' };
+  const sections: ResponseSectionsType = {
+    recommendation: '',
+    reasoning: '',
+    evidence: '',
+    nextSteps: '',
+    fallback: '',
+  };
   const lines = text.split('\n');
   let currentSection: keyof ResponseSectionsType | '' = '';
   let currentContent: string[] = [];
@@ -17,16 +23,20 @@ function parseResponse(text: string): ResponseSectionsType {
     const trimmed = line.trim();
     if (trimmed.toUpperCase().includes('RECOMMENDATION/SUMMARY') && trimmed.includes('#')) {
       if (currentSection) sections[currentSection] = currentContent.join('\n').trim();
-      currentContent = []; currentSection = 'recommendation';
+      currentContent = [];
+      currentSection = 'recommendation';
     } else if (trimmed.toUpperCase().includes('REASONING PATH') && trimmed.includes('#')) {
       if (currentSection) sections[currentSection] = currentContent.join('\n').trim();
-      currentContent = []; currentSection = 'reasoning';
+      currentContent = [];
+      currentSection = 'reasoning';
     } else if (trimmed.toUpperCase().includes('COMBINED EVIDENCE') && trimmed.includes('#')) {
       if (currentSection) sections[currentSection] = currentContent.join('\n').trim();
-      currentContent = []; currentSection = 'evidence';
+      currentContent = [];
+      currentSection = 'evidence';
     } else if (trimmed.toUpperCase().includes('NEXT STEPS') && trimmed.includes('#')) {
       if (currentSection) sections[currentSection] = currentContent.join('\n').trim();
-      currentContent = []; currentSection = 'nextSteps';
+      currentContent = [];
+      currentSection = 'nextSteps';
     } else if (currentSection && trimmed) {
       currentContent.push(trimmed);
     }
@@ -53,7 +63,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
       if (dist < 80) box.scrollTop = box.scrollHeight;
     }
-  }, [messages]);
+  }, []);
 
   const handleSend = async (question: string) => {
     try {
@@ -85,12 +95,21 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       const reasoningEdges = result.info?.entities?.reasoning_edges || [];
       const sourceEntities = result.info?.entities?.used_entities || [];
 
-      addMessage({ type: 'ai', message: cleanedText, ts: Date.now(), sections, sourceChip, reasoningEdges, sourceEntities });
+      addMessage({
+        type: 'ai',
+        message: cleanedText,
+        ts: Date.now(),
+        sections,
+        sourceChip,
+        reasoningEdges,
+        sourceEntities,
+      });
     } catch (error) {
       const err = error as Error;
-      const msg = err.name === 'AbortError'
-        ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
-        : `Error: ${err.message}`;
+      const msg =
+        err.name === 'AbortError'
+          ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
+          : `Error: ${err.message}`;
       addMessage({ type: 'error', message: msg, ts: Date.now() });
     }
   };
@@ -105,8 +124,17 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
           {state.currentKGName && <span className="text-xs opacity-50">— {state.currentKGName}</span>}
         </div>
         <div className="flex gap-1">
-          <button className="btn btn-ghost btn-xs" onClick={clearChat}>Clear Chat</button>
-          <button className="btn btn-ghost btn-xs" onClick={() => exportChat(state.currentKGName)} title="Export as Markdown">↓ MD</button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={clearChat}>
+            Clear Chat
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs"
+            onClick={() => exportChat(state.currentKGName)}
+            title="Export as Markdown"
+          >
+            ↓ MD
+          </button>
         </div>
       </div>
 
@@ -115,23 +143,36 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
           <ChatSuggestions onSelect={handleSend} />
         ) : (
           messages.map((msg, i) => {
+            // ts may not be unique if messages arrive in the same ms; use index as tiebreaker
+            const msgKey = `${msg.ts ?? 0}-${i}`;
             if (msg.type === 'ai' && msg.sections) {
               return (
-                <div key={i} className="chat chat-start">
+                <div key={msgKey} className="chat chat-start">
                   <div className="chat-bubble text-sm">
                     <ResponseSections sections={msg.sections} sourceChip={msg.sourceChip} />
                     <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
                   </div>
-                  {msg.ts && <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>}
+                  {msg.ts && (
+                    <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
+                  )}
                 </div>
               );
             }
-            return <ChatMessage key={i} message={msg.message} type={msg.type} timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined} />;
+            return (
+              <ChatMessage
+                key={msgKey}
+                message={msg.message}
+                type={msg.type}
+                timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
+              />
+            );
           })
         )}
         {sending && (
           <div className="chat chat-start">
-            <div className="chat-bubble chat-bubble-ghost"><span className="loading loading-dots loading-xs" /></div>
+            <div className="chat-bubble chat-bubble-ghost">
+              <span className="loading loading-dots loading-xs" />
+            </div>
           </div>
         )}
       </div>

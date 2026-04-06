@@ -15,7 +15,14 @@ export function ChatSuggestions({ onSelect }: ChatSuggestionsProps) {
       <div className="text-sm opacity-60">Ask a question about the loaded knowledge graph</div>
       <div className="flex flex-wrap gap-2 justify-center">
         {SUGGESTIONS.map((text) => (
-          <button key={text} className="btn btn-ghost btn-sm text-xs normal-case" onClick={() => onSelect(text)}>{text}</button>
+          <button
+            type="button"
+            key={text}
+            className="btn btn-ghost btn-sm text-xs normal-case"
+            onClick={() => onSelect(text)}
+          >
+            {text}
+          </button>
         ))}
       </div>
     </div>

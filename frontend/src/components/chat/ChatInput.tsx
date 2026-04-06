@@ -32,7 +32,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         disabled={disabled}
         rows={1}
       />
-      <button className="btn btn-primary btn-sm self-end" onClick={handleSend} disabled={disabled}>
+      <button type="button" className="btn btn-primary btn-sm self-end" onClick={handleSend} disabled={disabled}>
         {disabled ? <span className="loading loading-spinner loading-xs" /> : 'Send'}
       </button>
     </div>

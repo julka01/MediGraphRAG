@@ -1,12 +1,10 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { Theme, ThemeContextValue } from '../types/app';
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem('kg-theme') as Theme) || 'dark'
-  );
+  const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('kg-theme') as Theme) || 'dark');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -19,11 +17,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('kg-theme', next);
   };
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme(): ThemeContextValue {

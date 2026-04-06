@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { showError } from '../ui/Notifications';
 import { useApp } from '../../context/AppContext';
+import { showError } from '../ui/Notifications';
 
 interface FileUploadProps {
   onFileSelected: (file: File) => void;
@@ -39,8 +39,12 @@ export function FileUpload({ onFileSelected, onOntologySelected }: FileUploadPro
       <input ref={fileRef} type="file" accept=".pdf,.txt,.json,.csv" className="hidden" onChange={handleFileChange} />
       <input ref={ontologyRef} type="file" accept=".json,.owl" className="hidden" onChange={handleOntologyChange} />
       <div className="flex gap-2">
-        <button className="btn btn-primary btn-sm flex-1" onClick={() => fileRef.current?.click()}>Select File</button>
-        <button className="btn btn-ghost btn-sm" onClick={() => ontologyRef.current?.click()}>Ontology</button>
+        <button type="button" className="btn btn-primary btn-sm flex-1" onClick={() => fileRef.current?.click()}>
+          Select File
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => ontologyRef.current?.click()}>
+          Ontology
+        </button>
       </div>
       {fileName && <div className="text-xs mt-1 opacity-70">Selected: {fileName}</div>}
       {ontologyName && <div className="text-xs mt-1 opacity-70">Ontology: {ontologyName}</div>}

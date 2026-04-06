@@ -22,10 +22,7 @@ export function Notifications() {
     <div className="toast toast-end toast-bottom z-50">
       <div className={`alert ${alertClass} shadow-lg`}>
         <span>{notif.message}</span>
-        <button
-          className="btn btn-ghost btn-xs"
-          onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}
-        >
+        <button type="button" className="btn btn-ghost btn-xs" onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}>
           ✕
         </button>
       </div>

@@ -21,7 +21,11 @@ export function GraphControls() {
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
     setTimeout(() => {
       if (initialViewRef.current?.position && initialViewRef.current?.scale) {
-        network.moveTo({ position: initialViewRef.current.position, scale: initialViewRef.current.scale, animation: true });
+        network.moveTo({
+          position: initialViewRef.current.position,
+          scale: initialViewRef.current.scale,
+          animation: true,
+        });
       } else {
         network.fit({ animation: true });
       }
@@ -40,7 +44,10 @@ export function GraphControls() {
   };
 
   const handleExportPNG = () => {
-    if (!network) { showError(dispatch, 'Please load a knowledge graph first'); return; }
+    if (!network) {
+      showError(dispatch, 'Please load a knowledge graph first');
+      return;
+    }
     try {
       const canvas = network.canvas.frame.canvas;
       const link = document.createElement('a');
@@ -49,15 +56,18 @@ export function GraphControls() {
       link.click();
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      showError(dispatch, 'PNG export failed: ' + msg);
+      showError(dispatch, `PNG export failed: ${msg}`);
     }
   };
 
   const handleExportJSON = () => {
-    if (!state.graphData) { showError(dispatch, 'Please load a knowledge graph first'); return; }
+    if (!state.graphData) {
+      showError(dispatch, 'Please load a knowledge graph first');
+      return;
+    }
     try {
       const dataStr = JSON.stringify(state.graphData, null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+      const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
       const link = document.createElement('a');
       link.setAttribute('href', dataUri);
       link.setAttribute('download', `knowledge_graph_${new Date().toISOString().split('T')[0]}.json`);
@@ -75,31 +85,60 @@ export function GraphControls() {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       <div className="join">
-        <button className="btn btn-ghost btn-xs join-item" onClick={handleZoomIn} title="Zoom in">+</button>
-        <button className="btn btn-ghost btn-xs join-item" onClick={handleZoomOut} title="Zoom out">−</button>
-        <button className="btn btn-ghost btn-xs join-item" onClick={handleResetZoom} title="Reset view">↺</button>
+        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomIn} title="Zoom in">
+          +
+        </button>
+        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomOut} title="Zoom out">
+          −
+        </button>
+        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleResetZoom} title="Reset view">
+          ↺
+        </button>
       </div>
 
       <label className="flex items-center gap-1 cursor-pointer text-xs">
-        <input type="checkbox" className="toggle toggle-xs" checked={state.physicsEnabled} onChange={handlePhysicsToggle} />
+        <input
+          type="checkbox"
+          className="toggle toggle-xs"
+          checked={state.physicsEnabled}
+          onChange={handlePhysicsToggle}
+        />
         Physics
       </label>
 
       <label className="flex items-center gap-1 cursor-pointer text-xs">
-        <input type="checkbox" className="toggle toggle-xs" checked={state.showEdgeLabels} onChange={handleEdgeLabelsToggle} />
+        <input
+          type="checkbox"
+          className="toggle toggle-xs"
+          checked={state.showEdgeLabels}
+          onChange={handleEdgeLabelsToggle}
+        />
         Labels
       </label>
 
-      <select className="select select-ghost select-xs" value={state.nodeSizeMetric} onChange={(e) => dispatch({ type: 'SET_NODE_SIZE_METRIC', metric: e.target.value })}>
+      <select
+        className="select select-ghost select-xs"
+        value={state.nodeSizeMetric}
+        onChange={(e) => dispatch({ type: 'SET_NODE_SIZE_METRIC', metric: e.target.value })}
+      >
         <option value="degree">Size: Degree</option>
         <option value="uniform">Size: Uniform</option>
       </select>
 
-      <button className="btn btn-ghost btn-xs" onClick={handleExportPNG} title="Export as PNG">↓ PNG</button>
-      <button className="btn btn-ghost btn-xs" onClick={handleExportJSON} title="Export as JSON">↓ JSON</button>
+      <button type="button" className="btn btn-ghost btn-xs" onClick={handleExportPNG} title="Export as PNG">
+        ↓ PNG
+      </button>
+      <button type="button" className="btn btn-ghost btn-xs" onClick={handleExportJSON} title="Export as JSON">
+        ↓ JSON
+      </button>
 
       {state.highlightedNodes.size > 0 && (
-        <button className="btn btn-ghost btn-xs text-warning" onClick={handleClearHighlights} title="Clear highlights">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs text-warning"
+          onClick={handleClearHighlights}
+          title="Clear highlights"
+        >
           ✕ {state.highlightedNodes.size} highlighted
         </button>
       )}

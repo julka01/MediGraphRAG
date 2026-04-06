@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
+import { ProgressPanel } from '../kg/ProgressPanel';
+import { GraphControls } from './GraphControls';
+import { GraphFilters } from './GraphFilters';
 import { GraphLegend, MiniLegend } from './GraphLegend';
 import { GraphSearch } from './GraphSearch';
-import { GraphFilters } from './GraphFilters';
-import { GraphControls } from './GraphControls';
 import { NodeDetailPanel } from './NodeDetailPanel';
-import { ProgressPanel } from '../kg/ProgressPanel';
 
 interface GraphContainerProps {
   progressActive: boolean;
@@ -22,7 +22,15 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     setSelectedNode(node);
   };
 
-  useGraph({ containerRef, appState: state, dispatch, networkRef, idCounterRef, initialViewRef, onNodeClick: handleNodeClick });
+  useGraph({
+    containerRef,
+    appState: state,
+    dispatch,
+    networkRef,
+    idCounterRef,
+    initialViewRef,
+    onNodeClick: handleNodeClick,
+  });
 
   const hasGraph = !!state.graphData;
   const nodeColor = selectedNode
@@ -34,11 +42,10 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
       <div className="flex items-center justify-between px-2 py-1">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-bold">Knowledge Graph</h2>
-          {state.currentKGName && (
-            <span className="badge badge-sm badge-primary">{state.currentKGName}</span>
-          )}
+          {state.currentKGName && <span className="badge badge-sm badge-primary">{state.currentKGName}</span>}
         </div>
         <button
+          type="button"
           className="btn btn-ghost btn-xs"
           onClick={() => dispatch({ type: 'TOGGLE_KG_EXPANDED' })}
           title={state.kgExpanded ? 'Collapse graph view' : 'Expand graph view'}
@@ -51,7 +58,13 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         <div className="px-2 mb-1">
           <span className="badge badge-warning badge-sm gap-1">
             {state.highlightedNodes.size} entities highlighted
-            <button className="btn btn-ghost btn-xs px-0" onClick={() => dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' })}>&#x2715;</button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs px-0"
+              onClick={() => dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' })}
+            >
+              &#x2715;
+            </button>
           </span>
         </div>
       )}
@@ -78,11 +91,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         )}
 
         {selectedNode && (
-          <NodeDetailPanel
-            node={selectedNode}
-            nodeColor={nodeColor}
-            onClose={() => setSelectedNode(null)}
-          />
+          <NodeDetailPanel node={selectedNode} nodeColor={nodeColor} onClose={() => setSelectedNode(null)} />
         )}
 
         <GraphLegend />

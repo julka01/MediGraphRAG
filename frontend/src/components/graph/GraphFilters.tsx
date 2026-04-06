@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 
 export function GraphFilters() {
@@ -49,7 +49,9 @@ export function GraphFilters() {
 
   return (
     <>
-      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>Filters</button>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>
+        Filters
+      </button>
 
       {open && (
         <div className="absolute top-full right-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-30 p-3 w-64 max-h-80 overflow-y-auto">
@@ -60,7 +62,12 @@ export function GraphFilters() {
               <div className="text-xs font-semibold mb-1 opacity-70">Node Types</div>
               {nodeTypes.map((type) => (
                 <label key={type} className="flex items-center gap-2 cursor-pointer py-0.5">
-                  <input type="checkbox" className="checkbox checkbox-xs" checked={checkedNodes.has(type)} onChange={() => toggleNode(type)} />
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={checkedNodes.has(type)}
+                    onChange={() => toggleNode(type)}
+                  />
                   <span className="text-xs">{type}</span>
                 </label>
               ))}
@@ -72,7 +79,12 @@ export function GraphFilters() {
               <div className="text-xs font-semibold mb-1 opacity-70">Relationship Types</div>
               {relTypes.map((type) => (
                 <label key={type} className="flex items-center gap-2 cursor-pointer py-0.5">
-                  <input type="checkbox" className="checkbox checkbox-xs" checked={checkedRels.has(type)} onChange={() => toggleRel(type)} />
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-xs"
+                    checked={checkedRels.has(type)}
+                    onChange={() => toggleRel(type)}
+                  />
                   <span className="text-xs">{type}</span>
                 </label>
               ))}
@@ -80,8 +92,12 @@ export function GraphFilters() {
           )}
 
           <div className="flex gap-2">
-            <button className="btn btn-primary btn-xs flex-1" onClick={applyFilters}>Apply</button>
-            <button className="btn btn-ghost btn-xs flex-1" onClick={resetFilters}>Reset</button>
+            <button type="button" className="btn btn-primary btn-xs flex-1" onClick={applyFilters}>
+              Apply
+            </button>
+            <button type="button" className="btn btn-ghost btn-xs flex-1" onClick={resetFilters}>
+              Reset
+            </button>
           </div>
         </div>
       )}

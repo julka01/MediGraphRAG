@@ -41,11 +41,7 @@ declare namespace vis {
   }
 
   class Network {
-    constructor(
-      container: HTMLElement,
-      data: { nodes: DataSet; edges: DataSet },
-      options?: Record<string, unknown>,
-    );
+    constructor(container: HTMLElement, data: { nodes: DataSet; edges: DataSet }, options?: Record<string, unknown>);
     body: NetworkBody;
     canvas: Canvas;
     destroy(): void;

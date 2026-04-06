@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { GraphNode, GraphRelationship } from '../../types/app';
 
@@ -13,10 +13,14 @@ export function GraphLegend() {
 
   return (
     <div className="absolute bottom-2 left-2 bg-base-100/90 backdrop-blur border border-base-300 rounded-lg p-2 z-10 max-w-48 text-xs">
-      <div className="font-semibold mb-1 cursor-pointer flex items-center justify-between" onClick={() => setCollapsed(!collapsed)}>
+      <button
+        type="button"
+        className="font-semibold mb-1 cursor-pointer flex items-center justify-between w-full text-left bg-transparent border-0 p-0"
+        onClick={() => setCollapsed(!collapsed)}
+      >
         <span>Graph Legend</span>
         <span>{collapsed ? '▶' : '▼'}</span>
-      </div>
+      </button>
       {!collapsed && (
         <div className="space-y-0.5 max-h-48 overflow-y-auto">
           {nodeEntries.map(([type, color]) => (
@@ -25,9 +29,7 @@ export function GraphLegend() {
               <span className="truncate">{type}</span>
             </div>
           ))}
-          {relEntries.length > 0 && nodeEntries.length > 0 && (
-            <hr className="my-1 border-base-300" />
-          )}
+          {relEntries.length > 0 && nodeEntries.length > 0 && <hr className="my-1 border-base-300" />}
           {relEntries.map(([type, color]) => (
             <div key={type} className="flex items-center gap-1.5">
               <span className="w-3 h-1 shrink-0 rounded" style={{ backgroundColor: color }} />
@@ -88,10 +90,14 @@ export function OverviewPanel() {
 
   return (
     <div className="mt-2">
-      <div className="flex items-center justify-between cursor-pointer text-sm font-semibold py-1" onClick={() => setCollapsed(!collapsed)}>
+      <button
+        type="button"
+        className="flex items-center justify-between cursor-pointer text-sm font-semibold py-1 w-full text-left bg-transparent border-0 p-0"
+        onClick={() => setCollapsed(!collapsed)}
+      >
         <span>Details</span>
         <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
-      </div>
+      </button>
       {!collapsed && (
         <div className="space-y-2 text-xs">
           <div>
@@ -99,13 +105,21 @@ export function OverviewPanel() {
             {Object.entries(nodeCounts)
               .sort(([, a], [, b]) => b - a)
               .map(([label, count]) => (
-                <div key={label} className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1" onClick={() => handleNodeFilter(label)}>
+                <button
+                  type="button"
+                  key={label}
+                  className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
+                  onClick={() => handleNodeFilter(label)}
+                >
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: state.nodeTypeColors[label] || '#428bca' }} />
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: state.nodeTypeColors[label] || '#428bca' }}
+                    />
                     {label}
                   </span>
                   <span className="badge badge-xs">{count}</span>
-                </div>
+                </button>
               ))}
           </div>
           <div>
@@ -113,13 +127,21 @@ export function OverviewPanel() {
             {Object.entries(relCounts)
               .sort(([, a], [, b]) => b - a)
               .map(([type, count]) => (
-                <div key={type} className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1" onClick={() => handleRelFilter(type)}>
+                <button
+                  type="button"
+                  key={type}
+                  className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
+                  onClick={() => handleRelFilter(type)}
+                >
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: state.relationshipTypeColors[type] || '#888' }} />
+                    <span
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: state.relationshipTypeColors[type] || '#888' }}
+                    />
                     {type}
                   </span>
                   <span className="badge badge-xs">{count}</span>
-                </div>
+                </button>
               ))}
           </div>
         </div>

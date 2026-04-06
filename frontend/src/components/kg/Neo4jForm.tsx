@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
-import { showError } from '../ui/Notifications';
 import type { LoadNeo4jResponse, Neo4jStats } from '../../types/app';
+import { showError } from '../ui/Notifications';
 
 interface Neo4jFormProps {
   open: boolean;
@@ -22,7 +22,8 @@ export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
   const [stats, setStats] = useState<Neo4jStats | null>(null);
 
   useEffect(() => {
-    api.fetchDefaultCredentials()
+    api
+      .fetchDefaultCredentials()
       .then((data) => {
         if (data.uri) setUri(data.uri);
         if (data.user) setUser(data.user);
@@ -76,54 +77,115 @@ export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-w-md">
-        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={onClose}>✕</button>
+        <button type="button" className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={onClose}>
+          ✕
+        </button>
         <h3 className="font-bold text-lg mb-4">Load from Neo4j</h3>
         <div className="space-y-3">
-          <input type="text" className="input input-bordered input-sm w-full" placeholder="Neo4j URI" value={uri} onChange={(e) => setUri(e.target.value)} />
-          <input type="text" className="input input-bordered input-sm w-full" placeholder="Username" value={user} onChange={(e) => setUser(e.target.value)} />
-          <input type="password" className="input input-bordered input-sm w-full" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full"
+            placeholder="Neo4j URI"
+            value={uri}
+            onChange={(e) => setUri(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input input-bordered input-sm w-full"
+            placeholder="Username"
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+          />
+          <input
+            type="password"
+            className="input input-bordered input-sm w-full"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-xs font-bold">Import Options</legend>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" className="radio radio-sm" name="load-mode" value="limited" checked={loadMode === 'limited'} onChange={() => setLoadMode('limited')} />
+              <input
+                type="radio"
+                className="radio radio-sm"
+                name="load-mode"
+                value="limited"
+                checked={loadMode === 'limited'}
+                onChange={() => setLoadMode('limited')}
+              />
               <span className="text-sm">Limited (1000 nodes max)</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" className="radio radio-sm" name="load-mode" value="sample" checked={loadMode === 'sample'} onChange={() => setLoadMode('sample')} />
+              <input
+                type="radio"
+                className="radio radio-sm"
+                name="load-mode"
+                value="sample"
+                checked={loadMode === 'sample'}
+                onChange={() => setLoadMode('sample')}
+              />
               <span className="text-sm">Smart Sample</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="radio" className="radio radio-sm" name="load-mode" value="complete" checked={loadMode === 'complete'} onChange={() => setLoadMode('complete')} />
+              <input
+                type="radio"
+                className="radio radio-sm"
+                name="load-mode"
+                value="complete"
+                checked={loadMode === 'complete'}
+                onChange={() => setLoadMode('complete')}
+              />
               <span className="text-sm">Complete Import</span>
             </label>
           </fieldset>
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-xs">Node Limit</legend>
-            <input type="number" className="input input-bordered input-sm w-full" value={nodeLimit} onChange={(e) => setNodeLimit(Number(e.target.value))} min={100} max={10000} step={100} />
+            <input
+              type="number"
+              className="input input-bordered input-sm w-full"
+              value={nodeLimit}
+              onChange={(e) => setNodeLimit(Number(e.target.value))}
+              min={100}
+              max={10000}
+              step={100}
+            />
           </fieldset>
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-xs">Filter by KG Name</legend>
-            <select className="select select-bordered select-sm w-full" value={kgFilter} onChange={(e) => setKgFilter(e.target.value)}>
+            <select
+              className="select select-bordered select-sm w-full"
+              value={kgFilter}
+              onChange={(e) => setKgFilter(e.target.value)}
+            >
               <option value="">All KGs</option>
               {state.kgList.map((kg) => (
-                <option key={kg.name} value={kg.name}>{kg.name}</option>
+                <option key={kg.name} value={kg.name}>
+                  {kg.name}
+                </option>
               ))}
             </select>
           </fieldset>
-          <button className="btn btn-success btn-sm w-full" onClick={handleConnect} disabled={loading}>
+          <button type="button" className="btn btn-success btn-sm w-full" onClick={handleConnect} disabled={loading}>
             {loading ? <span className="loading loading-spinner loading-sm" /> : null}
             {loading ? 'Loading...' : 'Load Knowledge Graph'}
           </button>
           {stats && (
             <div className="text-xs opacity-70 space-y-0.5">
-              <div>Database: {stats.total_nodes_in_db || '-'} nodes, {stats.total_relationships_in_db || '-'} relationships</div>
-              <div>Loaded: {stats.loaded_nodes || '-'} nodes, {stats.loaded_relationships || '-'} relationships</div>
+              <div>
+                Database: {stats.total_nodes_in_db || '-'} nodes, {stats.total_relationships_in_db || '-'} relationships
+              </div>
+              <div>
+                Loaded: {stats.loaded_nodes || '-'} nodes, {stats.loaded_relationships || '-'} relationships
+              </div>
             </div>
           )}
         </div>
       </div>
       <form method="dialog" className="modal-backdrop">
-        <button onClick={onClose}>close</button>
+        <button type="submit" onClick={onClose}>
+          close
+        </button>
       </form>
     </dialog>
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { api } from '../api';
 import type { UseModelsReturn } from '../types/app';
 
@@ -8,33 +8,39 @@ export function useModels(defaultVendor: string): UseModelsReturn {
   const [selectedModel, setSelectedModel] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const fetchModels = useCallback(async (v?: string) => {
-    const vendorToFetch = v || vendor;
-    setLoading(true);
-    try {
-      const data = await api.fetchModels(vendorToFetch);
-      const modelList = data.models || [];
-      setModels(modelList);
+  const fetchModels = useCallback(
+    async (v?: string) => {
+      const vendorToFetch = v || vendor;
+      setLoading(true);
+      try {
+        const data = await api.fetchModels(vendorToFetch);
+        const modelList = data.models || [];
+        setModels(modelList);
 
-      if (vendorToFetch === 'openrouter' && modelList.includes('openai/gpt-oss-120b:free')) {
-        setSelectedModel('openai/gpt-oss-120b:free');
-      } else if (modelList.length > 0) {
-        setSelectedModel(modelList[0]);
-      } else {
+        if (vendorToFetch === 'openrouter' && modelList.includes('openai/gpt-oss-120b:free')) {
+          setSelectedModel('openai/gpt-oss-120b:free');
+        } else if (modelList.length > 0) {
+          setSelectedModel(modelList[0]);
+        } else {
+          setSelectedModel('');
+        }
+      } catch {
+        setModels([]);
         setSelectedModel('');
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setModels([]);
-      setSelectedModel('');
-    } finally {
-      setLoading(false);
-    }
-  }, [vendor]);
+    },
+    [vendor],
+  );
 
-  const changeVendor = useCallback((newVendor: string) => {
-    setVendor(newVendor);
-    fetchModels(newVendor);
-  }, [fetchModels]);
+  const changeVendor = useCallback(
+    (newVendor: string) => {
+      setVendor(newVendor);
+      fetchModels(newVendor);
+    },
+    [fetchModels],
+  );
 
   return { vendor, models, selectedModel, loading, setSelectedModel, changeVendor, fetchModels };
 }
