@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
+import { Panel } from '../ui/Panel';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
@@ -126,70 +127,69 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-2 py-1">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold">RAG Chat</h2>
-          {state.currentKGName && <span className="text-xs opacity-50">— {state.currentKGName}</span>}
-        </div>
-        <div className="flex gap-1">
-          <button type="button" className="btn btn-ghost btn-xs" onClick={clearChat}>
-            Clear Chat
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs"
-            onClick={() => exportChat(state.currentKGName)}
-            title="Export as Markdown"
-          >
-            ↓ MD
-          </button>
-        </div>
-      </div>
+    <Panel>
+      <Panel.Header
+        title="RAG Chat"
+        badge={state.currentKGName ? <span className="text-xs opacity-50">— {state.currentKGName}</span> : undefined}
+      >
+        <button type="button" className="btn btn-ghost btn-xs" onClick={clearChat}>
+          Clear Chat
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs"
+          onClick={() => exportChat(state.currentKGName)}
+          title="Export as Markdown"
+        >
+          ↓ MD
+        </button>
+      </Panel.Header>
 
-      <div ref={chatBoxRef} className="flex-1 overflow-y-auto px-2 min-h-0">
-        {isEmpty ? (
-          <ChatSuggestions onSelect={handleSend} />
-        ) : (
-          messages.map((msg, i) => {
-            // ts may not be unique if messages arrive in the same ms; use index as tiebreaker
-            const msgKey = `${msg.ts ?? 0}-${i}`;
-            if (msg.type === 'ai' && msg.sections) {
-              return (
-                <div key={msgKey} className="chat chat-start">
-                  <div className="chat-bubble text-sm">
-                    <ResponseSections sections={msg.sections} sourceChip={msg.sourceChip} />
-                    <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
+      <Panel.Body>
+        <div ref={chatBoxRef}>
+          {isEmpty ? (
+            <ChatSuggestions onSelect={handleSend} />
+          ) : (
+            messages.map((msg, i) => {
+              // ts may not be unique if messages arrive in the same ms; use index as tiebreaker
+              const msgKey = `${msg.ts ?? 0}-${i}`;
+              if (msg.type === 'ai' && msg.sections) {
+                return (
+                  <div key={msgKey} className="chat chat-start">
+                    <div className="chat-bubble text-sm">
+                      <ResponseSections sections={msg.sections} sourceChip={msg.sourceChip} />
+                      <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
+                    </div>
+                    {msg.ts && (
+                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
+                    )}
                   </div>
-                  {msg.ts && (
-                    <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
-                  )}
-                </div>
+                );
+              }
+              return (
+                <ChatMessage
+                  key={msgKey}
+                  message={msg.message}
+                  type={msg.type}
+                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
+                />
               );
-            }
-            return (
-              <ChatMessage
-                key={msgKey}
-                message={msg.message}
-                type={msg.type}
-                timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
-              />
-            );
-          })
-        )}
-        {sending && (
-          <div className="chat chat-start">
-            <div className="chat-bubble chat-bubble-ghost">
-              <span className="loading loading-dots loading-xs" />
+            })
+          )}
+          {sending && (
+            <div className="chat chat-start">
+              <div className="chat-bubble chat-bubble-ghost">
+                <span className="loading loading-dots loading-xs" />
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </Panel.Body>
 
-      <div className="px-2 py-2 border-t border-base-300">
+      <Panel.Footer>
         <ChatInput onSend={handleSend} disabled={sending} />
         <div className="text-[10px] opacity-40 mt-1 text-center">⏎ send · ⇧⏎ new line · ⌘K focus</div>
-      </div>
-    </div>
+      </Panel.Footer>
+    </Panel>
   );
 }

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
 import { ProgressPanel } from '../kg/ProgressPanel';
+import { Panel } from '../ui/Panel';
 import { GraphControls } from './GraphControls';
 import { GraphFilters } from './GraphFilters';
 import { GraphLegend, MiniLegend } from './GraphLegend';
@@ -38,12 +39,13 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     : '#428bca';
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-2 py-1">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold">Knowledge Graph</h2>
-          {state.currentKGName && <span className="badge badge-sm badge-primary">{state.currentKGName}</span>}
-        </div>
+    <Panel>
+      <Panel.Header
+        title="Knowledge Graph"
+        badge={
+          state.currentKGName ? <span className="badge badge-sm badge-primary">{state.currentKGName}</span> : undefined
+        }
+      >
         <button
           type="button"
           className="btn btn-ghost btn-xs"
@@ -52,7 +54,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         >
           {state.kgExpanded ? '\u229F' : '\u229E'}
         </button>
-      </div>
+      </Panel.Header>
 
       {state.highlightedNodes.size > 0 && (
         <div className="px-2 mb-1">
@@ -80,27 +82,29 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         </div>
       )}
 
-      <div className="relative flex-1 min-h-0">
-        <div ref={containerRef} className="w-full h-full" />
+      <Panel.Body scrollable={false}>
+        <div className="relative w-full h-full">
+          <div ref={containerRef} className="w-full h-full" />
 
-        {!hasGraph && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-base-content/40">
-            <div className="text-4xl mb-2">&#x2B21;</div>
-            <p className="text-sm">No graph loaded yet. Upload a document or load from Neo4j to get started.</p>
-          </div>
-        )}
+          {!hasGraph && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-base-content/40">
+              <div className="text-4xl mb-2">&#x2B21;</div>
+              <p className="text-sm">No graph loaded yet. Upload a document or load from Neo4j to get started.</p>
+            </div>
+          )}
 
-        {selectedNode && (
-          <NodeDetailPanel node={selectedNode} nodeColor={nodeColor} onClose={() => setSelectedNode(null)} />
-        )}
+          {selectedNode && (
+            <NodeDetailPanel node={selectedNode} nodeColor={nodeColor} onClose={() => setSelectedNode(null)} />
+          )}
 
-        <GraphLegend />
-        <ProgressPanel active={progressActive} onClose={onProgressClose} />
-      </div>
+          <GraphLegend />
+          <ProgressPanel active={progressActive} onClose={onProgressClose} />
+        </div>
+      </Panel.Body>
 
-      <div className="px-2 py-1 border-t border-base-300">
+      <Panel.Footer>
         <GraphControls />
-      </div>
-    </div>
+      </Panel.Footer>
+    </Panel>
   );
 }
