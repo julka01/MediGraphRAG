@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
 import { ProgressPanel } from '../kg/ProgressPanel';
@@ -32,6 +32,15 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     initialViewRef,
     onNodeClick: handleNodeClick,
   });
+
+  useEffect(() => {
+    if (!selectedNode) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedNode(null);
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [selectedNode]);
 
   const hasGraph = !!state.graphData;
   const nodeColor = selectedNode

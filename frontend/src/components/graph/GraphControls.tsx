@@ -85,13 +85,31 @@ export function GraphControls() {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       <div className="join">
-        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomIn} title="Zoom in">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleZoomIn}
+          title="Zoom in"
+          aria-label="Zoom in"
+        >
           +
         </button>
-        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomOut} title="Zoom out">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleZoomOut}
+          title="Zoom out"
+          aria-label="Zoom out"
+        >
           −
         </button>
-        <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleResetZoom} title="Reset view">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleResetZoom}
+          title="Reset view"
+          aria-label="Reset view"
+        >
           ↺
         </button>
       </div>
@@ -125,10 +143,22 @@ export function GraphControls() {
         <option value="uniform">Size: Uniform</option>
       </select>
 
-      <button type="button" className="btn btn-ghost btn-xs" onClick={handleExportPNG} title="Export as PNG">
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs"
+        onClick={handleExportPNG}
+        title="Export as PNG"
+        aria-label="Export as PNG"
+      >
         ↓ PNG
       </button>
-      <button type="button" className="btn btn-ghost btn-xs" onClick={handleExportJSON} title="Export as JSON">
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs"
+        onClick={handleExportJSON}
+        title="Export as JSON"
+        aria-label="Export as JSON"
+      >
         ↓ JSON
       </button>
 

@@ -146,7 +146,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       </Panel.Header>
 
       <Panel.Body>
-        <div ref={chatBoxRef}>
+        <div ref={chatBoxRef} aria-live="polite">
           {isEmpty ? (
             <ChatSuggestions onSelect={handleSend} />
           ) : (

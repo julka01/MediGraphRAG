@@ -81,6 +81,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-base-100 text-base-content">
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
       {state.sidebarCollapsed && (
         <button
           type="button"
@@ -111,23 +114,25 @@ export default function App() {
         <OverviewPanel />
       </Sidebar>
 
-      <MainLayout
-        layout={state.layout ?? (state.kgExpanded ? 'graph-only' : 'split')}
-        graphPanel={
-          <ErrorBoundary name="Knowledge Graph">
-            <Suspense fallback={<PanelSkeleton />}>
-              <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
-            </Suspense>
-          </ErrorBoundary>
-        }
-        chatPanel={
-          <ErrorBoundary name="RAG Chat">
-            <Suspense fallback={<PanelSkeleton />}>
-              <ChatPanel ragModelHook={ragModelHook} />
-            </Suspense>
-          </ErrorBoundary>
-        }
-      />
+      <div id="main-content" className="flex flex-1 min-w-0">
+        <MainLayout
+          layout={state.layout ?? (state.kgExpanded ? 'graph-only' : 'split')}
+          graphPanel={
+            <ErrorBoundary name="Knowledge Graph">
+              <Suspense fallback={<PanelSkeleton />}>
+                <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
+              </Suspense>
+            </ErrorBoundary>
+          }
+          chatPanel={
+            <ErrorBoundary name="RAG Chat">
+              <Suspense fallback={<PanelSkeleton />}>
+                <ChatPanel ragModelHook={ragModelHook} />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
+      </div>
 
       <Neo4jForm open={neo4jOpen} onClose={() => setNeo4jOpen(false)} onLoaded={handleNeo4jLoaded} />
       <Notifications />

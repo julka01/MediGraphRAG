@@ -19,10 +19,15 @@ export function Notifications() {
   const alertClass = notif.type === 'error' ? 'alert-error' : 'alert-success';
 
   return (
-    <div className="toast toast-end toast-bottom z-50">
+    <div className="toast toast-end toast-bottom z-50" role="status" aria-live="polite">
       <div className={`alert ${alertClass} shadow-lg`}>
         <span>{notif.message}</span>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs"
+          onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}
+          aria-label="Dismiss notification"
+        >
           ✕
         </button>
       </div>
