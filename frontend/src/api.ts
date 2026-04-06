@@ -1,30 +1,42 @@
-async function request(url, options = {}) {
+import type {
+  ModelsResponse,
+  KGListResponse,
+  DefaultCredentialsResponse,
+  HealthResponse,
+  ClearKGResponse,
+  CreateKGResponse,
+  LoadNeo4jResponse,
+  ChatPayload,
+  ChatResponse,
+} from './types/app';
+
+async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+    const error: { detail?: string } = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Request failed: ${url}`);
   }
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 export const api = {
-  fetchModels: (vendor) => request(`/models/${vendor}`),
-  fetchKGList: () => request('/kg/list'),
-  fetchDefaultCredentials: () => request('/neo4j/default_credentials'),
-  checkHealth: () => request('/doctor'),
-  clearKG: () => request('/clear_kg', {
+  fetchModels: (vendor: string) => request<ModelsResponse>(`/models/${vendor}`),
+  fetchKGList: () => request<KGListResponse>('/kg/list'),
+  fetchDefaultCredentials: () => request<DefaultCredentialsResponse>('/neo4j/default_credentials'),
+  checkHealth: () => request<HealthResponse>('/doctor'),
+  clearKG: () => request<ClearKGResponse>('/clear_kg', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   }),
-  createKG: (formData) => request('/create_ontology_guided_kg', {
+  createKG: (formData: FormData) => request<CreateKGResponse>('/create_ontology_guided_kg', {
     method: 'POST',
     body: formData,
   }),
-  loadFromNeo4j: (formData) => request('/load_kg_from_neo4j', {
+  loadFromNeo4j: (formData: FormData) => request<LoadNeo4jResponse>('/load_kg_from_neo4j', {
     method: 'POST',
     body: formData,
   }),
-  sendChat: (payload, signal) => request('/chat', {
+  sendChat: (payload: ChatPayload, signal?: AbortSignal) => request<ChatResponse>('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
