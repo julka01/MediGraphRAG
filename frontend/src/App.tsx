@@ -1,30 +1,43 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api } from './api';
-import { ChatPanel } from './components/chat/ChatPanel';
-import { GraphContainer } from './components/graph/GraphContainer';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Neo4jForm } from './components/kg/Neo4jForm';
 import { Sidebar } from './components/layout/Sidebar';
 import { Notifications, showSuccess } from './components/ui/Notifications';
 import { useApp } from './context/AppContext';
 import { useTheme } from './context/ThemeContext';
 import { useModels } from './hooks/useModels';
+import { useStartup } from './hooks/useStartup';
 import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
+
+const GraphContainer = lazy(() =>
+  import('./components/graph/GraphContainer').then((m) => ({ default: m.GraphContainer })),
+);
+const ChatPanel = lazy(() => import('./components/chat/ChatPanel').then((m) => ({ default: m.ChatPanel })));
+
+function PanelSkeleton() {
+  return (
+    <div className="flex flex-col h-full animate-pulse p-4">
+      <div className="h-6 w-40 bg-base-300 rounded mb-4" />
+      <div className="flex-1 bg-base-300/30 rounded" />
+    </div>
+  );
+}
 
 export default function App() {
   const { state, dispatch } = useApp();
   const { theme } = useTheme();
-  const kgModelHook = useModels('openai');
-  const ragModelHook = useModels('openrouter');
+
+  const startup = useStartup(['openai', 'openrouter']);
+  const kgModelHook = useModels('openai', startup.modelsByVendor.openai);
+  const ragModelHook = useModels('openrouter', startup.modelsByVendor.openrouter);
 
   const [neo4jOpen, setNeo4jOpen] = useState(false);
   const [progressActive, setProgressActive] = useState(false);
 
   useEffect(() => {
-    api
-      .fetchKGList()
-      .then((data) => dispatch({ type: 'SET_KG_LIST', kgList: data.kgs || [] }))
-      .catch(() => {});
-  }, [dispatch]);
+    if (!startup.loading && startup.kgList.length > 0) {
+      dispatch({ type: 'SET_KG_LIST', kgList: startup.kgList });
+    }
+  }, [startup.loading, startup.kgList, dispatch]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -82,15 +95,20 @@ export default function App() {
         onNeo4jOpen={() => setNeo4jOpen(true)}
         onProgressStart={() => setProgressActive(true)}
         onProgressStop={() => setProgressActive(false)}
+        healthData={startup.health}
       />
 
       <div className="flex flex-1 min-w-0">
         <div className={`border-r border-base-300 overflow-hidden ${chatHidden ? 'flex-1' : 'flex-[1.6]'}`}>
-          <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
+          <Suspense fallback={<PanelSkeleton />}>
+            <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
+          </Suspense>
         </div>
         {!chatHidden && (
           <div className="overflow-hidden flex-1">
-            <ChatPanel ragModelHook={ragModelHook} />
+            <Suspense fallback={<PanelSkeleton />}>
+              <ChatPanel ragModelHook={ragModelHook} />
+            </Suspense>
           </div>
         )}
       </div>

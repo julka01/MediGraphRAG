@@ -2,10 +2,16 @@ import { useCallback, useState } from 'react';
 import { api } from '../api';
 import type { UseModelsReturn } from '../types/app';
 
-export function useModels(defaultVendor: string): UseModelsReturn {
+export function useModels(defaultVendor: string, initialModels?: string[]): UseModelsReturn {
   const [vendor, setVendor] = useState(defaultVendor);
-  const [models, setModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [models, setModels] = useState<string[]>(initialModels || []);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    if (!initialModels || initialModels.length === 0) return '';
+    if (defaultVendor === 'openrouter' && initialModels.includes('openai/gpt-oss-120b:free')) {
+      return 'openai/gpt-oss-120b:free';
+    }
+    return initialModels[0];
+  });
   const [loading, setLoading] = useState(false);
 
   const fetchModels = useCallback(

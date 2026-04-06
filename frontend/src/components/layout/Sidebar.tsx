@@ -1,6 +1,6 @@
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
-import type { UseModelsReturn } from '../../types/app';
+import type { HealthResponse, UseModelsReturn } from '../../types/app';
 import { OverviewPanel } from '../graph/GraphLegend';
 import { KGPanel } from '../kg/KGPanel';
 import { ModelSelector } from '../kg/ModelSelector';
@@ -12,9 +12,17 @@ interface SidebarProps {
   onNeo4jOpen: () => void;
   onProgressStart: () => void;
   onProgressStop: () => void;
+  healthData?: HealthResponse | null;
 }
 
-export function Sidebar({ kgModelHook, ragModelHook, onNeo4jOpen, onProgressStart, onProgressStop }: SidebarProps) {
+export function Sidebar({
+  kgModelHook,
+  ragModelHook,
+  onNeo4jOpen,
+  onProgressStart,
+  onProgressStop,
+  healthData,
+}: SidebarProps) {
   const { state, dispatch } = useApp();
   const { theme, toggleTheme } = useTheme();
 
@@ -38,7 +46,7 @@ export function Sidebar({ kgModelHook, ragModelHook, onNeo4jOpen, onProgressStar
           <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme}>
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
-          <HealthDot />
+          <HealthDot initialData={healthData} />
         </div>
 
         <div>
