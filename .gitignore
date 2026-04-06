@@ -59,6 +59,10 @@ KG_GENERATION_PIPELINE.md
 # ── Nested repos / vendored libraries ────────────────────────────────────────
 semantic_uncertainty/
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
 # ── Misc ─────────────────────────────────────────────────────────────────────
 node_modules/
 apoc/
