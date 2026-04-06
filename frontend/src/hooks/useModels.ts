@@ -1,18 +1,31 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { UseModelsReturn } from '../types/app';
+
+function selectDefault(vendor: string, modelList: string[]): string {
+  if (modelList.length === 0) return '';
+  if (vendor === 'openrouter' && modelList.includes('openai/gpt-oss-120b:free')) {
+    return 'openai/gpt-oss-120b:free';
+  }
+  return modelList[0];
+}
 
 export function useModels(defaultVendor: string, initialModels?: string[]): UseModelsReturn {
   const [vendor, setVendor] = useState(defaultVendor);
   const [models, setModels] = useState<string[]>(initialModels || []);
-  const [selectedModel, setSelectedModel] = useState(() => {
-    if (!initialModels || initialModels.length === 0) return '';
-    if (defaultVendor === 'openrouter' && initialModels.includes('openai/gpt-oss-120b:free')) {
-      return 'openai/gpt-oss-120b:free';
-    }
-    return initialModels[0];
-  });
+  const [selectedModel, setSelectedModel] = useState(() => selectDefault(defaultVendor, initialModels || []));
   const [loading, setLoading] = useState(false);
+  const synced = useRef(!!initialModels?.length);
+  const vendorRef = useRef(defaultVendor);
+
+  // Sync initial models when startup data arrives after first render
+  useEffect(() => {
+    if (!synced.current && initialModels && initialModels.length > 0) {
+      synced.current = true;
+      setModels(initialModels);
+      setSelectedModel(selectDefault(vendorRef.current, initialModels));
+    }
+  }, [initialModels]);
 
   const fetchModels = useCallback(
     async (v?: string) => {
@@ -22,14 +35,7 @@ export function useModels(defaultVendor: string, initialModels?: string[]): UseM
         const data = await api.fetchModels(vendorToFetch);
         const modelList = data.models || [];
         setModels(modelList);
-
-        if (vendorToFetch === 'openrouter' && modelList.includes('openai/gpt-oss-120b:free')) {
-          setSelectedModel('openai/gpt-oss-120b:free');
-        } else if (modelList.length > 0) {
-          setSelectedModel(modelList[0]);
-        } else {
-          setSelectedModel('');
-        }
+        setSelectedModel(selectDefault(vendorToFetch, modelList));
       } catch {
         setModels([]);
         setSelectedModel('');

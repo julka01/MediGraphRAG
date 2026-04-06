@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useHealth } from '../../hooks/useHealth';
 import type { HealthResponse } from '../../types/app';
 
@@ -8,12 +8,13 @@ interface HealthDotProps {
 
 export function HealthDot({ initialData }: HealthDotProps) {
   const { status, checking, checkHealth } = useHealth(initialData);
+  const hasInitialData = useRef(!!initialData);
 
   useEffect(() => {
-    if (!initialData) {
+    if (!hasInitialData.current) {
       checkHealth();
     }
-  }, [checkHealth, initialData]);
+  }, [checkHealth]);
 
   return (
     <button
