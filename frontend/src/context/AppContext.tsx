@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useRef } from 'react';
-import type { AppAction, AppContextValue, AppState, ViewState } from '../types/app';
+import type { AppAction, AppContextValue, AppState, Layout, ViewState } from '../types/app';
 
 const AppContext = createContext<AppContextValue | null>(null);
 
@@ -18,6 +18,7 @@ const initialState: AppState = {
   nodeSizeMetric: 'fixed',
   showEdgeLabels: true,
   activeView: 'kg',
+  layout: 'split' as Layout,
   sidebarCollapsed: false,
   kgExpanded: false,
   notification: null,
@@ -64,8 +65,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, activeView: action.view };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
-    case 'TOGGLE_KG_EXPANDED':
-      return { ...state, kgExpanded: !state.kgExpanded };
+    case 'TOGGLE_KG_EXPANDED': {
+      const newLayout = state.layout === 'graph-only' ? 'split' : 'graph-only';
+      return { ...state, kgExpanded: !state.kgExpanded, layout: newLayout };
+    }
+    case 'SET_LAYOUT':
+      return { ...state, layout: action.layout, kgExpanded: action.layout === 'graph-only' };
     case 'SET_CLUSTERS':
       return { ...state, clusters: action.clusters };
     case 'SHOW_NOTIFICATION':

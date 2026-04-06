@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Neo4jForm } from './components/kg/Neo4jForm';
+import { MainLayout } from './components/layout/MainLayout';
 import { Sidebar } from './components/layout/Sidebar';
 import { Notifications, showSuccess } from './components/ui/Notifications';
 import { useApp } from './context/AppContext';
@@ -72,8 +73,6 @@ export default function App() {
     [dispatch],
   );
 
-  const chatHidden = state.kgExpanded;
-
   void theme; // used by ThemeContext to apply data-theme attribute
 
   return (
@@ -98,20 +97,19 @@ export default function App() {
         healthData={startup.health}
       />
 
-      <div className="flex flex-1 min-w-0">
-        <div className={`border-r border-base-300 overflow-hidden ${chatHidden ? 'flex-1' : 'flex-[1.6]'}`}>
+      <MainLayout
+        layout={state.layout ?? (state.kgExpanded ? 'graph-only' : 'split')}
+        graphPanel={
           <Suspense fallback={<PanelSkeleton />}>
             <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
           </Suspense>
-        </div>
-        {!chatHidden && (
-          <div className="overflow-hidden flex-1">
-            <Suspense fallback={<PanelSkeleton />}>
-              <ChatPanel ragModelHook={ragModelHook} />
-            </Suspense>
-          </div>
-        )}
-      </div>
+        }
+        chatPanel={
+          <Suspense fallback={<PanelSkeleton />}>
+            <ChatPanel ragModelHook={ragModelHook} />
+          </Suspense>
+        }
+      />
 
       <Neo4jForm open={neo4jOpen} onClose={() => setNeo4jOpen(false)} onLoaded={handleNeo4jLoaded} />
       <Notifications />

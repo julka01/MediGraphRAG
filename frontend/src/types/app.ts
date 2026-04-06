@@ -8,6 +8,7 @@ export interface ThemeContextValue {
 
 /* Views & metrics */
 export type ActiveView = 'kg' | 'chat';
+export type Layout = 'split' | 'graph-only' | 'chat-only';
 export type NodeSizeMetric = 'fixed' | 'degree' | 'betweenness';
 export type NotificationType = 'error' | 'success';
 
@@ -63,6 +64,7 @@ export interface AppState {
   nodeSizeMetric: string;
   showEdgeLabels: boolean;
   activeView: ActiveView;
+  layout: Layout;
   sidebarCollapsed: boolean;
   kgExpanded: boolean;
   notification: Notification | null;
@@ -92,6 +94,7 @@ export type AppAction =
   | { type: 'SET_VIEW'; view: ActiveView }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'TOGGLE_KG_EXPANDED' }
+  | { type: 'SET_LAYOUT'; layout: Layout }
   | { type: 'SET_CLUSTERS'; clusters: Record<string, unknown> }
   | { type: 'SHOW_NOTIFICATION'; notifType: NotificationType; message: string }
   | { type: 'CLEAR_NOTIFICATION' }
