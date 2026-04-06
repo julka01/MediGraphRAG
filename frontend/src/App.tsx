@@ -59,7 +59,6 @@ export default function App() {
     [dispatch],
   );
 
-  const kgFlex = state.kgExpanded ? 1 : 1.6;
   const chatHidden = state.kgExpanded;
 
   void theme; // used by ThemeContext to apply data-theme attribute
@@ -86,11 +85,11 @@ export default function App() {
       />
 
       <div className="flex flex-1 min-w-0">
-        <div className="border-r border-base-300 overflow-hidden" style={{ flex: kgFlex }}>
+        <div className={`border-r border-base-300 overflow-hidden ${chatHidden ? 'flex-1' : 'flex-[1.6]'}`}>
           <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
         </div>
         {!chatHidden && (
-          <div className="overflow-hidden" style={{ flex: 1 }}>
+          <div className="overflow-hidden flex-1">
             <ChatPanel ragModelHook={ragModelHook} />
           </div>
         )}

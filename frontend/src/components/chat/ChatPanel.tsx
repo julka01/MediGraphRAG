@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
@@ -66,54 +66,62 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
     }
   }, [messages]);
 
-  const handleSend = async (question: string) => {
-    try {
-      const result = await sendQuestion(question, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel);
+  const handleSend = useCallback(
+    async (question: string) => {
+      try {
+        const result = await sendQuestion(
+          question,
+          state.currentKGName,
+          ragModelHook.vendor,
+          ragModelHook.selectedModel,
+        );
 
-      const usedEntities = result.info?.entities?.used_entities || [];
-      const nodeNames = new Set<string>();
-      usedEntities.forEach((entity) => {
-        const readable = (entity.description || '').toLowerCase().trim();
-        const idKey = (entity.id || '').toLowerCase().trim();
-        if (readable) nodeNames.add(readable);
-        if (idKey) nodeNames.add(idKey);
-      });
-      dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
+        const usedEntities = result.info?.entities?.used_entities || [];
+        const nodeNames = new Set<string>();
+        usedEntities.forEach((entity) => {
+          const readable = (entity.description || '').toLowerCase().trim();
+          const idKey = (entity.id || '').toLowerCase().trim();
+          if (readable) nodeNames.add(readable);
+          if (idKey) nodeNames.add(idKey);
+        });
+        dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
 
-      const responseText = result.response || result.message || 'No response generated';
-      const cleanedText = responseText.replace(/【Source:[^】]*】/g, '').replace(/\[Source:[^\]]*\]/g, '');
-      const sections = parseResponse(cleanedText);
+        const responseText = result.response || result.message || 'No response generated';
+        const cleanedText = responseText.replace(/【Source:[^】]*】/g, '').replace(/\[Source:[^\]]*\]/g, '');
+        const sections = parseResponse(cleanedText);
 
-      const confidence = result.info?.confidence_score;
-      const entityCount = usedEntities.length;
-      let sourceChip = '';
-      if (entityCount > 0) {
-        const pct = confidence !== undefined ? `${Math.round(confidence * 100)}% confidence` : '';
-        const src = `${entityCount} source${entityCount !== 1 ? 's' : ''}`;
-        sourceChip = [src, pct].filter(Boolean).join(' · ');
+        const confidence = result.info?.confidence_score;
+        const entityCount = usedEntities.length;
+        let sourceChip = '';
+        if (entityCount > 0) {
+          const pct = confidence !== undefined ? `${Math.round(confidence * 100)}% confidence` : '';
+          const src = `${entityCount} source${entityCount !== 1 ? 's' : ''}`;
+          sourceChip = [src, pct].filter(Boolean).join(' · ');
+        }
+
+        const reasoningEdges = result.info?.entities?.reasoning_edges || [];
+        const sourceEntities = result.info?.entities?.used_entities || [];
+
+        addMessage({
+          type: 'ai',
+          message: cleanedText,
+          ts: Date.now(),
+          sections,
+          sourceChip,
+          reasoningEdges,
+          sourceEntities,
+        });
+      } catch (error) {
+        const err = error as Error;
+        const msg =
+          err.name === 'AbortError'
+            ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
+            : `Error: ${err.message}`;
+        addMessage({ type: 'error', message: msg, ts: Date.now() });
       }
-
-      const reasoningEdges = result.info?.entities?.reasoning_edges || [];
-      const sourceEntities = result.info?.entities?.used_entities || [];
-
-      addMessage({
-        type: 'ai',
-        message: cleanedText,
-        ts: Date.now(),
-        sections,
-        sourceChip,
-        reasoningEdges,
-        sourceEntities,
-      });
-    } catch (error) {
-      const err = error as Error;
-      const msg =
-        err.name === 'AbortError'
-          ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
-          : `Error: ${err.message}`;
-      addMessage({ type: 'error', message: msg, ts: Date.now() });
-    }
-  };
+    },
+    [sendQuestion, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel, dispatch, addMessage],
+  );
 
   const isEmpty = messages.length === 0;
 
