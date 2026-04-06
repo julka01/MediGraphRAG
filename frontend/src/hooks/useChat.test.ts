@@ -48,7 +48,7 @@ describe('useChat', () => {
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].message).toBe('test message');
 
-    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY)!);
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
     expect(stored).toHaveLength(1);
     expect(stored[0].message).toBe('test message');
   });
@@ -107,7 +107,7 @@ describe('useChat', () => {
       }
     });
 
-    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY)!);
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
     expect(stored.length).toBeLessThanOrEqual(60);
   });
 
@@ -121,7 +121,7 @@ describe('useChat', () => {
       result.current.addMessage({ type: 'error', message: 'oops', ts: 4 });
     });
 
-    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY)!);
+    const stored = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
     const types = stored.map((m: { type: string }) => m.type);
     expect(types).toEqual(['user', 'ai']);
   });
