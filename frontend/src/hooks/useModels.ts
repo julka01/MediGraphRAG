@@ -1,13 +1,14 @@
 import { useState, useCallback } from 'react';
 import { api } from '../api';
+import type { UseModelsReturn } from '../types/app';
 
-export function useModels(defaultVendor) {
+export function useModels(defaultVendor: string): UseModelsReturn {
   const [vendor, setVendor] = useState(defaultVendor);
-  const [models, setModels] = useState([]);
+  const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const fetchModels = useCallback(async (v) => {
+  const fetchModels = useCallback(async (v?: string) => {
     const vendorToFetch = v || vendor;
     setLoading(true);
     try {
@@ -30,7 +31,7 @@ export function useModels(defaultVendor) {
     }
   }, [vendor]);
 
-  const changeVendor = useCallback((newVendor) => {
+  const changeVendor = useCallback((newVendor: string) => {
     setVendor(newVendor);
     fetchModels(newVendor);
   }, [fetchModels]);
@@ -38,9 +39,9 @@ export function useModels(defaultVendor) {
   return { vendor, models, selectedModel, loading, setSelectedModel, changeVendor, fetchModels };
 }
 
-export function formatModelName(model, vendor) {
+export function formatModelName(model: string, vendor: string): string {
   if (vendor !== 'openrouter') return model;
   const parts = model.split('/');
-  let displayName = parts.length > 1 ? parts[parts.length - 1] : model;
+  const displayName = parts.length > 1 ? parts[parts.length - 1] : model;
   return displayName.split(':')[0];
 }

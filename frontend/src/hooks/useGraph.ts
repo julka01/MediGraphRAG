@@ -1,8 +1,19 @@
 import { useEffect, useCallback } from 'react';
 import { getGraphTheme, normName, confidenceEdgeColor } from '../utils/graph-helpers';
 import { generateNodeTypeColors, generateRelationshipTypeColors } from '../utils/colors';
+import type { AppState, AppAction, GraphData, GraphNode, GraphRelationship, ViewState } from '../types/app';
 
-export function useGraph(containerRef, appState, dispatch, networkRef, idCounterRef, initialViewRef, onNodeClick) {
+interface UseGraphOptions {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  appState: AppState;
+  dispatch: React.Dispatch<AppAction>;
+  networkRef: React.MutableRefObject<vis.Network | null>;
+  idCounterRef: React.MutableRefObject<number>;
+  initialViewRef: React.MutableRefObject<ViewState | null>;
+  onNodeClick?: (node: Record<string, unknown> | null) => void;
+}
+
+export function useGraph({ containerRef, appState, dispatch, networkRef, idCounterRef, initialViewRef, onNodeClick }: UseGraphOptions) {
   const {
     graphData,
     highlightedNodes,
@@ -12,53 +23,47 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
     showEdgeLabels,
   } = appState;
 
-  const initializeGraph = useCallback((data) => {
+  const initializeGraph = useCallback((data: GraphData) => {
     if (!data || (!data.nodes && !data.relationships)) return;
     if (!containerRef.current) return;
 
     const gTheme = getGraphTheme();
 
-    // Pre-compute degree map
-    const nodeDegreeMap = new Map();
-    (data.relationships || []).forEach((rel) => {
+    const nodeDegreeMap = new Map<string | number, number>();
+    (data.relationships || []).forEach((rel: GraphRelationship) => {
       const f = rel.from || rel.start || rel.source;
       const t = rel.to || rel.end || rel.target;
-      nodeDegreeMap.set(f, (nodeDegreeMap.get(f) || 0) + 1);
-      nodeDegreeMap.set(t, (nodeDegreeMap.get(t) || 0) + 1);
+      if (f != null) nodeDegreeMap.set(f, (nodeDegreeMap.get(f) || 0) + 1);
+      if (t != null) nodeDegreeMap.set(t, (nodeDegreeMap.get(t) || 0) + 1);
     });
 
-    // Destroy existing network
     if (networkRef.current) {
       try { networkRef.current.destroy(); } catch (e) { console.warn('Error destroying network:', e); }
       networkRef.current = null;
     }
 
-    // Reset ID counter for fresh graph
     idCounterRef.current = 0;
 
-    // Analyze types
-    const nodeTypes = new Set();
-    const relationshipTypes = new Set();
-    (data.nodes || []).forEach((node) => {
+    const nodeTypes = new Set<string>();
+    const relationshipTypes = new Set<string>();
+    (data.nodes || []).forEach((node: GraphNode) => {
       (node.labels?.length ? node.labels : ['Unknown']).forEach((l) => nodeTypes.add(l));
     });
-    (data.relationships || []).forEach((rel) => {
+    (data.relationships || []).forEach((rel: GraphRelationship) => {
       relationshipTypes.add(rel.type || 'Unknown');
     });
 
-    // Generate colors
     const ntColors = generateNodeTypeColors(Array.from(nodeTypes));
     const rtColors = generateRelationshipTypeColors(Array.from(relationshipTypes));
     dispatch({ type: 'SET_NODE_TYPE_COLORS', colors: ntColors });
     dispatch({ type: 'SET_RELATIONSHIP_TYPE_COLORS', colors: rtColors });
 
-    // Highlight analysis
     const normHighlighted = new Set([...highlightedNodes].map(normName));
-    const referencedOriginalIds = new Set();
+    const referencedOriginalIds = new Set<string | number>();
     if (normHighlighted.size > 0) {
-      (data.nodes || []).forEach((node) => {
+      (data.nodes || []).forEach((node: GraphNode) => {
         const p = node.properties || {};
-        const candidates = [p.name, p.id, p.title].filter(Boolean);
+        const candidates = [p.name as string, p.id as string, p.title as string].filter(Boolean);
         if (candidates.some((c) => normHighlighted.has(normName(c)))) {
           referencedOriginalIds.add(node.id);
         }
@@ -66,18 +71,16 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
     }
     const isHighlightMode = referencedOriginalIds.size > 0;
 
-    // ID mapping
-    const nodeIdMap = new Map();
+    const nodeIdMap = new Map<string | number, number>();
 
-    // Process nodes
     const processedNodes = (data.nodes || [])
-      .filter((node) => {
+      .filter((node: GraphNode) => {
         if (currentFilters.nodeTypes.size > 0) {
           const nodeType = node.labels?.[0] || 'Unknown';
           return currentFilters.nodeTypes.has(nodeType);
         } else if (currentFilters.relationshipTypes.size > 0) {
           return data.relationships.some(
-            (rel) =>
+            (rel: GraphRelationship) =>
               currentFilters.relationshipTypes.has(rel.type || 'Unknown') &&
               ((rel.from || rel.start || rel.source) === node.id ||
                 (rel.to || rel.end || rel.target) === node.id)
@@ -85,11 +88,11 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
         }
         return true;
       })
-      .map((node) => {
+      .map((node: GraphNode) => {
         const originalId = node.id;
-        let newId;
+        let newId: number;
         if (nodeIdMap.has(originalId)) {
-          newId = nodeIdMap.get(originalId);
+          newId = nodeIdMap.get(originalId)!;
         } else {
           newId = idCounterRef.current++;
           nodeIdMap.set(originalId, newId);
@@ -98,14 +101,14 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
         const nodeType = node.labels?.[0] || 'Unknown';
         const nodeColor = ntColors[nodeType] || '#428bca';
 
-        let displayLabel = node.properties?.name || node.labels?.[0] || String(originalId);
+        let displayLabel = (node.properties?.name as string) || node.labels?.[0] || String(originalId);
         if (displayLabel.length > 20) displayLabel = displayLabel.substring(0, 17) + '...';
 
         const isReferenced = referencedOriginalIds.has(originalId);
         const degree = nodeDegreeMap.get(originalId) || 0;
         const degreeBonus = Math.min(degree * 2.5, 18);
 
-        let finalColor, finalSize, borderWidth, opacity;
+        let finalColor, finalSize: number, borderWidth: number, opacity: number;
         if (!isHighlightMode) {
           finalColor = {
             background: nodeColor, border: 'rgba(255,255,255,0.25)',
@@ -150,24 +153,24 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
         };
       });
 
-    // Process edges
     const processedEdges = (data.relationships || [])
-      .filter((rel) => {
+      .filter((rel: GraphRelationship) => {
         if (currentFilters.relationshipTypes.size > 0) {
           return currentFilters.relationshipTypes.has(rel.type || 'Unknown');
         }
         return true;
       })
-      .map((rel) => {
+      .map((rel: GraphRelationship) => {
         const fromOrigId = rel.from || rel.start || rel.source;
         const toOrigId = rel.to || rel.end || rel.target;
+        if (fromOrigId == null || toOrigId == null) return null;
         const fromId = nodeIdMap.get(fromOrigId);
         const toId = nodeIdMap.get(toOrigId);
         if (fromId === undefined || toId === undefined) return null;
 
         const relType = rel.type || 'Unknown';
         const edgeColor = rtColors[relType] || '#888888';
-        const confidence = rel.properties?.confidence ?? null;
+        const confidence = (rel.properties?.confidence as number) ?? null;
         const confColor = confidenceEdgeColor(confidence);
         const sourceReferenced = referencedOriginalIds.has(fromOrigId);
         const targetReferenced = referencedOriginalIds.has(toOrigId);
@@ -204,15 +207,14 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
 
     if (processedNodes.length === 0) return;
 
-    // Create network
     const nodes = new vis.DataSet(processedNodes);
-    const edges = new vis.DataSet(processedEdges);
+    const edges = new vis.DataSet(processedEdges.filter((e): e is NonNullable<typeof e> => e != null));
 
     const graphSize = processedNodes.length;
     const isLargeGraph = graphSize > 500;
     const isVeryLargeGraph = graphSize > 1000;
 
-    let physicsSettings;
+    let physicsSettings: Record<string, unknown>;
     if (isVeryLargeGraph) {
       physicsSettings = { enabled: false, stabilization: false };
     } else if (isLargeGraph) {
@@ -259,32 +261,34 @@ export function useGraph(containerRef, appState, dispatch, networkRef, idCounter
       networkRef.current = new vis.Network(containerRef.current, { nodes, edges }, options);
 
       networkRef.current.on('stabilizationIterationsDone', () => {
-        networkRef.current.setOptions({ physics: { enabled: true, stabilization: false } });
+        networkRef.current?.setOptions({ physics: { enabled: true, stabilization: false } });
         setTimeout(() => {
           try {
-            initialViewRef.current = {
-              scale: networkRef.current.getScale(),
-              position: networkRef.current.getViewPosition(),
-            };
+            if (networkRef.current) {
+              initialViewRef.current = {
+                scale: networkRef.current.getScale(),
+                position: networkRef.current.getViewPosition(),
+              };
+            }
           } catch { /* ignore */ }
         }, 1000);
       });
 
-      networkRef.current.on('click', (params) => {
-        if (params.nodes.length === 0) {
+      networkRef.current.on('click', (params: Record<string, unknown>) => {
+        const nodeIds = params.nodes as number[];
+        if (!nodeIds || nodeIds.length === 0) {
           onNodeClick?.(null);
           return;
         }
-        const nodeId = params.nodes[0];
-        const node = networkRef.current.body.data.nodes.get(nodeId);
-        if (node) onNodeClick?.(node);
+        const nodeId = nodeIds[0];
+        const node = networkRef.current?.body.data.nodes.get(nodeId);
+        if (node) onNodeClick?.(node as Record<string, unknown>);
       });
     } catch (error) {
       console.error('Error creating network:', error);
     }
   }, [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters, showEdgeLabels, nodeTypeColors, relationshipTypeColors]);
 
-  // Re-initialize when key state changes
   useEffect(() => {
     if (graphData) {
       initializeGraph(graphData);
