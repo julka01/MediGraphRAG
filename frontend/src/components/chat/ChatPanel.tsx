@@ -5,12 +5,13 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ChatSuggestions } from './ChatSuggestions';
 import { ResponseSections, SourcesSection } from './ResponseSections';
+import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
 
-function parseResponse(text) {
-  const sections = { recommendation: '', reasoning: '', evidence: '', nextSteps: '', fallback: '' };
+function parseResponse(text: string): ResponseSectionsType {
+  const sections: ResponseSectionsType = { recommendation: '', reasoning: '', evidence: '', nextSteps: '', fallback: '' };
   const lines = text.split('\n');
-  let currentSection = '';
-  let currentContent = [];
+  let currentSection: keyof ResponseSectionsType | '' = '';
+  let currentContent: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -37,10 +38,14 @@ function parseResponse(text) {
   return sections;
 }
 
-export function ChatPanel({ ragModelHook }) {
+interface ChatPanelProps {
+  ragModelHook: UseModelsReturn;
+}
+
+export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const { state, dispatch } = useApp();
   const { messages, sending, addMessage, sendQuestion, clearChat, exportChat } = useChat();
-  const chatBoxRef = useRef(null);
+  const chatBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (chatBoxRef.current) {
@@ -50,12 +55,12 @@ export function ChatPanel({ ragModelHook }) {
     }
   }, [messages]);
 
-  const handleSend = async (question) => {
+  const handleSend = async (question: string) => {
     try {
       const result = await sendQuestion(question, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel);
 
       const usedEntities = result.info?.entities?.used_entities || [];
-      const nodeNames = new Set();
+      const nodeNames = new Set<string>();
       usedEntities.forEach((entity) => {
         const readable = (entity.description || '').toLowerCase().trim();
         const idKey = (entity.id || '').toLowerCase().trim();
@@ -82,9 +87,10 @@ export function ChatPanel({ ragModelHook }) {
 
       addMessage({ type: 'ai', message: cleanedText, ts: Date.now(), sections, sourceChip, reasoningEdges, sourceEntities });
     } catch (error) {
-      const msg = error.name === 'AbortError'
+      const err = error as Error;
+      const msg = err.name === 'AbortError'
         ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
-        : `Error: ${error.message}`;
+        : `Error: ${err.message}`;
       addMessage({ type: 'error', message: msg, ts: Date.now() });
     }
   };

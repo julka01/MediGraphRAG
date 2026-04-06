@@ -1,9 +1,14 @@
 import { useRef } from 'react';
 
-export function ChatInput({ onSend, disabled }) {
-  const inputRef = useRef(null);
+interface ChatInputProps {
+  onSend: (text: string) => void;
+  disabled: boolean;
+}
 
-  const handleKeyDown = (e) => {
+export function ChatInput({ onSend, disabled }: ChatInputProps) {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -14,7 +19,7 @@ export function ChatInput({ onSend, disabled }) {
     const value = inputRef.current?.value?.trim();
     if (!value || disabled) return;
     onSend(value);
-    inputRef.current.value = '';
+    if (inputRef.current) inputRef.current.value = '';
   };
 
   return (

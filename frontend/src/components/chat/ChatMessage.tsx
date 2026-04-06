@@ -1,6 +1,12 @@
 import { useState } from 'react';
 
-export function ChatMessage({ message, type, timestamp }) {
+interface ChatMessageProps {
+  message: string;
+  type: string;
+  timestamp?: string;
+}
+
+export function ChatMessage({ message, type, timestamp }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const isUser = type === 'user';
   const isAI = type === 'ai';

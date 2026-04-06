@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import { formatMarkdown, formatReasoningPath } from '../../utils/markdown';
+import type { ResponseSections as ResponseSectionsType, ReasoningEdge, SourceEntity } from '../../types/app';
 
-function Section({ title, content, defaultExpanded = false, formatter = formatMarkdown }) {
+interface SectionProps {
+  title: string;
+  content: string | undefined;
+  defaultExpanded?: boolean;
+  formatter?: (text: string) => string;
+}
+
+function Section({ title, content, defaultExpanded = false, formatter = formatMarkdown }: SectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   if (!content?.trim()) return null;
 
@@ -15,7 +23,12 @@ function Section({ title, content, defaultExpanded = false, formatter = formatMa
   );
 }
 
-export function ResponseSections({ sections, sourceChip }) {
+interface ResponseSectionsProps {
+  sections: ResponseSectionsType;
+  sourceChip?: string;
+}
+
+export function ResponseSections({ sections, sourceChip }: ResponseSectionsProps) {
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
@@ -35,11 +48,16 @@ export function ResponseSections({ sections, sourceChip }) {
   );
 }
 
-export function SourcesSection({ reasoningEdges, sourceEntities }) {
+interface SourcesSectionProps {
+  reasoningEdges?: ReasoningEdge[];
+  sourceEntities?: SourceEntity[];
+}
+
+export function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectionProps) {
   const [expanded, setExpanded] = useState(false);
   if (!reasoningEdges?.length && !sourceEntities?.length) return null;
 
-  const seenEdges = new Set();
+  const seenEdges = new Set<string>();
   const uniqueEdges = (reasoningEdges || []).filter((edge) => {
     const key = `${edge.from_name || edge.from}|${edge.relationship}|${edge.to_name || edge.to}`;
     if (seenEdges.has(key)) return false;
@@ -64,7 +82,7 @@ export function SourcesSection({ reasoningEdges, sourceEntities }) {
             ))
           ) : (
             <div className="flex flex-wrap gap-1">
-              {[...new Set(sourceEntities.map((e) => e.description || e.id).filter(Boolean))].map((name) => (
+              {[...new Set((sourceEntities || []).map((e) => e.description || e.id).filter(Boolean))].map((name) => (
                 <span key={name} className="badge badge-xs badge-outline">{name}</span>
               ))}
             </div>
