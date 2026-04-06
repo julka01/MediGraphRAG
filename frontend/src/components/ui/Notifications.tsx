@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import type { AppAction } from '../../types/app';
 
 export function Notifications() {
   const { state, dispatch } = useApp();
@@ -32,10 +33,10 @@ export function Notifications() {
   );
 }
 
-export function showError(dispatch, message) {
+export function showError(dispatch: React.Dispatch<AppAction>, message: string): void {
   dispatch({ type: 'SHOW_NOTIFICATION', notifType: 'error', message });
 }
 
-export function showSuccess(dispatch, message) {
+export function showSuccess(dispatch: React.Dispatch<AppAction>, message: string): void {
   dispatch({ type: 'SHOW_NOTIFICATION', notifType: 'success', message });
 }
