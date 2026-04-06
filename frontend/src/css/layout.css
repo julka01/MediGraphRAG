@@ -1,0 +1,337 @@
+/* Left Panel - Minimal Controls */
+.left-panel {
+    width: 280px;
+    background-color: #2c3e50;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    overflow-y: auto;
+}
+
+.panel-section {
+    margin-bottom: 20px;
+}
+
+.panel-section h3 {
+    color: #ecf0f1;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.control-group {
+    margin-bottom: 12px;
+}
+
+.control-group label {
+    display: block;
+    color: #bdc3c7;
+    font-size: 12px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.control-group select,
+.control-group input[type="range"],
+.control-group input[type="number"] {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #34495e;
+    border-radius: 4px;
+    background: #34495e;
+    color: #ecf0f1;
+    font-size: 12px;
+}
+
+.control-group select:focus,
+.control-group input:focus {
+    outline: none;
+    border-color: #3498db;
+    background: #2c3e50;
+}
+
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.btn-primary {
+    padding: 8px 12px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    padding: 6px 10px;
+    background: #95a5a6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+.temp-display {
+    color: #3498db;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+
+/* Main Content Area */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 15px;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* View Container */
+.view-container {
+    display: flex;
+    flex: 1;
+    gap: 15px;
+    height: 100%;
+}
+
+/* KG View */
+#kg-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 15px;
+    overflow: hidden;
+}
+
+#kg-view h2 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+/* KG expand button */
+.kg-expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border, #ddd);
+    border-radius: 6px;
+    color: var(--text-2, #888);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+}
+.kg-expand-btn:hover {
+    background: var(--accent-dim, rgba(74,143,226,0.12));
+    border-color: var(--accent, #4a8fe2);
+    color: var(--accent, #4a8fe2);
+}
+
+/* KG expanded state — hides chat, KG takes full width */
+#kg-view.kg-expanded {
+    flex: 1 !important;
+}
+#chat-view.kg-expanded-hidden {
+    display: none !important;
+}
+
+/* Chat View — base layout only, colours set by design system */
+#chat-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 15px;
+}
+
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#chat-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#chat-box {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    flex-basis: 0;
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 8px;
+}
+
+#question {
+    flex: 1;
+    resize: none;
+    font-family: inherit;
+}
+
+#send-btn {
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+/* Sidebar */
+.left-panel { background: var(--surface); border-right: 1px solid var(--border); width: 260px; }
+.panel-section h3 {
+    color: var(--text-2); font-size: 10px; letter-spacing: 1.2px;
+    border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 12px;
+}
+.control-group label { color: var(--text-2); }
+.control-group select,
+.control-group input[type="range"],
+.control-group input[type="number"] {
+    background: var(--surface-2); border-color: var(--border); color: var(--text-1);
+}
+.control-group select:focus,
+.control-group input:focus { border-color: var(--accent); background: var(--surface-2); }
+
+/* Buttons */
+.btn-primary {
+    background: var(--accent); border-radius: 6px; font-size: 13px;
+    padding: 9px 14px; font-weight: 600;
+}
+.btn-primary:hover { background: #3a7bd5; transform: none; }
+.btn-secondary {
+    background: var(--surface-2); color: var(--text-2);
+    border: 1px solid var(--border); border-radius: 6px; font-size: 12px;
+}
+.btn-secondary:hover { background: var(--surface); color: var(--text-1); border-color: var(--accent); }
+
+/* Main panels */
+#kg-view, #chat-view {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: none;
+}
+#kg-view h2, #chat-view h2 { color: var(--text-1); font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+#graph-container { border-color: var(--border); border-radius: 8px; }
+
+/* ── Graph container fills panel height ─────────────── */
+#kg-view { padding-bottom: 0; }
+#graph-container { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* ── Collapsible sidebar ─────────────────────────────────── */
+.left-panel {
+    position: relative;
+    transition: width 0.25s ease;
+}
+.left-panel.collapsed {
+    width: 48px;
+    min-width: 48px;
+    overflow: hidden;
+}
+.left-panel.collapsed .panel-section {
+    display: none !important;
+}
+.left-panel.collapsed #theme-toggle {
+    display: none;
+}
+.sidebar-toggle-btn {
+    position: absolute;
+    top: 12px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    background: #2c3e50;
+    border: 2px solid #3498db;
+    border-radius: 8px;
+    color: #ecf0f1;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    transition: background 0.2s ease, transform 0.15s ease;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+.sidebar-toggle-btn:hover {
+    background: #3498db;
+    transform: scale(1.08);
+}
+
+/* ── 6. Sidebar section visual separation ──────────────── */
+.panel-section { padding-bottom: 12px; margin-bottom: 4px; }
+.panel-section + .panel-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.panel-section h3 { letter-spacing: 1px; }
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .left-panel {
+        width: 250px;
+    }
+}
+
+@media (max-width: 768px) {
+    .left-panel {
+        width: 220px;
+    }
+
+    .view-container {
+        flex-direction: column;
+    }
+
+    #kg-view, #chat-view {
+        min-height: 400px;
+    }
+}
+
+/* ── Light-theme specific adjustments ───────────────── */
+[data-theme="light"] .left-panel {
+    border-right: 1px solid var(--border);
+}
+[data-theme="light"] #kg-view,
+[data-theme="light"] #chat-view {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .sidebar-toggle-btn {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text-2) !important;
+}
