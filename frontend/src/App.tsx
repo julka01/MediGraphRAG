@@ -5,6 +5,7 @@ import { ModelSelector } from './components/kg/ModelSelector';
 import { Neo4jForm } from './components/kg/Neo4jForm';
 import { MainLayout } from './components/layout/MainLayout';
 import { Sidebar } from './components/layout/Sidebar';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { Notifications, showSuccess } from './components/ui/Notifications';
 import { useApp } from './context/AppContext';
 import { useTheme } from './context/ThemeContext';
@@ -113,14 +114,18 @@ export default function App() {
       <MainLayout
         layout={state.layout ?? (state.kgExpanded ? 'graph-only' : 'split')}
         graphPanel={
-          <Suspense fallback={<PanelSkeleton />}>
-            <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
-          </Suspense>
+          <ErrorBoundary name="Knowledge Graph">
+            <Suspense fallback={<PanelSkeleton />}>
+              <GraphContainer progressActive={progressActive} onProgressClose={() => setProgressActive(false)} />
+            </Suspense>
+          </ErrorBoundary>
         }
         chatPanel={
-          <Suspense fallback={<PanelSkeleton />}>
-            <ChatPanel ragModelHook={ragModelHook} />
-          </Suspense>
+          <ErrorBoundary name="RAG Chat">
+            <Suspense fallback={<PanelSkeleton />}>
+              <ChatPanel ragModelHook={ragModelHook} />
+            </Suspense>
+          </ErrorBoundary>
         }
       />
 
