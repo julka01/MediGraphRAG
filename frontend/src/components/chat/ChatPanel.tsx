@@ -57,13 +57,14 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const { messages, sending, addMessage, sendQuestion, clearChat, exportChat } = useChat();
   const chatBoxRef = useRef<HTMLDivElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers auto-scroll on new messages
   useEffect(() => {
     if (chatBoxRef.current) {
       const box = chatBoxRef.current;
       const dist = box.scrollHeight - box.scrollTop - box.clientHeight;
       if (dist < 80) box.scrollTop = box.scrollHeight;
     }
-  }, []);
+  }, [messages]);
 
   const handleSend = async (question: string) => {
     try {

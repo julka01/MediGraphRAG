@@ -59,9 +59,10 @@ export function ProgressPanel({ active, onClose }: ProgressPanelProps) {
     };
   }, [active]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: logs triggers auto-scroll on new log entries
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, []);
+  }, [logs]);
 
   if (!active && logs.length === 0) return null;
 
