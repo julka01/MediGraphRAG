@@ -1,9 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 
-export function ProgressPanel({ active, onClose }) {
-  const [logs, setLogs] = useState([]);
-  const logRef = useRef(null);
-  const sourceRef = useRef(null);
+interface LogEntry {
+  text: string;
+  cls: string;
+}
+
+interface ProgressPanelProps {
+  active: boolean;
+  onClose: () => void;
+}
+
+export function ProgressPanel({ active, onClose }: ProgressPanelProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
+  const sourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     if (!active) {
@@ -13,14 +23,12 @@ export function ProgressPanel({ active, onClose }) {
       }
       return;
     }
-
     setLogs([]);
     const source = new EventSource('/kg_progress_stream');
     sourceRef.current = source;
-
-    source.onmessage = (e) => {
+    source.onmessage = (e: MessageEvent) => {
       try {
-        const data = JSON.parse(e.data);
+        const data = JSON.parse(e.data as string) as { done?: boolean; line?: string };
         if (data.done) {
           setLogs((prev) => [...prev, { text: '✓ Done', cls: 'text-success' }]);
           source.close();
@@ -32,16 +40,14 @@ export function ProgressPanel({ active, onClose }) {
           if (data.line.startsWith('❌') || data.line.startsWith('Error')) cls = 'text-error';
           else if (data.line.startsWith('✓') || data.line.startsWith('🎉')) cls = 'text-success';
           else if (data.line.startsWith('🔍') || data.line.startsWith('📊')) cls = 'text-info';
-          setLogs((prev) => [...prev, { text: data.line, cls }]);
+          setLogs((prev) => [...prev, { text: data.line!, cls }]);
         }
       } catch { /* ignore */ }
     };
-
     source.onerror = () => {
       source.close();
       sourceRef.current = null;
     };
-
     return () => {
       source.close();
       sourceRef.current = null;
