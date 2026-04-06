@@ -1,2 +1,85 @@
 @import "tailwindcss";
 @plugin "daisyui";
+
+/* View Transition animations */
+::view-transition-old(.slide-from-right),
+::view-transition-old(.slide-to-right) {
+  animation: slide-to-right 200ms ease-in both;
+}
+
+::view-transition-new(.slide-from-right),
+::view-transition-new(.slide-to-right) {
+  animation: slide-from-right 200ms ease-out both;
+}
+
+::view-transition-old(.slide-from-top) {
+  animation: slide-to-top 200ms ease-in both;
+}
+
+::view-transition-new(.slide-from-top) {
+  animation: slide-from-top 200ms ease-out both;
+}
+
+::view-transition-old(.fade-in),
+::view-transition-new(.fade-out) {
+  animation: fade-out 150ms ease-in both;
+}
+
+::view-transition-new(.fade-in),
+::view-transition-old(.fade-out) {
+  animation: fade-in 150ms ease-out both;
+}
+
+@keyframes slide-from-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slide-to-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes slide-from-top {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes slide-to-top {
+  from { transform: translateY(0); }
+  to { transform: translateY(-100%); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Accessibility: disable animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Skip-to-content link */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  padding: 8px 16px;
+  z-index: 100;
+  background: var(--b1);
+  color: var(--bc);
+}
+
+.skip-link:focus {
+  top: 0;
+}
