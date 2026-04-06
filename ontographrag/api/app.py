@@ -194,7 +194,8 @@ app.add_middleware(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.mount("/static", StaticFiles(directory="ontographrag/api/static"), name="static")
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+app.mount("/static", StaticFiles(directory="frontend/dist"), name="static")
 
 # Optional API key authentication — only enforced when APP_API_KEY is set in the environment.
 # In development (no APP_API_KEY) all requests pass through.
@@ -465,7 +466,7 @@ def neo4j_health():
 
 @app.get("/")
 async def root():
-    return FileResponse("ontographrag/api/static/index.html")
+    return FileResponse("frontend/dist/index.html")
 
 @app.post("/load_kg_from_file")
 async def load_kg_from_file(
