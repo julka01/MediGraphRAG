@@ -1,4 +1,5 @@
 import { Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 
 interface LogEntry {
@@ -39,10 +40,11 @@ export function ProgressPanel({ active, onClose }: ProgressPanelProps) {
           return;
         }
         if (data.line) {
-          let cls = '';
-          if (data.line.startsWith('❌') || data.line.startsWith('Error')) cls = 'text-error';
-          else if (data.line.startsWith('✓') || data.line.startsWith('🎉')) cls = 'text-success';
-          else if (data.line.startsWith('🔍') || data.line.startsWith('📊')) cls = 'text-info';
+          const cls = clsx({
+            'text-error': data.line.startsWith('❌') || data.line.startsWith('Error'),
+            'text-success': data.line.startsWith('✓') || data.line.startsWith('🎉'),
+            'text-info': data.line.startsWith('🔍') || data.line.startsWith('📊'),
+          });
           // biome-ignore lint/style/noNonNullAssertion: data.line is checked truthy in the enclosing if
           setLogs((prev) => [...prev, { id: logIdRef.current++, text: data.line!, cls }]);
         }

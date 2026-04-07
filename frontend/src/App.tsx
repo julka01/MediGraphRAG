@@ -1,6 +1,6 @@
 import { ArrowLeftStartOnRectangleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/20/solid';
+import clsx from 'clsx';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { safeGet, safeSet } from './utils/storage';
 import { OverviewPanel } from './components/graph/GraphLegend';
 import { KGPanel } from './components/kg/KGPanel';
 import { ModelSelector } from './components/kg/ModelSelector';
@@ -14,6 +14,7 @@ import { useTheme } from './context/ThemeContext';
 import { useModels } from './hooks/useModels';
 import { useStartup } from './hooks/useStartup';
 import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
+import { safeGet, safeSet } from './utils/storage';
 
 const GraphContainer = lazy(() =>
   import('./components/graph/GraphContainer').then((m) => ({ default: m.GraphContainer })),
@@ -175,9 +176,10 @@ export default function App() {
         tabIndex={0}
         aria-orientation="vertical"
         aria-valuenow={Math.round(sidebarWidth)}
-        className={`hidden md:block w-1 shrink-0 cursor-col-resize transition-colors ${
-          sidebarDragging ? 'bg-primary/50' : 'bg-base-300 hover:bg-primary/50'
-        }`}
+        className={clsx(
+          'hidden md:block w-1 shrink-0 cursor-col-resize transition-colors',
+          sidebarDragging ? 'bg-primary/50' : 'bg-base-300 hover:bg-primary/50',
+        )}
         onPointerDown={onSidebarPointerDown}
         onPointerMove={onSidebarPointerMove}
         onPointerUp={onSidebarPointerUp}

@@ -1,4 +1,5 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 import { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { AppAction } from '../../types/app';
@@ -17,11 +18,9 @@ export function Notifications() {
 
   if (!notif) return null;
 
-  const alertClass = notif.type === 'error' ? 'alert-error' : 'alert-success';
-
   return (
     <div className="toast toast-end toast-bottom z-50" role="status" aria-live="polite">
-      <div className={`alert ${alertClass} shadow-lg`}>
+      <div className={clsx('alert shadow-lg', notif.type === 'error' ? 'alert-error' : 'alert-success')}>
         <span>{notif.message}</span>
         <button
           type="button"

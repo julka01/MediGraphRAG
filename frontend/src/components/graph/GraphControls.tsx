@@ -1,5 +1,4 @@
 import { ArrowDownTrayIcon, ArrowPathIcon, MinusIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import clsx from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
 

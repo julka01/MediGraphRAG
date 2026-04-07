@@ -1,4 +1,5 @@
 import { ArrowLeftStartOnRectangleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/20/solid';
+import clsx from 'clsx';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { Layout } from '../../types/app';
@@ -41,9 +42,10 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
   }, []);
 
   const graphStyle = isSplit ? { width: `${graphWidth}%` } : undefined;
-  const graphClass = isSplit
-    ? 'border-b md:border-b-0 md:border-r border-base-300 overflow-hidden shrink-0 max-md:flex-1'
-    : 'border-b md:border-b-0 md:border-r border-base-300 overflow-hidden flex-1';
+  const graphClass = clsx(
+    'border-b md:border-b-0 md:border-r border-base-300 overflow-hidden',
+    isSplit ? 'shrink-0 max-md:flex-1' : 'flex-1',
+  );
 
   return (
     <div ref={containerRef} className="flex flex-col md:flex-row flex-1 min-w-0">

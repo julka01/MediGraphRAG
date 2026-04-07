@@ -1,4 +1,5 @@
-import { ChevronLeftIcon, ChevronRightIcon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
+import { MoonIcon, SunIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -7,31 +8,20 @@ import { HealthDot } from '../ui/HealthDot';
 
 interface SidebarProps {
   children: ReactNode;
+  width?: number;
 }
 
-function SidebarRoot({ children }: SidebarProps) {
-  const { state, dispatch } = useApp();
+function SidebarRoot({ children, width }: SidebarProps) {
+  const { state } = useApp();
+
+  const style = state.sidebarCollapsed ? { width: 0, minWidth: 0 } : width ? { width } : undefined;
+  const className = clsx(
+    'flex flex-col bg-base-200 transition-all duration-300 overflow-y-auto',
+    state.sidebarCollapsed ? 'overflow-hidden' : width ? 'shrink-0' : 'w-72 min-w-72',
+  );
 
   return (
-    <div
-      className={`relative flex flex-col bg-base-200 border-r border-base-300 transition-all duration-300 overflow-y-auto ${
-        state.sidebarCollapsed ? 'w-0 min-w-0 overflow-hidden' : 'w-72 min-w-72'
-      }`}
-    >
-      <button
-        type="button"
-        className="absolute top-2 -right-6 z-30 btn btn-ghost btn-xs"
-        onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-        title={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        aria-label={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {state.sidebarCollapsed ? (
-          <ChevronRightIcon className="size-4" aria-hidden="true" />
-        ) : (
-          <ChevronLeftIcon className="size-4" aria-hidden="true" />
-        )}
-      </button>
-
+    <div className={className} style={style}>
       <div className="p-3 space-y-4">{children}</div>
     </div>
   );
