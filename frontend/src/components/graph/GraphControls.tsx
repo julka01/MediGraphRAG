@@ -1,3 +1,4 @@
+import { ArrowDownTrayIcon, ArrowPathIcon, MinusIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
 
@@ -111,7 +112,7 @@ export function GraphControls() {
           title="Zoom in"
           aria-label="Zoom in"
         >
-          +
+          <PlusIcon className="size-5" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -120,7 +121,7 @@ export function GraphControls() {
           title="Zoom out"
           aria-label="Zoom out"
         >
-          −
+          <MinusIcon className="size-5" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -129,7 +130,7 @@ export function GraphControls() {
           title="Reset view"
           aria-label="Reset view"
         >
-          ↺
+          <ArrowPathIcon className="size-5" aria-hidden="true" />
         </button>
       </div>
 
@@ -189,7 +190,7 @@ export function GraphControls() {
         title="Export as PNG"
         aria-label="Export as PNG"
       >
-        ↓ PNG
+        <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> PNG
       </button>
       <button
         type="button"
@@ -198,7 +199,7 @@ export function GraphControls() {
         title="Export as JSON"
         aria-label="Export as JSON"
       >
-        ↓ JSON
+        <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> JSON
       </button>
 
       {state.highlightedNodes.size > 0 && (
@@ -208,7 +209,7 @@ export function GraphControls() {
           onClick={handleClearHighlights}
           title="Clear highlights"
         >
-          ✕ {state.highlightedNodes.size} highlighted
+          <XMarkIcon className="size-4 inline" aria-hidden="true" /> {state.highlightedNodes.size} highlighted
         </button>
       )}
     </div>
