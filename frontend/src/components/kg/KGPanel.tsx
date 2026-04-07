@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
 import type { UseModelsReturn } from '../../types/app';
+import { safeSet } from '../../utils/storage';
 import { showError, showSuccess } from '../ui/Notifications';
 import { FileUpload } from './FileUpload';
 import { KGSelector } from './KGSelector';
@@ -43,7 +44,7 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
       const result = await api.createKG(formData);
       onProgressStop();
       dispatch({ type: 'SET_KG', kgId: result.kg_id, kgName: result.kg_name || null });
-      if (result.kg_name) localStorage.setItem('currentKGName', result.kg_name);
+      if (result.kg_name) safeSet('currentKGName', result.kg_name);
       if (result.graph_data) dispatch({ type: 'SET_GRAPH_DATA', data: result.graph_data });
       setFile(null);
       showSuccess(

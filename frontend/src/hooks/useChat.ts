@@ -1,25 +1,22 @@
 import { useCallback, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ChatMessage, ChatPayload, ChatResponse, UseChatReturn } from '../types/app';
+import { safeGet, safeSet } from '../utils/storage';
 
 const HISTORY_KEY = 'kg-chat-history';
 const MAX_HISTORY = 60;
 
 function loadHistory(): ChatMessage[] {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') as ChatMessage[];
+    return JSON.parse(safeGet(HISTORY_KEY, '[]') ?? '[]') as ChatMessage[];
   } catch {
     return [];
   }
 }
 
 function saveHistory(messages: ChatMessage[]): void {
-  try {
-    const toSave = messages.filter((m) => m.type === 'user' || m.type === 'ai').slice(-MAX_HISTORY);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(toSave));
-  } catch {
-    /* quota exceeded */
-  }
+  const toSave = messages.filter((m) => m.type === 'user' || m.type === 'ai').slice(-MAX_HISTORY);
+  safeSet(HISTORY_KEY, JSON.stringify(toSave));
 }
 
 export function useChat(): UseChatReturn {

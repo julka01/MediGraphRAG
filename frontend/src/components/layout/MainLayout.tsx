@@ -1,12 +1,15 @@
+import { ArrowLeftStartOnRectangleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/20/solid';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { useApp } from '../../context/AppContext';
 import type { Layout } from '../../types/app';
+import { safeGet, safeSet } from '../../utils/storage';
 import { ResizeHandle } from './ResizeHandle';
 
 const STORAGE_KEY = 'kg-split-width';
 const DEFAULT_WIDTH = 67;
 
 function readStoredWidth(): number {
-  const stored = localStorage.getItem(STORAGE_KEY);
+  const stored = safeGet(STORAGE_KEY);
   if (!stored) return DEFAULT_WIDTH;
   const parsed = Number(stored);
   return Number.isFinite(parsed) ? parsed : DEFAULT_WIDTH;
@@ -19,6 +22,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
+  const { state, dispatch } = useApp();
   const showGraph = layout !== 'chat-only';
   const showChat = layout !== 'graph-only';
   const isSplit = showGraph && showChat;
@@ -28,12 +32,12 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
 
   const handleResize = useCallback((pct: number) => {
     setGraphWidth(pct);
-    localStorage.setItem(STORAGE_KEY, String(Math.round(pct)));
+    safeSet(STORAGE_KEY, String(Math.round(pct)));
   }, []);
 
   const handleReset = useCallback(() => {
     setGraphWidth(DEFAULT_WIDTH);
-    localStorage.removeItem(STORAGE_KEY);
+    safeSet(STORAGE_KEY, String(DEFAULT_WIDTH));
   }, []);
 
   const graphStyle = isSplit ? { width: `${graphWidth}%` } : undefined;
@@ -56,6 +60,22 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
           valuenow={graphWidth}
         />
       )}
+      <div className="hidden md:flex items-center justify-center shrink-0">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs btn-square"
+          onClick={() => dispatch({ type: 'TOGGLE_KG_EXPANDED' })}
+          title={state.kgExpanded ? 'Open chat' : 'Close chat'}
+          aria-label={state.kgExpanded ? 'Open chat' : 'Close chat'}
+        >
+          {state.kgExpanded ? (
+            <ArrowLeftStartOnRectangleIcon className="size-4" aria-hidden="true" />
+          ) : (
+            <ArrowRightStartOnRectangleIcon className="size-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+      <div className="hidden md:block w-px shrink-0 bg-base-300" />
       {showChat && <div className="overflow-hidden flex-1">{chatPanel}</div>}
     </div>
   );
