@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowsPointingInIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
 import { ProgressPanel } from '../kg/ProgressPanel';
@@ -61,7 +62,11 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
           onClick={() => dispatch({ type: 'TOGGLE_KG_EXPANDED' })}
           title={state.kgExpanded ? 'Collapse graph view' : 'Expand graph view'}
         >
-          {state.kgExpanded ? '\u229F' : '\u229E'}
+          {state.kgExpanded ? (
+            <ArrowsPointingInIcon className="size-5" aria-hidden="true" />
+          ) : (
+            <ArrowsPointingOutIcon className="size-5" aria-hidden="true" />
+          )}
         </button>
       </Panel.Header>
 
@@ -73,8 +78,9 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
               type="button"
               className="btn btn-ghost btn-xs px-0"
               onClick={() => dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' })}
+              aria-label="Clear highlights"
             >
-              &#x2715;
+              <XMarkIcon className="size-4" aria-hidden="true" />
             </button>
           </span>
         </div>
