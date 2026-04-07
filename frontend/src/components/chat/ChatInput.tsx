@@ -8,6 +8,13 @@ interface ChatInputProps {
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const autoResize = () => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -19,16 +26,21 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     const value = inputRef.current?.value?.trim();
     if (!value || disabled) return;
     onSend(value);
-    if (inputRef.current) inputRef.current.value = '';
+    if (inputRef.current) {
+      inputRef.current.value = '';
+      inputRef.current.style.height = 'auto';
+    }
   };
 
   return (
     <div className="flex gap-2">
       <textarea
         ref={inputRef}
-        className="textarea textarea-bordered flex-1 text-sm min-h-10 max-h-32"
+        className="textarea textarea-bordered flex-1 text-sm min-h-10 resize-none overflow-y-auto"
+        style={{ maxHeight: '33vh' }}
         placeholder="Ask a question…"
         onKeyDown={handleKeyDown}
+        onInput={autoResize}
         disabled={disabled}
         rows={1}
       />
