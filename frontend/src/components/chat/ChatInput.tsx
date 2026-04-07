@@ -36,8 +36,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     <div className="flex gap-2">
       <textarea
         ref={inputRef}
-        className="textarea textarea-bordered flex-1 text-sm min-h-10 resize-none overflow-y-auto"
-        style={{ maxHeight: '33vh' }}
+        className="textarea textarea-bordered flex-1 text-sm min-h-10 resize-none overflow-y-auto field-sizing-content max-h-[33vh]"
         placeholder="Ask a question…"
         onKeyDown={handleKeyDown}
         onInput={autoResize}
