@@ -101,7 +101,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
             <NodeDetailPanel node={selectedNode} nodeColor={nodeColor} onClose={() => setSelectedNode(null)} />
           )}
 
-          <GraphLegend />
+          {!progressActive && <GraphLegend />}
           <ProgressPanel active={progressActive} onClose={onProgressClose} />
         </div>
       </Panel.Body>
