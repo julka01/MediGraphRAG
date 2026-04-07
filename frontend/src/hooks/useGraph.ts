@@ -379,16 +379,7 @@ export function useGraph({
         console.error('Error creating network:', error);
       }
     },
-    [
-      containerRef,
-      networkRef,
-      idCounterRef,
-      initialViewRef,
-      dispatch,
-      onNodeClick,
-      highlightedNodes,
-      currentFilters,
-    ],
+    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters],
   );
 
   useEffect(() => {

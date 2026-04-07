@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowsPointingInIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
 import { ProgressPanel } from '../kg/ProgressPanel';

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
+import type { ReactNode } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import type { HealthResponse } from '../../types/app';
@@ -25,7 +25,11 @@ function SidebarRoot({ children }: SidebarProps) {
         title={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-label={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {state.sidebarCollapsed ? <ChevronRightIcon className="size-4" aria-hidden="true" /> : <ChevronLeftIcon className="size-4" aria-hidden="true" />}
+        {state.sidebarCollapsed ? (
+          <ChevronRightIcon className="size-4" aria-hidden="true" />
+        ) : (
+          <ChevronLeftIcon className="size-4" aria-hidden="true" />
+        )}
       </button>
 
       <div className="p-3 space-y-4">{children}</div>
@@ -43,7 +47,11 @@ function SidebarHeader({ healthData }: SidebarHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme} aria-label="Toggle theme">
-        {theme === 'dark' ? <MoonIcon className="size-5" aria-hidden="true" /> : <SunIcon className="size-5" aria-hidden="true" />}
+        {theme === 'dark' ? (
+          <MoonIcon className="size-5" aria-hidden="true" />
+        ) : (
+          <SunIcon className="size-5" aria-hidden="true" />
+        )}
       </button>
       <HealthDot initialData={healthData} />
     </div>

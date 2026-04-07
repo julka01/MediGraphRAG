@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
 import type { LoadNeo4jResponse, Neo4jStats } from '../../types/app';

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';

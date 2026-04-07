@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useCallback, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 
 export function GraphSearch() {

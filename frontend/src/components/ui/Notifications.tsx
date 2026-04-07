@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { AppAction } from '../../types/app';
 
