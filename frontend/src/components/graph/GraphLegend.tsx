@@ -1,11 +1,9 @@
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { GraphNode, GraphRelationship } from '../../types/app';
 
 export function GraphLegend() {
   const { state } = useApp();
-  const [collapsed, setCollapsed] = useState(false);
 
   const nodeEntries = Object.entries(state.nodeTypeColors);
   const relEntries = Object.entries(state.relationshipTypeColors);
@@ -13,36 +11,28 @@ export function GraphLegend() {
   if (nodeEntries.length === 0 && relEntries.length === 0) return null;
 
   return (
-    <div className="absolute bottom-2 left-2 bg-base-100/90 backdrop-blur border border-base-300 rounded-lg p-2 z-10 max-w-48 text-xs">
-      <button
-        type="button"
-        className="font-semibold mb-1 cursor-pointer flex items-center justify-between w-full text-left bg-transparent border-0 p-0"
-        onClick={() => setCollapsed(!collapsed)}
-      >
-        <span>Graph Legend</span>
-        {collapsed ? (
-          <ChevronRightIcon className="size-4" aria-hidden="true" />
-        ) : (
-          <ChevronDownIcon className="size-4" aria-hidden="true" />
-        )}
-      </button>
-      {!collapsed && (
-        <div className="space-y-0.5 max-h-48 overflow-y-auto">
-          {nodeEntries.map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1.5">
-              <span className="size-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
-              <span className="truncate">{type}</span>
-            </div>
-          ))}
-          {relEntries.length > 0 && nodeEntries.length > 0 && <hr className="my-1 border-base-300" />}
-          {relEntries.map(([type, color]) => (
-            <div key={type} className="flex items-center gap-1.5">
-              <span className="w-3 h-1 shrink-0 rounded" style={{ backgroundColor: color }} />
-              <span className="truncate">{type} →</span>
-            </div>
-          ))}
+    <div className="absolute bottom-2 left-2 bg-base-100/90 backdrop-blur border border-base-300 rounded-lg z-10 max-w-48 text-xs">
+      <div className="collapse collapse-arrow">
+        <input type="checkbox" defaultChecked />
+        <div className="collapse-title font-semibold text-xs py-2 min-h-0">Graph Legend</div>
+        <div className="collapse-content px-2 pb-2">
+          <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            {nodeEntries.map(([type, color]) => (
+              <div key={type} className="flex items-center gap-1.5">
+                <span className="size-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                <span className="truncate">{type}</span>
+              </div>
+            ))}
+            {relEntries.length > 0 && nodeEntries.length > 0 && <hr className="my-1 border-base-300" />}
+            {relEntries.map(([type, color]) => (
+              <div key={type} className="flex items-center gap-1.5">
+                <span className="w-3 h-1 shrink-0 rounded" style={{ backgroundColor: color }} />
+                <span className="truncate">{type} →</span>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -67,7 +57,6 @@ export function MiniLegend() {
 
 export function OverviewPanel() {
   const { state, dispatch } = useApp();
-  const [collapsed, setCollapsed] = useState(false);
 
   const { nodeCounts, relCounts } = useMemo(() => {
     const nc: Record<string, number> = {};
@@ -95,66 +84,58 @@ export function OverviewPanel() {
 
   return (
     <div className="mt-2">
-      <button
-        type="button"
-        className="flex items-center justify-between cursor-pointer text-sm font-semibold py-1 w-full text-left bg-transparent border-0 p-0"
-        onClick={() => setCollapsed(!collapsed)}
-      >
-        <span>Details</span>
-        {collapsed ? (
-          <ChevronRightIcon className="size-4" aria-hidden="true" />
-        ) : (
-          <ChevronDownIcon className="size-4" aria-hidden="true" />
-        )}
-      </button>
-      {!collapsed && (
-        <div className="space-y-2 text-xs">
-          <div>
-            <div className="font-semibold mb-1 opacity-70">Node Labels</div>
-            {Object.entries(nodeCounts)
-              .sort(([, a], [, b]) => b - a)
-              .map(([label, count]) => (
-                <button
-                  type="button"
-                  key={label}
-                  className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
-                  onClick={() => handleNodeFilter(label)}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2.5 rounded-full"
-                      style={{ backgroundColor: state.nodeTypeColors[label] || 'var(--color-blue-400)' }}
-                    />
-                    {label}
-                  </span>
-                  <span className="badge badge-xs">{count}</span>
-                </button>
-              ))}
-          </div>
-          <div>
-            <div className="font-semibold mb-1 opacity-70">Relationship Types</div>
-            {Object.entries(relCounts)
-              .sort(([, a], [, b]) => b - a)
-              .map(([type, count]) => (
-                <button
-                  type="button"
-                  key={type}
-                  className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
-                  onClick={() => handleRelFilter(type)}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2.5 rounded-full"
-                      style={{ backgroundColor: state.relationshipTypeColors[type] || 'var(--color-gray-400)' }}
-                    />
-                    {type}
-                  </span>
-                  <span className="badge badge-xs">{count}</span>
-                </button>
-              ))}
+      <div className="collapse collapse-arrow">
+        <input type="checkbox" defaultChecked />
+        <div className="collapse-title text-sm font-semibold py-1 min-h-0">Details</div>
+        <div className="collapse-content">
+          <div className="space-y-2 text-xs">
+            <div>
+              <div className="font-semibold mb-1 opacity-70">Node Labels</div>
+              {Object.entries(nodeCounts)
+                .sort(([, a], [, b]) => b - a)
+                .map(([label, count]) => (
+                  <button
+                    type="button"
+                    key={label}
+                    className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
+                    onClick={() => handleNodeFilter(label)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ backgroundColor: state.nodeTypeColors[label] || 'var(--color-primary)' }}
+                      />
+                      {label}
+                    </span>
+                    <span className="badge badge-xs">{count}</span>
+                  </button>
+                ))}
+            </div>
+            <div>
+              <div className="font-semibold mb-1 opacity-70">Relationship Types</div>
+              {Object.entries(relCounts)
+                .sort(([, a], [, b]) => b - a)
+                .map(([type, count]) => (
+                  <button
+                    type="button"
+                    key={type}
+                    className="flex items-center justify-between py-0.5 cursor-pointer hover:bg-base-200 rounded px-1 w-full text-left bg-transparent border-0"
+                    onClick={() => handleRelFilter(type)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ backgroundColor: state.relationshipTypeColors[type] || 'var(--color-neutral)' }}
+                      />
+                      {type}
+                    </span>
+                    <span className="badge badge-xs">{count}</span>
+                  </button>
+                ))}
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
