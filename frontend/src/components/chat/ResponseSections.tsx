@@ -1,7 +1,10 @@
 import { ChevronDownIcon, ChevronRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 import { memo, useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
-import { formatMarkdown, formatReasoningPath } from '../../utils/markdown';
+import { formatReasoningPath } from '../../utils/markdown';
 
 interface SectionProps {
   title: string;
@@ -10,9 +13,11 @@ interface SectionProps {
   formatter?: (text: string) => string;
 }
 
-function Section({ title, content, defaultExpanded = false, formatter = formatMarkdown }: SectionProps) {
+function Section({ title, content, defaultExpanded = false, formatter }: SectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   if (!content?.trim()) return null;
+
+  const formatted = formatter ? formatter(content) : content;
 
   return (
     <div className="mt-2">
@@ -29,8 +34,9 @@ function Section({ title, content, defaultExpanded = false, formatter = formatMa
         {title}
       </button>
       {expanded && (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: content is sanitized markdown HTML from the server
-        <div className="pl-4 text-sm mt-1" dangerouslySetInnerHTML={{ __html: formatter(content) }} />
+        <div className="pl-4 text-sm mt-1">
+          <Markdown remarkPlugins={[remarkGfm]}>{formatted}</Markdown>
+        </div>
       )}
     </div>
   );
@@ -59,8 +65,9 @@ export const ResponseSections = memo(function ResponseSections({ sections, sourc
           <Section title="Reasoning path" content={sections.reasoning} formatter={formatReasoningPath} />
         </>
       ) : (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: fallback is sanitized markdown HTML from the server
-        <div className="text-sm" dangerouslySetInnerHTML={{ __html: formatMarkdown(sections.fallback || '') }} />
+        <div className="text-sm">
+          <Markdown remarkPlugins={[remarkGfm]}>{sections.fallback || ''}</Markdown>
+        </div>
       )}
     </div>
   );

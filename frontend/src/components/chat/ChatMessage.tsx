@@ -1,4 +1,8 @@
+import DOMPurify from 'dompurify';
 import { memo, useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import clsx from 'clsx';
 
 interface ChatMessageProps {
   message: string;
@@ -15,7 +19,7 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
 
   const handleCopy = () => {
     const tmp = document.createElement('div');
-    tmp.innerHTML = message;
+    tmp.innerHTML = DOMPurify.sanitize(message);
     navigator.clipboard.writeText(tmp.textContent || '').then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -23,19 +27,26 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
   };
 
   return (
-    <div className={`chat ${isUser ? 'chat-end' : 'chat-start'}`}>
+    <div className={clsx('chat', isUser ? 'chat-end' : 'chat-start')}>
       <div
-        className={`chat-bubble ${isUser ? 'chat-bubble-primary' : isError ? 'chat-bubble-error' : isThinking ? 'chat-bubble-ghost' : ''} text-sm`}
+        className={clsx('chat-bubble text-sm', {
+          'chat-bubble-primary': isUser,
+          'chat-bubble-error': isError,
+          'chat-bubble-ghost': isThinking,
+        })}
       >
         {isThinking && <span className="loading loading-dots loading-xs" />}
         {isUser || isError ? (
           <span>{message}</span>
         ) : !isThinking ? (
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: message is sanitized markdown HTML from the server
-          <div dangerouslySetInnerHTML={{ __html: message }} />
+          <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>
         ) : null}
         {isAI && (
-          <button type="button" className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1" onClick={handleCopy}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1"
+            onClick={handleCopy}
+          >
             {copied ? 'copied!' : 'copy'}
           </button>
         )}
