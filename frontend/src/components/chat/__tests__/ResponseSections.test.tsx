@@ -50,17 +50,13 @@ describe('SourcesSection', () => {
   });
 
   it('renders Sources button with edges', () => {
-    const edges = [
-      { from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' },
-    ];
+    const edges = [{ from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' }];
     render(<SourcesSection reasoningEdges={edges} />);
     expect(screen.getByText('Sources')).toBeInTheDocument();
   });
 
   it('expands to show edge details when Sources clicked', async () => {
-    const edges = [
-      { from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' },
-    ];
+    const edges = [{ from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' }];
     render(<SourcesSection reasoningEdges={edges} />);
     await userEvent.click(screen.getByText('Sources'));
     expect(screen.getByText('Aspirin')).toBeInTheDocument();

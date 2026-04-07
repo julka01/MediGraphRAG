@@ -1,8 +1,8 @@
+import clsx from 'clsx';
 import DOMPurify from 'dompurify';
 import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import clsx from 'clsx';
 
 interface ChatMessageProps {
   message: string;
@@ -42,11 +42,7 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
           <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>
         ) : null}
         {isAI && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1"
-            onClick={handleCopy}
-          >
+          <button type="button" className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1" onClick={handleCopy}>
             {copied ? 'copied!' : 'copy'}
           </button>
         )}

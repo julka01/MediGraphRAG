@@ -45,18 +45,16 @@ export function GraphFilters() {
     (document.activeElement as HTMLElement)?.blur();
   };
 
-  const activeFilterCount =
-    (nodeTypes.length - checkedNodes.size) + (relTypes.length - checkedRels.size);
+  const activeFilterCount = nodeTypes.length - checkedNodes.size + (relTypes.length - checkedRels.size);
 
   return (
     <div className="dropdown dropdown-end">
       <button type="button" className="btn btn-ghost btn-sm" tabIndex={0}>
         <FunnelIcon className="size-4" aria-hidden="true" />
         Filters
-        {activeFilterCount > 0 && (
-          <span className="badge badge-xs badge-primary">{activeFilterCount}</span>
-        )}
+        {activeFilterCount > 0 && <span className="badge badge-xs badge-primary">{activeFilterCount}</span>}
       </button>
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: tabIndex required for DaisyUI dropdown focus management */}
       <div className="dropdown-content card card-border bg-base-100 shadow-lg z-30 w-64" tabIndex={0}>
         <div className="card-body p-3 max-h-80 overflow-y-auto">
           <h4 className="font-semibold text-sm mb-2">Graph Filters</h4>

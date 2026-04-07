@@ -78,7 +78,12 @@ export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-w-md">
-        <button type="button" className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={onClose} aria-label="Close">
+        <button
+          type="button"
+          className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          onClick={onClose}
+          aria-label="Close"
+        >
           <XMarkIcon className="size-4" aria-hidden="true" />
         </button>
         <h3 className="font-bold text-lg mb-4">Load from Neo4j</h3>

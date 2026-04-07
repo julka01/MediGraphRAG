@@ -106,12 +106,7 @@ export function GraphControls() {
     <div className="flex items-center gap-1 @max-xs:gap-0.5 flex-wrap">
       <div className="join">
         <div className="tooltip tooltip-bottom" data-tip="Zoom in">
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs join-item"
-            onClick={handleZoomIn}
-            aria-label="Zoom in"
-          >
+          <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomIn} aria-label="Zoom in">
             <PlusIcon className="size-5" aria-hidden="true" />
           </button>
         </div>

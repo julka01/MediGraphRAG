@@ -44,7 +44,8 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
   }, [selectedNode]);
 
   const hasGraph = !!state.graphData;
-  const fallbackColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#428bca';
+  const fallbackColor =
+    getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#428bca';
   const nodeColor = selectedNode
     ? state.nodeTypeColors[(selectedNode.labels as string[] | undefined)?.[0] || 'Unknown'] || fallbackColor
     : fallbackColor;
