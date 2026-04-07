@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 
 export function GraphFilters() {
@@ -6,16 +6,18 @@ export function GraphFilters() {
   const [open, setOpen] = useState(false);
   const [checkedNodes, setCheckedNodes] = useState<Set<string>>(new Set());
   const [checkedRels, setCheckedRels] = useState<Set<string>>(new Set());
-  const [initialized, setInitialized] = useState(false);
 
   const nodeTypes = useMemo(() => Object.keys(state.nodeTypeColors), [state.nodeTypeColors]);
   const relTypes = useMemo(() => Object.keys(state.relationshipTypeColors), [state.relationshipTypeColors]);
 
-  if (nodeTypes.length > 0 && !initialized) {
-    setCheckedNodes(new Set(nodeTypes));
-    setCheckedRels(new Set(relTypes));
-    setInitialized(true);
-  }
+  useEffect(() => {
+    if (nodeTypes.length > 0) {
+      setCheckedNodes(new Set(nodeTypes));
+    }
+    if (relTypes.length > 0) {
+      setCheckedRels(new Set(relTypes));
+    }
+  }, [nodeTypes, relTypes]);
 
   const toggleNode = (type: string) => {
     setCheckedNodes((prev) => {
