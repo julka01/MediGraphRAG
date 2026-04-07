@@ -110,7 +110,7 @@ export function useGraph({
           }
 
           const nodeType = getNodeType(node);
-          const nodeColor = ntColors[nodeType] || '#428bca';
+          const nodeColor = ntColors[nodeType] || gTheme.highlight;
 
           let displayLabel = (node.properties?.name as string) || getNodeType(node) || String(originalId);
           if (displayLabel.length > 20) displayLabel = `${displayLabel.substring(0, 17)}...`;
@@ -133,7 +133,7 @@ export function useGraph({
             finalColor = {
               background: nodeColor,
               border: 'rgba(255,255,255,0.25)',
-              highlight: { background: nodeColor, border: '#ffd700' },
+              highlight: { background: nodeColor, border: gTheme.highlight },
               hover: { background: nodeColor, border: 'rgba(255,255,255,0.6)' },
             };
             borderWidth = 2;
@@ -141,9 +141,9 @@ export function useGraph({
           } else if (isReferenced) {
             finalColor = {
               background: nodeColor,
-              border: '#ffd700',
-              highlight: { background: nodeColor, border: '#ffaa00' },
-              hover: { background: nodeColor, border: '#ffd700' },
+              border: gTheme.highlight,
+              highlight: { background: nodeColor, border: gTheme.highlight },
+              hover: { background: nodeColor, border: gTheme.highlight },
             };
             borderWidth = 4;
             opacity = 1;
@@ -226,15 +226,15 @@ export function useGraph({
             originalId: rel.id,
             arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } },
             color: {
-              color: isDimmed ? gTheme.dimmedEdge : isHighlightedEdge ? '#ffd700' : normalColor,
-              highlight: '#ffd700',
-              hover: '#ffd700',
+              color: isDimmed ? gTheme.dimmedEdge : isHighlightedEdge ? gTheme.highlight : normalColor,
+              highlight: gTheme.highlight,
+              hover: gTheme.highlight,
               opacity: isDimmed ? 0.25 : 1.0,
             },
             font: {
               size: 11,
               face: 'Helvetica, Arial, sans-serif',
-              color: isDimmed ? gTheme.nodeTextDimmed : isHighlightedEdge ? '#ffd700' : gTheme.edgeText,
+              color: isDimmed ? gTheme.nodeTextDimmed : isHighlightedEdge ? gTheme.highlight : gTheme.edgeText,
               background: gTheme.edgeLabelBg,
               strokeWidth: 0,
               align: 'top',

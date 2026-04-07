@@ -35,30 +35,40 @@ describe('confidenceEdgeColor', () => {
 });
 
 describe('getGraphTheme', () => {
-  afterEach(() => {
-    delete document.body.dataset.theme;
+  // getGraphTheme reads CSS custom properties via getComputedStyle. In jsdom,
+  // CSS vars are not loaded from stylesheets, so readCSSColor returns the
+  // hardcoded fallback values. Light/dark switching is handled purely by CSS
+  // ([data-theme="light"] overrides), not by JS branching.
+
+  it('returns all required theme keys', () => {
+    const theme = getGraphTheme();
+    expect(theme).toHaveProperty('nodeText');
+    expect(theme).toHaveProperty('nodeTextDimmed');
+    expect(theme).toHaveProperty('edgeText');
+    expect(theme).toHaveProperty('edgeLabelBg');
+    expect(theme).toHaveProperty('dimmedNodeBg');
+    expect(theme).toHaveProperty('dimmedNodeBdr');
+    expect(theme).toHaveProperty('dimmedEdge');
+    expect(theme).toHaveProperty('highlight');
   });
 
-  it('returns light theme colors by default', () => {
-    document.body.dataset.theme = 'light';
+  it('falls back to dark-theme defaults when CSS vars are not set', () => {
     const theme = getGraphTheme();
-    expect(theme.nodeText).toBe('#1a1a1a');
-    expect(theme.nodeTextDimmed).toBe('#bbbbbb');
-    expect(theme.edgeText).toBe('#555555');
-    expect(theme.dimmedNodeBg).toBe('#d8dde4');
-    expect(theme.dimmedNodeBdr).toBe('#c8cdd4');
-    expect(theme.dimmedEdge).toBe('#dde0e4');
-  });
-
-  it('returns dark theme colors when data-theme is dark', () => {
-    document.body.dataset.theme = 'dark';
-    const theme = getGraphTheme();
+    // Fallback values match the dark-theme defaults defined in graph-helpers.ts
     expect(theme.nodeText).toBe('#ffffff');
     expect(theme.nodeTextDimmed).toBe('#444444');
     expect(theme.edgeText).toBe('#888888');
     expect(theme.dimmedNodeBg).toBe('#2a2a2a');
     expect(theme.dimmedNodeBdr).toBe('#3a3a3a');
     expect(theme.dimmedEdge).toBe('#282828');
+    expect(theme.highlight).toBe('#ffd700');
+  });
+
+  it('uses CSS var value when set on documentElement', () => {
+    document.documentElement.style.setProperty('--color-graph-node-text', '#123456');
+    const theme = getGraphTheme();
+    expect(theme.nodeText).toBe('#123456');
+    document.documentElement.style.removeProperty('--color-graph-node-text');
   });
 });
 

@@ -1,4 +1,4 @@
-import { ArrowsPointingInIcon, ArrowsPointingOutIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useGraph } from '../../hooks/useGraph';
@@ -44,9 +44,10 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
   }, [selectedNode]);
 
   const hasGraph = !!state.graphData;
+  const fallbackColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#428bca';
   const nodeColor = selectedNode
-    ? state.nodeTypeColors[(selectedNode.labels as string[] | undefined)?.[0] || 'Unknown'] || '#428bca'
-    : '#428bca';
+    ? state.nodeTypeColors[(selectedNode.labels as string[] | undefined)?.[0] || 'Unknown'] || fallbackColor
+    : fallbackColor;
 
   return (
     <Panel>
@@ -55,20 +56,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         badge={
           state.currentKGName ? <span className="badge badge-sm badge-primary">{state.currentKGName}</span> : undefined
         }
-      >
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs"
-          onClick={() => dispatch({ type: 'TOGGLE_KG_EXPANDED' })}
-          title={state.kgExpanded ? 'Collapse graph view' : 'Expand graph view'}
-        >
-          {state.kgExpanded ? (
-            <ArrowsPointingInIcon className="size-5" aria-hidden="true" />
-          ) : (
-            <ArrowsPointingOutIcon className="size-5" aria-hidden="true" />
-          )}
-        </button>
-      </Panel.Header>
+      ></Panel.Header>
 
       {state.highlightedNodes.size > 0 && (
         <div className="px-2 mb-1">
