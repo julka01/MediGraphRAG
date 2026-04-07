@@ -10,7 +10,7 @@ interface MainLayoutProps {
 export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
   const showGraph = layout !== 'chat-only';
   const showChat = layout !== 'graph-only';
-  const graphFlex = layout === 'split' ? 'flex-[1.6]' : 'flex-1';
+  const graphFlex = layout === 'split' ? 'flex-graph' : 'flex-1';
 
   return (
     <div className="flex flex-col md:flex-row flex-1 min-w-0">
