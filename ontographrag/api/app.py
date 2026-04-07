@@ -26,13 +26,15 @@ from ontographrag.rag.systems.enhanced_rag_system import EnhancedRAGSystem
 # Module-level singleton with lock to prevent race conditions at startup
 _rag_system: EnhancedRAGSystem = None
 _rag_system_lock = threading.Lock()
+_rag_system_embedding: str | None = None
 
-def get_rag_system() -> EnhancedRAGSystem:
-    global _rag_system
-    if _rag_system is None:
-        with _rag_system_lock:
-            if _rag_system is None:  # double-checked locking
-                _rag_system = EnhancedRAGSystem()
+def get_rag_system(embedding_model: str | None = None) -> EnhancedRAGSystem:
+    global _rag_system, _rag_system_embedding
+    resolved = (embedding_model or "").lower() or None
+    with _rag_system_lock:
+        if _rag_system is None or (resolved and resolved != _rag_system_embedding):
+            _rag_system = EnhancedRAGSystem(embedding_model=resolved)
+            _rag_system_embedding = resolved
     return _rag_system
 
 from csv_processor import MedicalReportCSVProcessor
@@ -872,7 +874,25 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
             if (_exists or {}).get("c", 0) == 0:
                 raise HTTPException(status_code=404, detail=f"Knowledge graph '{kg_name}' not found")
 
-        rag_system = get_rag_system()
+        # Read embedding model stored on the KG's Document node
+        embedding_model = None
+        if kg_name:
+            _drv = get_graphDB_driver(
+                os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                os.getenv("NEO4J_USERNAME", "neo4j"),
+                os.getenv("NEO4J_PASSWORD", "password"),
+                os.getenv("NEO4J_DATABASE", "neo4j"),
+            )
+            with _drv.session(database=os.getenv("NEO4J_DATABASE", "neo4j")) as _s:
+                _doc = _s.run(
+                    "MATCH (d:Document {kgName: $kg_name}) RETURN d.embeddingModel AS emb LIMIT 1",
+                    {"kg_name": kg_name},
+                ).single()
+            _drv.close()
+            if _doc and _doc["emb"]:
+                embedding_model = _doc["emb"]
+
+        rag_system = get_rag_system(embedding_model=embedding_model)
 
         # Get LLM provider
         llm = LangChainRunnableAdapter(get_llm_provider(provider, model), model)

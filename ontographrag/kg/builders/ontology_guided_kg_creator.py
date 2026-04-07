@@ -1333,7 +1333,8 @@ Rules:
                 d.contentHash = $contentHash,
                 d.schemaCard = $schemaCard,
                 d.schemaVersion = $schemaVersion,
-                d.schemaHash = $schemaHash
+                d.schemaHash = $schemaHash,
+                d.embeddingModel = $embeddingModel
             """
             graph.query(doc_query, {
                 "kgVersion": kg_version,
@@ -1348,6 +1349,7 @@ Rules:
                 "schemaCard": schema_card_json,
                 "schemaVersion": schema_card["schemaVersion"],
                 "schemaHash": schema_card["schemaHash"],
+                "embeddingModel": self.embedding_model,
             })
 
             # Store document-level metadata from source (e.g. CSV columns like SUBJECT_ID, HADM_ID)
