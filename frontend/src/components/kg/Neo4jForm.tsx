@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
 import type { LoadNeo4jResponse, Neo4jStats } from '../../types/app';
@@ -78,7 +79,7 @@ export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
     <dialog className="modal modal-open">
       <div className="modal-box max-w-md">
         <button type="button" className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={onClose}>
-          ✕
+          <XMarkIcon className="size-4" aria-hidden="true" />
         </button>
         <h3 className="font-bold text-lg mb-4">Load from Neo4j</h3>
         <div className="space-y-3">

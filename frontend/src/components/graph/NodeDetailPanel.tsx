@@ -1,3 +1,5 @@
+import { XMarkIcon } from '@heroicons/react/24/outline';
+
 interface NodeDetailPanelProps {
   node: Record<string, unknown>;
   nodeColor: string;
@@ -19,7 +21,7 @@ export function NodeDetailPanel({ node, nodeColor, onClose }: NodeDetailPanelPro
         onClick={onClose}
         aria-label="Close node details"
       >
-        ✕
+        <XMarkIcon className="size-4" aria-hidden="true" />
       </button>
 
       <div className="font-bold text-sm mt-4 mb-1">{(node.label as string) || String(node.originalId)}</div>
