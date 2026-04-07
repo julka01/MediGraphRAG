@@ -228,7 +228,7 @@ export interface UseModelsReturn {
 }
 
 export interface UseHealthReturn {
-  status: { color: string; tip: string };
+  status: { level: string; tip: string };
   checking: boolean;
   checkHealth: () => Promise<void>;
 }

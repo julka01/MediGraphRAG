@@ -6,6 +6,12 @@ interface HealthDotProps {
   initialData?: HealthResponse | null;
 }
 
+const statusColorClass: Record<string, string> = {
+  ok: 'status-success',
+  warn: 'status-warning',
+  fail: 'status-error',
+};
+
 export function HealthDot({ initialData }: HealthDotProps) {
   const { status, checking, checkHealth } = useHealth(initialData);
   const hasInitialData = useRef(!!initialData);
@@ -16,11 +22,12 @@ export function HealthDot({ initialData }: HealthDotProps) {
     }
   }, [checkHealth]);
 
+  const colorClass = checking ? 'status-info' : (statusColorClass[status.level] ?? 'status-info');
+
   return (
     <button
       type="button"
-      className="absolute top-3.5 right-3.5 w-2.5 h-2.5 rounded-full cursor-pointer transition-colors duration-300 z-10 border-0 p-0"
-      style={{ background: checking ? 'var(--text-3, #888)' : status.color }}
+      className={`absolute top-3.5 right-3.5 status status-sm ${colorClass} cursor-pointer z-10 border-0 p-0`}
       title={checking ? 'Rechecking…' : status.tip}
       onClick={checkHealth}
       aria-label={checking ? 'Rechecking health…' : status.tip}

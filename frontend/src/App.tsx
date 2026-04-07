@@ -80,8 +80,8 @@ export default function App() {
   void theme; // used by ThemeContext to apply data-theme attribute
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-base-100 text-base-content">
-      <a href="#main-content" className="skip-link">
+    <div className="flex h-screen w-screen overflow-hidden">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:z-50 focus:p-2 focus:bg-base-100">
         Skip to content
       </a>
       {state.sidebarCollapsed && (

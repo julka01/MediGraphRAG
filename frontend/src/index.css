@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@plugin "daisyui" {
+  themes: dark --default, light;
+}
 
 /* View Transition animations — CSS is ready but ViewTransition JSX is deferred
    until React ships the component in stable (not available in React 19.2.x). */
@@ -70,17 +72,3 @@
   }
 }
 
-/* Skip-to-content link */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  padding: 8px 16px;
-  z-index: 100;
-  background: var(--b1);
-  color: var(--bc);
-}
-
-.skip-link:focus {
-  top: 0;
-}

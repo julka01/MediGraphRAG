@@ -25,8 +25,8 @@ export function NodeDetailPanel({ node, nodeColor, onClose }: NodeDetailPanelPro
       <div className="font-bold text-sm mt-4 mb-1">{(node.label as string) || String(node.originalId)}</div>
 
       <span
-        className="badge badge-sm"
-        style={{ background: `${nodeColor}33`, color: nodeColor, border: `1px solid ${nodeColor}55` }}
+        className="badge badge-sm badge-soft"
+        style={{ color: nodeColor, borderColor: nodeColor }}
       >
         {nodeType}
       </span>

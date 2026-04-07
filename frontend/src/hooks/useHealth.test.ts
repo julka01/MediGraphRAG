@@ -15,14 +15,14 @@ describe('useHealth', () => {
     vi.clearAllMocks();
   });
 
-  it('returns initial state with gray color', () => {
+  it('returns initial state with unknown level', () => {
     const { result } = renderHook(() => useHealth());
-    expect(result.current.status.color).toBe('#888');
+    expect(result.current.status.level).toBe('unknown');
     expect(result.current.status.tip).toBe('Checking system health…');
     expect(result.current.checking).toBe(false);
   });
 
-  it('returns green for ok status', async () => {
+  it('returns ok level for ok status', async () => {
     mockCheckHealth.mockResolvedValue({ status: 'ok', checks: [] });
     const { result } = renderHook(() => useHealth());
 
@@ -30,12 +30,12 @@ describe('useHealth', () => {
       await result.current.checkHealth();
     });
 
-    expect(result.current.status.color).toBe('#2ecc71');
+    expect(result.current.status.level).toBe('ok');
     expect(result.current.status.tip).toContain('OK');
     expect(result.current.checking).toBe(false);
   });
 
-  it('returns orange for warn status and lists warned checks', async () => {
+  it('returns warn level and lists warned checks', async () => {
     mockCheckHealth.mockResolvedValue({
       status: 'warn',
       checks: [
@@ -49,12 +49,12 @@ describe('useHealth', () => {
       await result.current.checkHealth();
     });
 
-    expect(result.current.status.color).toBe('#f39c12');
+    expect(result.current.status.level).toBe('warn');
     expect(result.current.status.tip).toContain('WARN');
     expect(result.current.status.tip).toContain('neo4j');
   });
 
-  it('returns red for fail status and lists failed checks', async () => {
+  it('returns fail level and lists failed checks', async () => {
     mockCheckHealth.mockResolvedValue({
       status: 'fail',
       checks: [
@@ -68,12 +68,12 @@ describe('useHealth', () => {
       await result.current.checkHealth();
     });
 
-    expect(result.current.status.color).toBe('#e74c3c');
+    expect(result.current.status.level).toBe('fail');
     expect(result.current.status.tip).toContain('FAIL');
     expect(result.current.status.tip).toContain('ollama');
   });
 
-  it('returns red with unreachable message on API failure', async () => {
+  it('returns fail level with unreachable message on API failure', async () => {
     mockCheckHealth.mockRejectedValue(new Error('Network error'));
     const { result } = renderHook(() => useHealth());
 
@@ -81,7 +81,7 @@ describe('useHealth', () => {
       await result.current.checkHealth();
     });
 
-    expect(result.current.status.color).toBe('#e74c3c');
+    expect(result.current.status.level).toBe('fail');
     expect(result.current.status.tip).toContain('unreachable');
     expect(result.current.checking).toBe(false);
   });
@@ -94,6 +94,6 @@ describe('useHealth', () => {
       await result.current.checkHealth();
     });
 
-    expect(result.current.status.color).toBe('#2ecc71');
+    expect(result.current.status.level).toBe('ok');
   });
 });
