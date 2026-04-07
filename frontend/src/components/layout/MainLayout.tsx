@@ -50,7 +50,7 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
   return (
     <div ref={containerRef} className="flex flex-col md:flex-row flex-1 min-w-0">
       {showGraph && (
-        <div className={graphClass} style={graphStyle}>
+        <div className={clsx('@container', graphClass)} style={graphStyle}>
           {graphPanel}
         </div>
       )}
@@ -78,7 +78,7 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
         </button>
       </div>
       <div className="hidden md:block w-px shrink-0 bg-base-300" />
-      {showChat && <div className="overflow-hidden flex-1">{chatPanel}</div>}
+      {showChat && <div className="@container overflow-hidden flex-1">{chatPanel}</div>}
     </div>
   );
 }

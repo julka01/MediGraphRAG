@@ -103,7 +103,7 @@ export function GraphControls() {
   };
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-1 @max-xs:gap-0.5 flex-wrap">
       <div className="join">
         <div className="tooltip tooltip-bottom" data-tip="Zoom in">
           <button
@@ -137,7 +137,7 @@ export function GraphControls() {
         </div>
       </div>
 
-      <label className="flex items-center gap-1 cursor-pointer text-xs">
+      <label className="flex items-center gap-1 cursor-pointer text-xs @max-xs:hidden">
         <input
           type="checkbox"
           className="toggle toggle-xs"
@@ -147,7 +147,7 @@ export function GraphControls() {
         Physics
       </label>
 
-      <label className="flex items-center gap-1 cursor-pointer text-xs">
+      <label className="flex items-center gap-1 cursor-pointer text-xs @max-xs:hidden">
         <input
           type="checkbox"
           className="toggle toggle-xs"
@@ -158,7 +158,7 @@ export function GraphControls() {
       </label>
 
       <select
-        className="select select-ghost select-xs"
+        className="select select-ghost select-xs @max-xs:w-20"
         value={state.nodeSizeMetric}
         onChange={(e) => {
           const metric = e.target.value;
