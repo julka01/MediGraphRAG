@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import { ChevronDownIcon, ChevronRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
 import { formatMarkdown, formatReasoningPath } from '../../utils/markdown';
 
@@ -20,7 +21,7 @@ function Section({ title, content, defaultExpanded = false, formatter = formatMa
         className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? '▾' : '▸'} {title}
+        {expanded ? <ChevronDownIcon className="size-4 inline" aria-hidden="true" /> : <ChevronRightIcon className="size-4 inline" aria-hidden="true" />} {title}
       </button>
       {expanded && (
         // biome-ignore lint/security/noDangerouslySetInnerHtml: content is sanitized markdown HTML from the server
@@ -40,7 +41,7 @@ export const ResponseSections = memo(function ResponseSections({ sections, sourc
 
   return (
     <div>
-      {sourceChip && <div className="badge badge-ghost badge-sm mb-2">◈ {sourceChip}</div>}
+      {sourceChip && <div className="badge badge-ghost badge-sm mb-2"><Squares2X2Icon className="size-4 inline" aria-hidden="true" /> {sourceChip}</div>}
       {hasAnySections ? (
         <>
           <Section title="Summary" content={sections.recommendation} defaultExpanded={true} />
@@ -80,7 +81,7 @@ export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sou
         className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? '▾' : '▸'} Sources
+        {expanded ? <ChevronDownIcon className="size-4 inline" aria-hidden="true" /> : <ChevronRightIcon className="size-4 inline" aria-hidden="true" />} Sources
       </button>
       {expanded && (
         <div className="pl-4 mt-1 space-y-1 text-xs">

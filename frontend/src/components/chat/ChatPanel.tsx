@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
@@ -141,7 +142,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
           onClick={() => exportChat(state.currentKGName)}
           title="Export as Markdown"
         >
-          ↓ MD
+          <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> MD
         </button>
       </Panel.Header>
 
