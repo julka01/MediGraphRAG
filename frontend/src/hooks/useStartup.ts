@@ -21,28 +21,35 @@ export function useStartup(vendors: string[]): StartupData {
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchAll() {
-      const [kgResult, healthResult, ...modelResults] = await Promise.allSettled([
-        api.fetchKGList(),
-        api.checkHealth(),
-        ...vendors.map((v) => api.fetchModels(v)),
-      ]);
+    // Fire all requests in parallel but update state as each resolves
+    // so fast responses render immediately without waiting for slow ones.
+    api.fetchKGList().then(
+      (res) => !cancelled && setData((d) => ({ ...d, kgList: res.kgs || [] })),
+      () => {},
+    );
 
-      if (cancelled) return;
+    api.checkHealth().then(
+      (res) => !cancelled && setData((d) => ({ ...d, health: res })),
+      () => {},
+    );
 
-      const kgList = kgResult.status === 'fulfilled' ? kgResult.value.kgs || [] : [];
-      const health = healthResult.status === 'fulfilled' ? healthResult.value : null;
+    const pending = vendors.map((vendor) =>
+      api.fetchModels(vendor).then(
+        (res) =>
+          !cancelled &&
+          setData((d) => ({
+            ...d,
+            modelsByVendor: { ...d.modelsByVendor, [vendor]: res.models || [] },
+          })),
+        () => {},
+      ),
+    );
 
-      const modelsByVendor: Record<string, string[]> = {};
-      vendors.forEach((vendor, i) => {
-        const result = modelResults[i];
-        modelsByVendor[vendor] = result.status === 'fulfilled' ? result.value.models || [] : [];
-      });
+    // Mark loading done once everything has settled
+    Promise.allSettled([...pending]).then(() => {
+      if (!cancelled) setData((d) => ({ ...d, loading: false }));
+    });
 
-      setData({ loading: false, kgList, health, modelsByVendor });
-    }
-
-    fetchAll();
     return () => {
       cancelled = true;
     };
