@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Cog6ToothIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface LogEntry {
   id: number;
@@ -74,9 +75,9 @@ export function ProgressPanel({ active, onClose }: ProgressPanelProps) {
   return (
     <div className="absolute inset-x-2 bottom-2 bg-base-200 border border-base-300 rounded-lg shadow-lg z-20 max-h-48 flex flex-col">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-base-300">
-        <span className="text-xs font-semibold">⚙ Building knowledge graph…</span>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={handleClose}>
-          ✕
+        <span className="text-xs font-semibold flex items-center gap-1"><Cog6ToothIcon className="size-4" aria-hidden="true" /> Building knowledge graph…</span>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={handleClose} aria-label="Close progress panel">
+          <XMarkIcon className="size-4" aria-hidden="true" />
         </button>
       </div>
       <div ref={logRef} className="overflow-y-auto flex-1 p-2 text-xs font-mono space-y-0.5">
