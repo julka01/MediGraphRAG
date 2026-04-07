@@ -7,9 +7,10 @@ interface ResizeHandleProps {
   onResize: (percentage: number) => void;
   onDoubleClick: () => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
+  valuenow?: number;
 }
 
-export function ResizeHandle({ onResize, onDoubleClick, containerRef }: ResizeHandleProps) {
+export function ResizeHandle({ onResize, onDoubleClick, containerRef, valuenow = 0 }: ResizeHandleProps) {
   const [dragging, setDragging] = useState(false);
   const handleRef = useRef<HTMLDivElement>(null);
 
@@ -45,10 +46,13 @@ export function ResizeHandle({ onResize, onDoubleClick, containerRef }: ResizeHa
   );
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: <hr> cannot hold pointer event handlers or refs needed for drag behavior
     <div
       ref={handleRef}
       role="separator"
+      tabIndex={0}
       aria-orientation="vertical"
+      aria-valuenow={Math.round(valuenow)}
       className={`hidden md:block w-1 shrink-0 cursor-col-resize transition-colors ${
         dragging ? 'bg-primary/50' : 'bg-base-300 hover:bg-primary/50'
       }`}

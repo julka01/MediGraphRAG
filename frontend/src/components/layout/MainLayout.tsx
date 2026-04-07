@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useRef, useState } from 'react';
 import type { Layout } from '../../types/app';
 import { ResizeHandle } from './ResizeHandle';
 
@@ -53,6 +53,7 @@ export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
           onResize={handleResize}
           onDoubleClick={handleReset}
           containerRef={containerRef}
+          valuenow={graphWidth}
         />
       )}
       {showChat && <div className="overflow-hidden flex-1">{chatPanel}</div>}
