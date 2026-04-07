@@ -80,7 +80,7 @@ export function GraphSearch() {
         </button>
       )}
       {matchCount !== null && matchCount > 0 && (
-        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-accent pointer-events-none">
+        <span className="absolute right-1 top-1/2 -translate-y-1/2 text-2xs font-semibold text-accent pointer-events-none">
           {matchCount}
         </span>
       )}
