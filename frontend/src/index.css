@@ -38,6 +38,65 @@
     from { opacity: 1; }
     to { opacity: 0; }
   }
+
+  /* Graph node palette (dark theme defaults) */
+  --color-graph-node-0: oklch(76% 0.08 220);
+  --color-graph-node-1: oklch(52% 0.14 250);
+  --color-graph-node-2: oklch(80% 0.12 140);
+  --color-graph-node-3: oklch(55% 0.16 145);
+  --color-graph-node-4: oklch(78% 0.10 20);
+  --color-graph-node-5: oklch(55% 0.22 25);
+  --color-graph-node-6: oklch(80% 0.10 75);
+  --color-graph-node-7: oklch(68% 0.18 55);
+  --color-graph-node-8: oklch(72% 0.10 300);
+  --color-graph-node-9: oklch(45% 0.18 310);
+  --color-graph-node-10: oklch(92% 0.10 100);
+  --color-graph-node-11: oklch(50% 0.12 50);
+  --color-graph-node-12: oklch(78% 0.08 180);
+  --color-graph-node-13: oklch(92% 0.08 90);
+  --color-graph-node-14: oklch(72% 0.08 280);
+  --color-graph-node-15: oklch(70% 0.12 15);
+  --color-graph-node-16: oklch(72% 0.08 230);
+  --color-graph-node-17: oklch(78% 0.10 60);
+  --color-graph-node-18: oklch(78% 0.12 120);
+  --color-graph-node-19: oklch(82% 0.08 340);
+  --color-graph-node-20: oklch(85% 0.02 0);
+  --color-graph-node-21: oklch(62% 0.12 320);
+  --color-graph-node-22: oklch(85% 0.06 145);
+  --color-graph-node-23: oklch(88% 0.10 95);
+
+  /* Graph edge palette */
+  --color-graph-edge-0: oklch(35% 0.02 260);
+  --color-graph-edge-1: oklch(45% 0.02 260);
+  --color-graph-edge-2: oklch(58% 0.02 260);
+  --color-graph-edge-3: oklch(70% 0.02 260);
+  --color-graph-edge-4: oklch(82% 0.02 260);
+  --color-graph-edge-5: oklch(30% 0.04 240);
+  --color-graph-edge-6: oklch(38% 0.03 240);
+  --color-graph-edge-7: oklch(55% 0.02 240);
+  --color-graph-edge-8: oklch(65% 0.02 240);
+  --color-graph-edge-9: oklch(78% 0.02 240);
+
+  /* Graph theme colors */
+  --color-graph-node-text: oklch(100% 0 0);
+  --color-graph-node-text-dimmed: oklch(30% 0 0);
+  --color-graph-edge-text: oklch(58% 0 0);
+  --color-graph-edge-label-bg: transparent;
+  --color-graph-dimmed-bg: oklch(20% 0.01 260);
+  --color-graph-dimmed-border: oklch(25% 0.01 260);
+  --color-graph-dimmed-edge: oklch(18% 0.01 260);
+  --color-graph-highlight: oklch(85% 0.18 85);
+}
+
+/* Light theme overrides for graph colors (DaisyUI applies data-theme="light" on :root) */
+[data-theme="light"] {
+  --color-graph-node-text: oklch(15% 0 0);
+  --color-graph-node-text-dimmed: oklch(75% 0 0);
+  --color-graph-edge-text: oklch(40% 0 0);
+  --color-graph-dimmed-bg: oklch(90% 0.01 260);
+  --color-graph-dimmed-border: oklch(85% 0.01 260);
+  --color-graph-dimmed-edge: oklch(92% 0.01 260);
+  --color-graph-highlight: oklch(75% 0.18 85);
 }
 
 /* View Transition animations — CSS is ready but ViewTransition JSX is deferred
