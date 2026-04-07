@@ -149,7 +149,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       <Panel.Body>
         <div
           ref={chatBoxRef}
-          className="has-[:focus-within]:ring-1 has-[:focus-within]:ring-primary/20 rounded-lg transition-shadow"
+          className="has-focus-within:ring-1 has-focus-within:ring-primary/20 rounded-lg transition-shadow"
           aria-live="polite"
         >
           {isEmpty ? (
