@@ -1,9 +1,9 @@
+import { FunnelIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 
 export function GraphFilters() {
   const { state, dispatch } = useApp();
-  const [open, setOpen] = useState(false);
   const [checkedNodes, setCheckedNodes] = useState<Set<string>>(new Set());
   const [checkedRels, setCheckedRels] = useState<Set<string>>(new Set());
 
@@ -11,12 +11,8 @@ export function GraphFilters() {
   const relTypes = useMemo(() => Object.keys(state.relationshipTypeColors), [state.relationshipTypeColors]);
 
   useEffect(() => {
-    if (nodeTypes.length > 0) {
-      setCheckedNodes(new Set(nodeTypes));
-    }
-    if (relTypes.length > 0) {
-      setCheckedRels(new Set(relTypes));
-    }
+    if (nodeTypes.length > 0) setCheckedNodes(new Set(nodeTypes));
+    if (relTypes.length > 0) setCheckedRels(new Set(relTypes));
   }, [nodeTypes, relTypes]);
 
   const toggleNode = (type: string) => {
@@ -39,24 +35,30 @@ export function GraphFilters() {
 
   const applyFilters = () => {
     dispatch({ type: 'SET_FILTERS', nodeTypes: [...checkedNodes], relationshipTypes: [...checkedRels] });
-    setOpen(false);
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const resetFilters = () => {
     setCheckedNodes(new Set(nodeTypes));
     setCheckedRels(new Set(relTypes));
     dispatch({ type: 'CLEAR_FILTERS' });
-    setOpen(false);
+    (document.activeElement as HTMLElement)?.blur();
   };
 
-  return (
-    <>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(!open)}>
-        Filters
-      </button>
+  const activeFilterCount =
+    (nodeTypes.length - checkedNodes.size) + (relTypes.length - checkedRels.size);
 
-      {open && (
-        <div className="absolute top-full right-0 mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-30 p-3 w-64 max-h-80 overflow-y-auto">
+  return (
+    <div className="dropdown dropdown-end">
+      <button type="button" className="btn btn-ghost btn-sm" tabIndex={0}>
+        <FunnelIcon className="size-4" aria-hidden="true" />
+        Filters
+        {activeFilterCount > 0 && (
+          <span className="badge badge-xs badge-primary">{activeFilterCount}</span>
+        )}
+      </button>
+      <div className="dropdown-content card card-border bg-base-100 shadow-lg z-30 w-64" tabIndex={0}>
+        <div className="card-body p-3 max-h-80 overflow-y-auto">
           <h4 className="font-semibold text-sm mb-2">Graph Filters</h4>
 
           {nodeTypes.length > 0 && (
@@ -69,6 +71,10 @@ export function GraphFilters() {
                     className="checkbox checkbox-xs"
                     checked={checkedNodes.has(type)}
                     onChange={() => toggleNode(type)}
+                  />
+                  <span
+                    className="size-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: state.nodeTypeColors[type] }}
                   />
                   <span className="text-xs">{type}</span>
                 </label>
@@ -102,7 +108,7 @@ export function GraphFilters() {
             </button>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
