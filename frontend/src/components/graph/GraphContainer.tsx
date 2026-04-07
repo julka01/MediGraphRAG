@@ -85,7 +85,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
       </div>
 
       {hasGraph && (
-        <div className="flex items-center gap-2 px-2 py-1 flex-wrap">
+        <div className="relative flex items-center gap-2 px-2 py-1 flex-wrap">
           <GraphSearch />
           <GraphFilters />
         </div>
