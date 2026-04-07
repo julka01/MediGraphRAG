@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 import type { AppAction } from '../../types/app';
 
@@ -28,7 +29,7 @@ export function Notifications() {
           onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}
           aria-label="Dismiss notification"
         >
-          ✕
+          <XMarkIcon className="size-4" aria-hidden="true" />
         </button>
       </div>
     </div>

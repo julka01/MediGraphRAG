@@ -1,5 +1,6 @@
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface ErrorBoundaryProps {
   name: string;
@@ -32,7 +33,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-base-content/60">
-          <div className="text-3xl">⚠</div>
+          <ExclamationTriangleIcon className="size-8 text-warning" aria-hidden="true" />
           <p className="text-sm">Something went wrong in {this.props.name}.</p>
           <button type="button" className="btn btn-sm btn-outline" onClick={this.handleRetry}>
             Retry
