@@ -22,7 +22,7 @@ export function getGraphTheme(): GraphTheme {
     nodeText: dark ? '#ffffff' : '#1a1a1a',
     nodeTextDimmed: dark ? '#444444' : '#bbbbbb',
     edgeText: dark ? '#888888' : '#555555',
-    edgeLabelBg: dark ? 'rgba(10,10,10,0.80)' : 'rgba(232,236,240,0.88)',
+    edgeLabelBg: 'transparent',
     dimmedNodeBg: dark ? '#2a2a2a' : '#d8dde4',
     dimmedNodeBdr: dark ? '#3a3a3a' : '#c8cdd4',
     dimmedEdge: dark ? '#282828' : '#dde0e4',

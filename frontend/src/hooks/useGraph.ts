@@ -22,7 +22,7 @@ export function useGraph({
   initialViewRef,
   onNodeClick,
 }: UseGraphOptions) {
-  const { graphData, highlightedNodes, currentFilters, showEdgeLabels } = appState;
+  const { graphData, highlightedNodes, currentFilters } = appState;
 
   const initializeGraph = useCallback(
     (data: GraphData) => {
@@ -52,8 +52,14 @@ export function useGraph({
 
       const nodeTypes = new Set<string>();
       const relationshipTypes = new Set<string>();
+      const getNodeType = (node: GraphNode): string => {
+        const labels = node.labels ?? [];
+        // Prefer specific type over generic __Entity__ / Chunk
+        const specific = labels.find((l) => l !== '__Entity__' && l !== 'Chunk');
+        return specific ?? labels[0] ?? 'Unknown';
+      };
       (data.nodes || []).forEach((node: GraphNode) => {
-        for (const l of node.labels?.length ? node.labels : ['Unknown']) nodeTypes.add(l);
+        nodeTypes.add(getNodeType(node));
       });
       (data.relationships || []).forEach((rel: GraphRelationship) => {
         relationshipTypes.add(rel.type || 'Unknown');
@@ -82,8 +88,7 @@ export function useGraph({
       const processedNodes = (data.nodes || [])
         .filter((node: GraphNode) => {
           if (currentFilters.nodeTypes.size > 0) {
-            const nodeType = node.labels?.[0] || 'Unknown';
-            return currentFilters.nodeTypes.has(nodeType);
+            return currentFilters.nodeTypes.has(getNodeType(node));
           } else if (currentFilters.relationshipTypes.size > 0) {
             return data.relationships.some(
               (rel: GraphRelationship) =>
@@ -104,15 +109,18 @@ export function useGraph({
             nodeIdMap.set(originalId, newId);
           }
 
-          const nodeType = node.labels?.[0] || 'Unknown';
+          const nodeType = getNodeType(node);
           const nodeColor = ntColors[nodeType] || '#428bca';
 
-          let displayLabel = (node.properties?.name as string) || node.labels?.[0] || String(originalId);
+          let displayLabel = (node.properties?.name as string) || getNodeType(node) || String(originalId);
           if (displayLabel.length > 20) displayLabel = `${displayLabel.substring(0, 17)}...`;
 
           const isReferenced = referencedOriginalIds.has(originalId);
           const degree = nodeDegreeMap.get(originalId) || 0;
-          const degreeBonus = Math.min(degree * 2.5, 18);
+          const MIN_WIDTH = 60;
+          const MAX_WIDTH = 180;
+          const maxDegree = Math.max(...Array.from(nodeDegreeMap.values()), 1);
+          const nodeWidth = MIN_WIDTH + Math.round((degree / maxDegree) * (MAX_WIDTH - MIN_WIDTH));
 
           let finalColor: {
             background: string;
@@ -120,7 +128,7 @@ export function useGraph({
             highlight: { background: string; border: string };
             hover: { background: string; border: string };
           };
-          let finalSize: number, borderWidth: number, opacity: number;
+          let borderWidth: number, opacity: number;
           if (!isHighlightMode) {
             finalColor = {
               background: nodeColor,
@@ -128,7 +136,6 @@ export function useGraph({
               highlight: { background: nodeColor, border: '#ffd700' },
               hover: { background: nodeColor, border: 'rgba(255,255,255,0.6)' },
             };
-            finalSize = 22 + degreeBonus;
             borderWidth = 2;
             opacity = 1;
           } else if (isReferenced) {
@@ -138,7 +145,6 @@ export function useGraph({
               highlight: { background: nodeColor, border: '#ffaa00' },
               hover: { background: nodeColor, border: '#ffd700' },
             };
-            finalSize = 30 + degreeBonus;
             borderWidth = 4;
             opacity = 1;
           } else {
@@ -148,16 +154,16 @@ export function useGraph({
               highlight: { background: gTheme.dimmedNodeBdr, border: gTheme.dimmedNodeBdr },
               hover: { background: gTheme.dimmedNodeBg, border: gTheme.dimmedNodeBdr },
             };
-            finalSize = 18 + degreeBonus;
             borderWidth = 1;
             opacity = 0.35;
           }
 
           return {
-            ...node,
             id: newId,
             label: displayLabel,
             originalId,
+            labels: node.labels,
+            properties: node.properties,
             title: `${nodeType}: ${displayLabel}\n\nLabels: ${node.labels?.join(', ') || 'Unknown'}\nID: ${originalId}\n\n${
               node.properties
                 ? Object.entries(node.properties)
@@ -167,7 +173,8 @@ export function useGraph({
             }`,
             color: finalColor,
             opacity,
-            size: finalSize,
+            margin: 5,
+            widthConstraint: { minimum: nodeWidth, maximum: nodeWidth },
             borderWidth,
             font: {
               size: isReferenced ? 13 : 11,
@@ -178,8 +185,8 @@ export function useGraph({
               vadjust: 0,
             },
             shape: 'circle',
-            shadow: { enabled: false },
-            _baseSize: 22 + degreeBonus,
+            shadow: false,
+            _baseWidth: nodeWidth,
             _baseColor: nodeColor,
           };
         });
@@ -215,7 +222,7 @@ export function useGraph({
             id: idCounterRef.current++,
             from: fromId,
             to: toId,
-            label: showEdgeLabels ? relType : '',
+            label: relType,
             originalId: rel.id,
             arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } },
             color: {
@@ -381,7 +388,6 @@ export function useGraph({
       onNodeClick,
       highlightedNodes,
       currentFilters,
-      showEdgeLabels,
     ],
   );
 

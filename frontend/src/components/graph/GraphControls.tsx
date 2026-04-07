@@ -40,7 +40,26 @@ export function GraphControls() {
   };
 
   const handleEdgeLabelsToggle = () => {
+    const newValue = !state.showEdgeLabels;
     dispatch({ type: 'TOGGLE_EDGE_LABELS' });
+    const net = networkRef.current;
+    if (net) {
+      const edges = net.body.data.edges;
+      const allEdges = edges.get() as Array<Record<string, unknown>>;
+      const edgeUpdates = allEdges.map((edge: Record<string, unknown>) => ({
+        id: edge.id,
+        font: { ...(edge.font as Record<string, unknown>), size: newValue ? 11 : 0 },
+      }));
+      edges.update(edgeUpdates);
+
+      const nodes = net.body.data.nodes;
+      const allNodes = nodes.get() as Array<Record<string, unknown>>;
+      const nodeUpdates = allNodes.map((node: Record<string, unknown>) => ({
+        id: node.id,
+        font: { ...(node.font as Record<string, unknown>), size: newValue ? 11 : 0 },
+      }));
+      nodes.update(nodeUpdates);
+    }
   };
 
   const handleExportPNG = () => {
@@ -137,7 +156,27 @@ export function GraphControls() {
       <select
         className="select select-ghost select-xs"
         value={state.nodeSizeMetric}
-        onChange={(e) => dispatch({ type: 'SET_NODE_SIZE_METRIC', metric: e.target.value })}
+        onChange={(e) => {
+          const metric = e.target.value;
+          dispatch({ type: 'SET_NODE_SIZE_METRIC', metric });
+          const net = networkRef.current;
+          if (net) {
+            const nodes = net.body.data.nodes;
+            const edges = net.body.data.edges;
+            const allNodes = nodes.get() as Array<Record<string, unknown>>;
+            const allEdges = edges.get() as Array<Record<string, unknown>>;
+            const UNIFORM_WIDTH = 60;
+            allNodes.forEach((node: Record<string, unknown>) => {
+              if (metric === 'uniform') {
+                node.widthConstraint = { minimum: UNIFORM_WIDTH, maximum: UNIFORM_WIDTH };
+              } else {
+                const w = (node._baseWidth as number) ?? UNIFORM_WIDTH;
+                node.widthConstraint = { minimum: w, maximum: w };
+              }
+            });
+            net.setData({ nodes: allNodes, edges: allEdges });
+          }
+        }}
       >
         <option value="degree">Size: Degree</option>
         <option value="uniform">Size: Uniform</option>
