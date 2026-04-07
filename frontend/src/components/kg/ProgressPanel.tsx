@@ -64,13 +64,18 @@ export function ProgressPanel({ active, onClose }: ProgressPanelProps) {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logs]);
 
+  const handleClose = () => {
+    setLogs([]);
+    onClose();
+  };
+
   if (!active && logs.length === 0) return null;
 
   return (
     <div className="absolute inset-x-2 bottom-2 bg-base-200 border border-base-300 rounded-lg shadow-lg z-20 max-h-48 flex flex-col">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-base-300">
         <span className="text-xs font-semibold">⚙ Building knowledge graph…</span>
-        <button type="button" className="btn btn-ghost btn-xs" onClick={onClose}>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={handleClose}>
           ✕
         </button>
       </div>
