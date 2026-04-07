@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 import type { GraphNode, GraphRelationship } from '../../types/app';
 
@@ -19,7 +20,7 @@ export function GraphLegend() {
         onClick={() => setCollapsed(!collapsed)}
       >
         <span>Graph Legend</span>
-        <span>{collapsed ? '▶' : '▼'}</span>
+        {collapsed ? <ChevronRightIcon className="size-4" aria-hidden="true" /> : <ChevronDownIcon className="size-4" aria-hidden="true" />}
       </button>
       {!collapsed && (
         <div className="space-y-0.5 max-h-48 overflow-y-auto">
@@ -96,7 +97,7 @@ export function OverviewPanel() {
         onClick={() => setCollapsed(!collapsed)}
       >
         <span>Details</span>
-        <span className="text-xs">{collapsed ? '▶' : '▼'}</span>
+        {collapsed ? <ChevronRightIcon className="size-4" aria-hidden="true" /> : <ChevronDownIcon className="size-4" aria-hidden="true" />}
       </button>
       {!collapsed && (
         <div className="space-y-2 text-xs">

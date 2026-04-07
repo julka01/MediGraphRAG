@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useApp } from '../../context/AppContext';
 
 export function GraphSearch() {
@@ -75,8 +76,9 @@ export function GraphSearch() {
           type="button"
           className="absolute right-8 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs px-1"
           onClick={handleClear}
+          aria-label="Clear search"
         >
-          ×
+          <XMarkIcon className="size-4" aria-hidden="true" />
         </button>
       )}
       {matchCount !== null && matchCount > 0 && (
