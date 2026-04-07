@@ -49,7 +49,7 @@ export function MiniLegend() {
   if (entries.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] opacity-80 mb-1">
+    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs opacity-80 mb-1">
       {entries.map(([type, color]) => (
         <span key={type} className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full inline-block" style={{ background: color }} />

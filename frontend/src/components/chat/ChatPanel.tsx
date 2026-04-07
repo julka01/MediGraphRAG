@@ -188,7 +188,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
       <Panel.Footer>
         <ChatInput onSend={handleSend} disabled={sending} />
-        <div className="text-[10px] opacity-40 mt-1 text-center">⏎ send · ⇧⏎ new line · ⌘K focus</div>
+        <div className="text-2xs opacity-40 mt-1 text-center">⏎ send · ⇧⏎ new line · ⌘K focus</div>
       </Panel.Footer>
     </Panel>
   );
