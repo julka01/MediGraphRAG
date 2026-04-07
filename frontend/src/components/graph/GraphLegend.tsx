@@ -114,7 +114,7 @@ export function OverviewPanel() {
                   <span className="flex items-center gap-1.5">
                     <span
                       className="size-2.5 rounded-full"
-                      style={{ backgroundColor: state.nodeTypeColors[label] || '#428bca' }}
+                      style={{ backgroundColor: state.nodeTypeColors[label] || 'var(--color-blue-400)' }}
                     />
                     {label}
                   </span>
@@ -136,7 +136,7 @@ export function OverviewPanel() {
                   <span className="flex items-center gap-1.5">
                     <span
                       className="size-2.5 rounded-full"
-                      style={{ backgroundColor: state.relationshipTypeColors[type] || '#888' }}
+                      style={{ backgroundColor: state.relationshipTypeColors[type] || 'var(--color-gray-400)' }}
                     />
                     {type}
                   </span>
