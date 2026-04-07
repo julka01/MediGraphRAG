@@ -1,4 +1,5 @@
 import { ArrowDownTrayIcon, ArrowPathIcon, MinusIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
 
@@ -105,33 +106,36 @@ export function GraphControls() {
   return (
     <div className="flex items-center gap-1 flex-wrap">
       <div className="join">
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleZoomIn}
-          title="Zoom in"
-          aria-label="Zoom in"
-        >
-          <PlusIcon className="size-5" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleZoomOut}
-          title="Zoom out"
-          aria-label="Zoom out"
-        >
-          <MinusIcon className="size-5" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleResetZoom}
-          title="Reset view"
-          aria-label="Reset view"
-        >
-          <ArrowPathIcon className="size-5" aria-hidden="true" />
-        </button>
+        <div className="tooltip tooltip-bottom" data-tip="Zoom in">
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs join-item"
+            onClick={handleZoomIn}
+            aria-label="Zoom in"
+          >
+            <PlusIcon className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="tooltip tooltip-bottom" data-tip="Zoom out">
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs join-item"
+            onClick={handleZoomOut}
+            aria-label="Zoom out"
+          >
+            <MinusIcon className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="tooltip tooltip-bottom" data-tip="Reset view">
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs join-item"
+            onClick={handleResetZoom}
+            aria-label="Reset view"
+          >
+            <ArrowPathIcon className="size-5" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <label className="flex items-center gap-1 cursor-pointer text-xs">
@@ -185,7 +189,7 @@ export function GraphControls() {
 
       <button
         type="button"
-        className="btn btn-ghost btn-xs"
+        className="btn btn-soft btn-xs"
         onClick={handleExportPNG}
         title="Export as PNG"
         aria-label="Export as PNG"
@@ -194,7 +198,7 @@ export function GraphControls() {
       </button>
       <button
         type="button"
-        className="btn btn-ghost btn-xs"
+        className="btn btn-soft btn-xs"
         onClick={handleExportJSON}
         title="Export as JSON"
         aria-label="Export as JSON"
