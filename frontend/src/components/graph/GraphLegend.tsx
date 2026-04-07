@@ -25,7 +25,7 @@ export function GraphLegend() {
         <div className="space-y-0.5 max-h-48 overflow-y-auto">
           {nodeEntries.map(([type, color]) => (
             <div key={type} className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="size-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
               <span className="truncate">{type}</span>
             </div>
           ))}
@@ -52,7 +52,7 @@ export function MiniLegend() {
     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs opacity-80 mb-1">
       {entries.map(([type, color]) => (
         <span key={type} className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full inline-block" style={{ background: color }} />
+          <span className="size-2 rounded-full inline-block" style={{ background: color }} />
           {type}
         </span>
       ))}
@@ -113,7 +113,7 @@ export function OverviewPanel() {
                 >
                   <span className="flex items-center gap-1.5">
                     <span
-                      className="w-2.5 h-2.5 rounded-full"
+                      className="size-2.5 rounded-full"
                       style={{ backgroundColor: state.nodeTypeColors[label] || '#428bca' }}
                     />
                     {label}
@@ -135,7 +135,7 @@ export function OverviewPanel() {
                 >
                   <span className="flex items-center gap-1.5">
                     <span
-                      className="w-2.5 h-2.5 rounded-full"
+                      className="size-2.5 rounded-full"
                       style={{ backgroundColor: state.relationshipTypeColors[type] || '#888' }}
                     />
                     {type}
