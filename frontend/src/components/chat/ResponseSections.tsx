@@ -1,5 +1,5 @@
 import { ChevronDownIcon, ChevronRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import { memo, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
@@ -41,18 +41,91 @@ function Section({ title, content, defaultExpanded = false, formatter }: Section
   );
 }
 
+interface ThreeDotsMenuProps {
+  onClearChat?: () => void;
+  onExportChat?: () => void;
+}
+
+function ThreeDotsMenu({ onClearChat, onExportChat }: ThreeDotsMenuProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const handleAction = useCallback(
+    (action?: () => void) => {
+      setOpen(false);
+      action?.();
+    },
+    [],
+  );
+
+  return (
+    <div ref={containerRef} className="flex justify-center mt-1 relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="btn btn-ghost btn-xs text-base-content/50 hover:text-base-content"
+        aria-label="Message options"
+      >
+        &#x22EF;
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-20 min-w-max">
+          {onClearChat && (
+            <button
+              type="button"
+              onClick={() => handleAction(onClearChat)}
+              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg"
+            >
+              Clear Chat
+            </button>
+          )}
+          {onExportChat && (
+            <button
+              type="button"
+              onClick={() => handleAction(onExportChat)}
+              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg"
+            >
+              Export Chat
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ResponseSectionsProps {
   sections: ResponseSectionsType;
   sourceChip?: string;
+  isLast?: boolean;
+  onClearChat?: () => void;
+  onExportChat?: () => void;
 }
 
-export const ResponseSections = memo(function ResponseSections({ sections, sourceChip }: ResponseSectionsProps) {
+export const ResponseSections = memo(function ResponseSections({
+  sections,
+  sourceChip,
+  isLast = false,
+  onClearChat,
+  onExportChat,
+}: ResponseSectionsProps) {
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
     <div>
       {sourceChip && (
-        <div className="badge badge-ghost badge-sm mb-2">
+        <div className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start mb-2">
           <Squares2X2Icon className="size-4 inline" aria-hidden="true" /> {sourceChip}
         </div>
       )}
@@ -68,6 +141,7 @@ export const ResponseSections = memo(function ResponseSections({ sections, sourc
           <Markdown remarkPlugins={[remarkGfm]}>{sections.fallback || ''}</Markdown>
         </div>
       )}
+      {isLast && <ThreeDotsMenu onClearChat={onClearChat} onExportChat={onExportChat} />}
     </div>
   );
 });

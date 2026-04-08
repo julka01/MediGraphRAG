@@ -1,9 +1,7 @@
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
-import { Panel } from '../ui/Panel';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
@@ -68,6 +66,9 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
     }
   }, [messages]);
 
+  const handleClearChat = useCallback(() => clearChat(), [clearChat]);
+  const handleExportChat = useCallback(() => exportChat(state.currentKGName), [exportChat, state.currentKGName]);
+
   const handleSend = useCallback(
     async (question: string) => {
       try {
@@ -127,74 +128,66 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
   const isEmpty = messages.length === 0;
 
+  // Find the index of the last AI message for the three-dots menu
+  let lastAiIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].type === 'ai' && messages[i].sections) {
+      lastAiIndex = i;
+      break;
+    }
+  }
+
   return (
-    <Panel>
-      <Panel.Header
-        title="RAG Chat"
-        badge={state.currentKGName ? <span className="text-xs opacity-50">— {state.currentKGName}</span> : undefined}
-      >
-        <button type="button" className="btn btn-ghost btn-xs" onClick={clearChat}>
-          Clear Chat
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs"
-          onClick={() => exportChat(state.currentKGName)}
-          title="Export as Markdown"
-        >
-          <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> MD
-        </button>
-      </Panel.Header>
-
-      <Panel.Body>
-        <div
-          ref={chatBoxRef}
-          className="has-focus-within:ring-1 has-focus-within:ring-primary/20 rounded-lg transition-shadow"
-          aria-live="polite"
-        >
-          {isEmpty ? (
-            <ChatSuggestions onSelect={handleSend} />
-          ) : (
-            messages.map((msg, i) => {
-              // ts may not be unique if messages arrive in the same ms; use index as tiebreaker
-              const msgKey = `${msg.ts ?? 0}-${i}`;
-              if (msg.type === 'ai' && msg.sections) {
-                return (
-                  <div key={msgKey} className="chat chat-start">
-                    <div className="chat-bubble text-sm">
-                      <ResponseSections sections={msg.sections} sourceChip={msg.sourceChip} />
-                      <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
-                    </div>
-                    {msg.ts && (
-                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
-                    )}
-                  </div>
-                );
-              }
+    <div className="flex flex-col h-full bg-base-200">
+      {/* Messages area */}
+      <div ref={chatBoxRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2" aria-live="polite">
+        {isEmpty ? (
+          <ChatSuggestions onSelect={handleSend} />
+        ) : (
+          messages.map((msg, i) => {
+            const msgKey = `${msg.ts ?? 0}-${i}`;
+            if (msg.type === 'ai' && msg.sections) {
+              const isLast = i === lastAiIndex;
               return (
-                <ChatMessage
-                  key={msgKey}
-                  message={msg.message}
-                  type={msg.type}
-                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
-                />
+                <div key={msgKey} className="chat chat-start">
+                  <div className="chat-bubble rounded-2xl text-sm">
+                    <ResponseSections
+                      sections={msg.sections}
+                      sourceChip={msg.sourceChip}
+                      isLast={isLast}
+                      onClearChat={handleClearChat}
+                      onExportChat={handleExportChat}
+                    />
+                  </div>
+                  <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
+                  {msg.ts && (
+                    <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
+                  )}
+                </div>
               );
-            })
-          )}
-          {sending && (
-            <div className="chat chat-start">
-              <div className="chat-bubble chat-bubble-ghost">
-                <span className="loading loading-dots loading-xs" />
-              </div>
+            }
+            return (
+              <ChatMessage
+                key={msgKey}
+                message={msg.message}
+                type={msg.type}
+                timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
+              />
+            );
+          })
+        )}
+        {sending && (
+          <div className="chat chat-start">
+            <div className="chat-bubble chat-bubble-ghost">
+              <span className="loading loading-dots loading-xs" />
             </div>
-          )}
-        </div>
-      </Panel.Body>
-
-      <Panel.Footer>
-        <ChatInput onSend={handleSend} disabled={sending} />
-        <div className="text-2xs opacity-40 mt-1 text-center">⏎ send · ⇧⏎ new line · ⌘K focus</div>
-      </Panel.Footer>
-    </Panel>
+          </div>
+        )}
+      </div>
+      {/* Chat input at bottom */}
+      <div className="shrink-0 px-3 pb-3 pt-1">
+        <ChatInput onSend={handleSend} disabled={sending} ragModelHook={ragModelHook} />
+      </div>
+    </div>
   );
 }
