@@ -12,11 +12,12 @@ const VENDORS = [
 ] as const;
 
 interface ModelSelectorProps {
-  label: string;
+  vendorLabel: string;
+  modelLabel: string;
   vendorHook: UseModelsReturn;
 }
 
-export function ModelSelector({ label, vendorHook }: ModelSelectorProps) {
+export function ModelSelector({ vendorLabel, modelLabel, vendorHook }: ModelSelectorProps) {
   const { vendor, models, selectedModel, loading, setSelectedModel, changeVendor, fetchModels } = vendorHook;
 
   useEffect(() => {
@@ -24,13 +25,13 @@ export function ModelSelector({ label, vendorHook }: ModelSelectorProps) {
   }, [vendor, fetchModels]);
 
   return (
-    <div className="space-y-2">
-      <fieldset className="fieldset">
-        <legend className="fieldset-legend text-xs">{label} Vendor</legend>
+    <>
+      {/* Vendor */}
+      <div className="relative">
         <select
-          className="select select-bordered select-sm w-full"
           value={vendor}
           onChange={(e) => changeVendor(e.target.value)}
+          className="select select-bordered select-sm w-full"
         >
           {VENDORS.map((v) => (
             <option key={v.value} value={v.value}>
@@ -38,14 +39,18 @@ export function ModelSelector({ label, vendorHook }: ModelSelectorProps) {
             </option>
           ))}
         </select>
-      </fieldset>
-      <fieldset className="fieldset">
-        <legend className="fieldset-legend text-xs">{label} Model</legend>
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+          {vendorLabel}
+        </span>
+      </div>
+
+      {/* Model */}
+      <div className="relative">
         <select
-          className="select select-bordered select-sm w-full"
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
           disabled={loading}
+          className="select select-bordered select-sm w-full"
         >
           {loading ? (
             <option value="">Loading models...</option>
@@ -59,7 +64,10 @@ export function ModelSelector({ label, vendorHook }: ModelSelectorProps) {
             ))
           )}
         </select>
-      </fieldset>
-    </div>
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+          {modelLabel}
+        </span>
+      </div>
+    </>
   );
 }
