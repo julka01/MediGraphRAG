@@ -125,7 +125,7 @@ export const ResponseSections = memo(function ResponseSections({
   return (
     <div>
       {sourceChip && (
-        <div className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start mb-2">
+        <div className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start">
           <Squares2X2Icon className="size-4 inline" aria-hidden="true" /> {sourceChip}
         </div>
       )}
