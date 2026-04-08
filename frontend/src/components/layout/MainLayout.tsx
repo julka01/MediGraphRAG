@@ -1,6 +1,7 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useRef } from 'react';
 import { BottomResizeHandle } from './BottomResizeHandle';
 import { useApp } from '../../context/AppContext';
+import { useDynamicMinWidth } from '../../hooks/useDynamicMinWidth';
 
 interface MainLayoutProps {
   graphPanel: ReactNode;
@@ -11,6 +12,8 @@ interface MainLayoutProps {
 export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps) {
   const { state, dispatch } = useApp();
   const { rightCollapsed, bottomCollapsed, rightWidth } = state.panels;
+  const rightSidebarRef = useRef<HTMLDivElement>(null);
+  const dynamicMinWidth = useDynamicMinWidth(rightSidebarRef);
 
   function handleBottomResize(height: number) {
     dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: height });
@@ -50,8 +53,9 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
             className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
           />
           <div
+            ref={rightSidebarRef}
             className="shrink-0 overflow-hidden"
-            style={{ width: rightWidth }}
+            style={{ width: Math.max(rightWidth, dynamicMinWidth) }}
           >
             {chatPanel}
           </div>
