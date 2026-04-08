@@ -1,84 +1,62 @@
-import { ArrowLeftStartOnRectangleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/20/solid';
-import clsx from 'clsx';
-import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { type ReactNode } from 'react';
+import { BottomResizeHandle } from './BottomResizeHandle';
 import { useApp } from '../../context/AppContext';
-import type { Layout } from '../../types/app';
-import { safeGet, safeSet } from '../../utils/storage';
-import { ResizeHandle } from './ResizeHandle';
-
-const STORAGE_KEY = 'kg-split-width';
-const DEFAULT_WIDTH = 67;
-
-function readStoredWidth(): number {
-  const stored = safeGet(STORAGE_KEY);
-  if (!stored) return DEFAULT_WIDTH;
-  const parsed = Number(stored);
-  return Number.isFinite(parsed) ? parsed : DEFAULT_WIDTH;
-}
 
 interface MainLayoutProps {
-  layout: Layout;
   graphPanel: ReactNode;
   chatPanel: ReactNode;
+  bottomBar: ReactNode;
 }
 
-export function MainLayout({ layout, graphPanel, chatPanel }: MainLayoutProps) {
+export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps) {
   const { state, dispatch } = useApp();
-  const showGraph = layout !== 'chat-only';
-  const showChat = layout !== 'graph-only';
-  const isSplit = showGraph && showChat;
+  const { rightCollapsed, bottomCollapsed, rightWidth } = state.panels;
 
-  const [graphWidth, setGraphWidth] = useState(readStoredWidth);
-  const containerRef = useRef<HTMLDivElement>(null);
+  function handleBottomResize(height: number) {
+    dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: height });
+  }
 
-  const handleResize = useCallback((pct: number) => {
-    setGraphWidth(pct);
-    safeSet(STORAGE_KEY, String(Math.round(pct)));
-  }, []);
-
-  const handleReset = useCallback(() => {
-    setGraphWidth(DEFAULT_WIDTH);
-    safeSet(STORAGE_KEY, String(DEFAULT_WIDTH));
-  }, []);
-
-  const graphStyle = isSplit ? { width: `${graphWidth}%` } : undefined;
-  const graphClass = clsx(
-    'border-b md:border-b-0 md:border-r border-base-300 overflow-hidden',
-    isSplit ? 'shrink-0 max-md:flex-1' : 'flex-1',
-  );
+  function handleBottomClose() {
+    dispatch({ type: 'CLOSE_PANEL', payload: 'bottom' });
+  }
 
   return (
-    <div ref={containerRef} className="flex flex-col md:flex-row flex-1 min-w-0">
-      {showGraph && (
-        <div className={clsx('@container', graphClass)} style={graphStyle}>
+    <div className="flex flex-1 min-w-0 min-h-0">
+      {/* Graph + Bottom stack */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Graph view */}
+        <div className="flex-1 min-h-0">
           {graphPanel}
         </div>
-      )}
-      {isSplit && (
-        <ResizeHandle
-          onResize={handleResize}
-          onDoubleClick={handleReset}
-          containerRef={containerRef}
-          valuenow={graphWidth}
-        />
-      )}
-      <div className="hidden md:flex items-center justify-center shrink-0">
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs btn-square"
-          onClick={() => dispatch({ type: 'TOGGLE_KG_EXPANDED' })}
-          title={state.kgExpanded ? 'Open chat' : 'Close chat'}
-          aria-label={state.kgExpanded ? 'Open chat' : 'Close chat'}
-        >
-          {state.kgExpanded ? (
-            <ArrowLeftStartOnRectangleIcon className="size-4" aria-hidden="true" />
-          ) : (
-            <ArrowRightStartOnRectangleIcon className="size-4" aria-hidden="true" />
-          )}
-        </button>
+
+        {/* Bottom resize handle + bottom bar */}
+        {!bottomCollapsed && (
+          <>
+            <BottomResizeHandle
+              onResize={handleBottomResize}
+              onClose={handleBottomClose}
+              minHeight={80}
+            />
+            {bottomBar}
+          </>
+        )}
       </div>
-      <div className="hidden md:block w-px shrink-0 bg-base-300" />
-      {showChat && <div className="@container overflow-hidden flex-1">{chatPanel}</div>}
+
+      {/* Right sidebar resize handle + chat panel */}
+      {!rightCollapsed && (
+        <>
+          <div
+            role="separator"
+            className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+          />
+          <div
+            className="shrink-0 overflow-hidden"
+            style={{ width: rightWidth }}
+          >
+            {chatPanel}
+          </div>
+        </>
+      )}
     </div>
   );
 }
