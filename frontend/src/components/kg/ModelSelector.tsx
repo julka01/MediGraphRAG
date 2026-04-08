@@ -39,7 +39,7 @@ export function ModelSelector({ vendorLabel, modelLabel, vendorHook }: ModelSele
             </option>
           ))}
         </select>
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
           {vendorLabel}
         </span>
       </div>
@@ -64,7 +64,7 @@ export function ModelSelector({ vendorLabel, modelLabel, vendorHook }: ModelSele
             ))
           )}
         </select>
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
           {modelLabel}
         </span>
       </div>

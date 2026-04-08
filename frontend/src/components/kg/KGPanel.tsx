@@ -149,7 +149,7 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
           <option value="vertexai">Google Vertex AI</option>
           <option value="titan">AWS Titan</option>
         </select>
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
           Embedding Model
         </span>
       </div>
@@ -164,7 +164,7 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
           min={1}
           max={100}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
           Max Chunks
         </span>
       </div>
@@ -178,7 +178,7 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
           value={kgName}
           onChange={(e) => setKgName(e.target.value)}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-[10px] text-base-content/50">
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
           KG Name
         </span>
       </div>

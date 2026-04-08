@@ -85,14 +85,14 @@ export const FilterChips = memo(function FilterChips() {
       <button
         type="button"
         onClick={activateAll}
-        className="btn btn-xs btn-primary text-[10px] shrink-0"
+        className="btn btn-xs btn-primary text-2xs shrink-0"
       >
         All
       </button>
       <button
         type="button"
         onClick={deactivateAll}
-        className="btn btn-xs btn-ghost text-[10px] shrink-0"
+        className="btn btn-xs btn-ghost text-2xs shrink-0"
       >
         None
       </button>
@@ -109,7 +109,7 @@ export const FilterChips = memo(function FilterChips() {
               type="button"
               data-chip
               onClick={() => toggleChip(chip)}
-              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] whitespace-nowrap transition-opacity shrink-0 ${
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs whitespace-nowrap transition-opacity shrink-0 ${
                 active
                   ? 'bg-base-300 text-base-content'
                   : 'bg-base-300/40 text-base-content/30'
@@ -130,7 +130,7 @@ export const FilterChips = memo(function FilterChips() {
 
       {/* Overflow indicator */}
       {visibleCount !== null && (
-        <span className="text-[10px] text-base-content/40 shrink-0 pl-1">
+        <span className="text-2xs text-base-content/40 shrink-0 pl-1">
           +{allChips.length - visibleCount} more
         </span>
       )}
