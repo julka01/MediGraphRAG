@@ -1,25 +1,41 @@
-import { ArrowDownTrayIcon, ArrowPathIcon, MinusIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  MinusIcon,
+  PlusIcon,
+  XMarkIcon,
+} from '@heroicons/react/20/solid';
+import { useCallback, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
 
 export function GraphControls() {
   const { state, dispatch, networkRef, initialViewRef } = useApp();
-  const network = networkRef.current;
+  const [searchTerm, setSearchTerm] = useState('');
+  const [matchCount, setMatchCount] = useState<number | null>(null);
+
+  // ── Zoom ────────────────────────────────────────────────────────
 
   const handleZoomIn = () => {
+    const network = networkRef.current;
     if (!network) return;
     network.moveTo({ scale: network.getScale() * 1.2, animation: true });
   };
 
   const handleZoomOut = () => {
+    const network = networkRef.current;
     if (!network) return;
     network.moveTo({ scale: network.getScale() * 0.8, animation: true });
   };
 
   const handleResetZoom = () => {
+    const network = networkRef.current;
     if (!network) return;
     dispatch({ type: 'CLEAR_FILTERS' });
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
+    setSearchTerm('');
+    setMatchCount(null);
     setTimeout(() => {
       if (initialViewRef.current?.position && initialViewRef.current?.scale) {
         network.moveTo({
@@ -33,37 +49,126 @@ export function GraphControls() {
     }, 100);
   };
 
+  // ── Toggle handlers ─────────────────────────────────────────────
+
   const handlePhysicsToggle = () => {
     dispatch({ type: 'TOGGLE_PHYSICS' });
+    const network = networkRef.current;
     if (network) {
       network.setOptions({ physics: { enabled: !state.physicsEnabled } });
     }
   };
 
-  const handleEdgeLabelsToggle = () => {
+  const handleLabelsToggle = () => {
     const newValue = !state.showEdgeLabels;
     dispatch({ type: 'TOGGLE_EDGE_LABELS' });
     const net = networkRef.current;
-    if (net) {
-      const edges = net.body.data.edges;
-      const allEdges = edges.get() as Array<Record<string, unknown>>;
-      const edgeUpdates = allEdges.map((edge: Record<string, unknown>) => ({
+    if (!net) return;
+
+    const edges = net.body.data.edges;
+    const allEdges = edges.get() as Array<Record<string, unknown>>;
+    edges.update(
+      allEdges.map((edge: Record<string, unknown>) => ({
         id: edge.id,
         font: { ...(edge.font as Record<string, unknown>), size: newValue ? 11 : 0 },
-      }));
-      edges.update(edgeUpdates);
+      })),
+    );
 
-      const nodes = net.body.data.nodes;
-      const allNodes = nodes.get() as Array<Record<string, unknown>>;
-      const nodeUpdates = allNodes.map((node: Record<string, unknown>) => ({
+    const nodes = net.body.data.nodes;
+    const allNodes = nodes.get() as Array<Record<string, unknown>>;
+    nodes.update(
+      allNodes.map((node: Record<string, unknown>) => ({
         id: node.id,
         font: { ...(node.font as Record<string, unknown>), size: newValue ? 11 : 0 },
-      }));
-      nodes.update(nodeUpdates);
-    }
+      })),
+    );
   };
 
+  const handleSizeMetricToggle = () => {
+    const newMetric = state.nodeSizeMetric === 'degree' ? 'uniform' : 'degree';
+    dispatch({ type: 'SET_NODE_SIZE_METRIC', metric: newMetric });
+
+    const net = networkRef.current;
+    if (!net) return;
+
+    const nodes = net.body.data.nodes;
+    const allNodes = nodes.get() as Array<Record<string, unknown>>;
+    const UNIFORM_WIDTH = 60;
+
+    nodes.update(
+      allNodes.map((node: Record<string, unknown>) => {
+        const w =
+          newMetric === 'uniform' ? UNIFORM_WIDTH : ((node._baseWidth as number) ?? UNIFORM_WIDTH);
+        return { id: node.id, widthConstraint: { minimum: w, maximum: w } };
+      }),
+    );
+  };
+
+  // ── Search ──────────────────────────────────────────────────────
+
+  const performSearch = useCallback(
+    (term: string) => {
+      const network = networkRef.current;
+      if (!network) return;
+
+      const nodeDS = network.body.data.nodes;
+      const edgeDS = network.body.data.edges;
+      const t = (term || '').toLowerCase().trim();
+
+      if (!t) {
+        nodeDS.update(
+          nodeDS.get().map((n: Record<string, unknown>) => ({ id: n.id, opacity: 1, hidden: false })),
+        );
+        edgeDS.update(
+          edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })),
+        );
+        setMatchCount(null);
+        network.redraw();
+        return;
+      }
+
+      const matched = new Set<string | number>();
+      const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
+        const hit =
+          ((node.label as string) || '').toLowerCase().includes(t) ||
+          ((node.title as string) || '').toLowerCase().includes(t) ||
+          JSON.stringify(node.properties || {}).toLowerCase().includes(t);
+        if (hit) matched.add(node.id as string | number);
+        return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
+      });
+      nodeDS.update(nodeUpdates);
+
+      const edgeUpdates = edgeDS.get().map((edge: Record<string, unknown>) => ({
+        id: edge.id,
+        hidden: false,
+        opacity:
+          matched.has(edge.from as string | number) || matched.has(edge.to as string | number)
+            ? 1
+            : 0.06,
+      }));
+      edgeDS.update(edgeUpdates);
+
+      setMatchCount(matched.size);
+      network.redraw();
+    },
+    [networkRef],
+  );
+
+  const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    performSearch(value);
+  };
+
+  const handleSearchClear = () => {
+    setSearchTerm('');
+    performSearch('');
+  };
+
+  // ── Export ──────────────────────────────────────────────────────
+
   const handleExportPNG = () => {
+    const network = networkRef.current;
     if (!network) {
       showError(dispatch, 'Please load a knowledge graph first');
       return;
@@ -98,118 +203,123 @@ export function GraphControls() {
     }
   };
 
-  const handleClearHighlights = () => {
-    dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
-  };
+  // ── Render ──────────────────────────────────────────────────────
+
+  const toggleBtn = (active: boolean) =>
+    `btn btn-xs ${active ? 'btn-soft btn-primary' : 'btn-ghost'}`;
+
+  const sizeLabel = state.nodeSizeMetric === 'degree' ? 'Degree' : 'Uniform';
 
   return (
-    <div className="flex items-center gap-1 @max-xs:gap-0.5 flex-wrap">
-      <div className="join">
-        <div className="tooltip tooltip-bottom" data-tip="Zoom in">
-          <button type="button" className="btn btn-ghost btn-xs join-item" onClick={handleZoomIn} aria-label="Zoom in">
-            <PlusIcon className="size-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="tooltip tooltip-bottom" data-tip="Zoom out">
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs join-item"
-            onClick={handleZoomOut}
-            aria-label="Zoom out"
-          >
-            <MinusIcon className="size-5" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="tooltip tooltip-bottom" data-tip="Reset view">
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs join-item"
-            onClick={handleResetZoom}
-            aria-label="Reset view"
-          >
-            <ArrowPathIcon className="size-5" aria-hidden="true" />
-          </button>
-        </div>
+    <div className="flex items-center gap-1 px-2 py-1">
+      {/* Left: Zoom controls */}
+      <div className="join shrink-0">
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleZoomIn}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <PlusIcon className="size-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleZoomOut}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <MinusIcon className="size-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs join-item"
+          onClick={handleResetZoom}
+          aria-label="Reset view"
+          title="Reset view"
+        >
+          <ArrowPathIcon className="size-4" aria-hidden="true" />
+        </button>
       </div>
 
-      <label className="flex items-center gap-1 cursor-pointer text-xs @max-xs:hidden">
-        <input
-          type="checkbox"
-          className="toggle toggle-xs"
-          checked={state.physicsEnabled}
-          onChange={handlePhysicsToggle}
-        />
-        Physics
-      </label>
+      {/* Divider */}
+      <div className="w-px h-5 bg-base-300/50 shrink-0" />
 
-      <label className="flex items-center gap-1 cursor-pointer text-xs @max-xs:hidden">
-        <input
-          type="checkbox"
-          className="toggle toggle-xs"
-          checked={state.showEdgeLabels}
-          onChange={handleEdgeLabelsToggle}
-        />
-        Labels
-      </label>
-
-      <select
-        className="select select-ghost select-xs @max-xs:w-20"
-        value={state.nodeSizeMetric}
-        onChange={(e) => {
-          const metric = e.target.value;
-          dispatch({ type: 'SET_NODE_SIZE_METRIC', metric });
-          const net = networkRef.current;
-          if (net) {
-            const nodes = net.body.data.nodes;
-            const edges = net.body.data.edges;
-            const allNodes = nodes.get() as Array<Record<string, unknown>>;
-            const allEdges = edges.get() as Array<Record<string, unknown>>;
-            const UNIFORM_WIDTH = 60;
-            allNodes.forEach((node: Record<string, unknown>) => {
-              if (metric === 'uniform') {
-                node.widthConstraint = { minimum: UNIFORM_WIDTH, maximum: UNIFORM_WIDTH };
-              } else {
-                const w = (node._baseWidth as number) ?? UNIFORM_WIDTH;
-                node.widthConstraint = { minimum: w, maximum: w };
-              }
-            });
-            net.setData({ nodes: allNodes, edges: allEdges });
-          }
-        }}
-      >
-        <option value="degree">Size: Degree</option>
-        <option value="uniform">Size: Uniform</option>
-      </select>
+      {/* Toggles */}
+      <button type="button" className={toggleBtn(state.physicsEnabled)} onClick={handlePhysicsToggle}>
+        Physics {state.physicsEnabled ? 'ON' : 'OFF'}
+      </button>
 
       <button
         type="button"
-        className="btn btn-soft btn-xs"
+        className={toggleBtn(state.showEdgeLabels)}
+        onClick={handleLabelsToggle}
+      >
+        Labels {state.showEdgeLabels ? 'ON' : 'OFF'}
+      </button>
+
+      <button
+        type="button"
+        className={toggleBtn(state.nodeSizeMetric === 'degree')}
+        onClick={handleSizeMetricToggle}
+      >
+        {sizeLabel}
+      </button>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-base-300/50 shrink-0" />
+
+      {/* Center: Search (takes remaining space) */}
+      <div className="relative flex-1 min-w-0 max-w-xs">
+        <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-base-content/40 pointer-events-none" />
+        <input
+          type="text"
+          className="input input-bordered input-xs w-full pl-7 pr-14"
+          placeholder="Search nodes..."
+          value={searchTerm}
+          onChange={handleSearchInput}
+          autoComplete="off"
+        />
+        {searchTerm && (
+          <button
+            type="button"
+            className="absolute right-7 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs px-0.5"
+            onClick={handleSearchClear}
+            aria-label="Clear search"
+          >
+            <XMarkIcon className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {matchCount !== null && matchCount > 0 && (
+          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-2xs font-semibold text-accent pointer-events-none">
+            {matchCount}
+          </span>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-base-300/50 shrink-0" />
+
+      {/* Right: Export */}
+      <button
+        type="button"
+        className="btn btn-soft btn-xs shrink-0"
         onClick={handleExportPNG}
         title="Export as PNG"
         aria-label="Export as PNG"
       >
-        <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> PNG
+        <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> PNG
       </button>
       <button
         type="button"
-        className="btn btn-soft btn-xs"
+        className="btn btn-soft btn-xs shrink-0"
         onClick={handleExportJSON}
         title="Export as JSON"
         aria-label="Export as JSON"
       >
-        <ArrowDownTrayIcon className="size-4 inline" aria-hidden="true" /> JSON
+        <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> JSON
       </button>
-
-      {state.highlightedNodes.size > 0 && (
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs text-warning"
-          onClick={handleClearHighlights}
-          title="Clear highlights"
-        >
-          <XMarkIcon className="size-4 inline" aria-hidden="true" /> {state.highlightedNodes.size} highlighted
-        </button>
-      )}
     </div>
   );
 }
