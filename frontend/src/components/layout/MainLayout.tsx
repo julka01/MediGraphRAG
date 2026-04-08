@@ -2,6 +2,7 @@ import { type ReactNode, useRef } from 'react';
 import { BottomResizeHandle } from './BottomResizeHandle';
 import { useApp } from '../../context/AppContext';
 import { useDynamicMinWidth } from '../../hooks/useDynamicMinWidth';
+import { useSnapToClose } from '../../hooks/useSnapToClose';
 
 interface MainLayoutProps {
   graphPanel: ReactNode;
@@ -14,6 +15,13 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
   const { rightCollapsed, bottomCollapsed, rightWidth } = state.panels;
   const rightSidebarRef = useRef<HTMLDivElement>(null);
   const dynamicMinWidth = useDynamicMinWidth(rightSidebarRef);
+
+  const rightSnap = useSnapToClose({
+    edge: 'right',
+    minSize: dynamicMinWidth,
+    onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'right' }),
+    onResize: (w) => dispatch({ type: 'SET_RIGHT_WIDTH', payload: w }),
+  });
 
   function handleBottomResize(height: number) {
     dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: height });
@@ -51,6 +59,9 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
           <div
             role="separator"
             className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+            onPointerDown={rightSnap.onPointerDown}
+            onPointerMove={rightSnap.onPointerMove}
+            onPointerUp={rightSnap.onPointerUp}
           />
           <div
             ref={rightSidebarRef}

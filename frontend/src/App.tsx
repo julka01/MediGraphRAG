@@ -9,6 +9,7 @@ import { Notifications, showSuccess } from './components/ui/Notifications';
 import { useApp } from './context/AppContext';
 import { useTheme } from './context/ThemeContext';
 import { useModels } from './hooks/useModels';
+import { useSnapToClose } from './hooks/useSnapToClose';
 import { useStartup } from './hooks/useStartup';
 import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
 import { safeSet } from './utils/storage';
@@ -81,6 +82,13 @@ export default function App() {
 
   void theme; // used by ThemeContext to apply data-theme attribute
 
+  const leftSnap = useSnapToClose({
+    edge: 'left',
+    minSize: 288,
+    onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'left' }),
+    onResize: () => {}, // fixed width, no resize — only close gesture
+  });
+
   return (
     <div ref={rootRef} className="flex h-screen w-screen overflow-hidden">
       <a
@@ -104,6 +112,9 @@ export default function App() {
           <div
             role="separator"
             className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+            onPointerDown={leftSnap.onPointerDown}
+            onPointerMove={leftSnap.onPointerMove}
+            onPointerUp={leftSnap.onPointerUp}
           />
         </>
       )}
