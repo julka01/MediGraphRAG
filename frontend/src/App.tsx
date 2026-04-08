@@ -158,11 +158,11 @@ export default function App() {
         <button
           type="button"
           className="btn btn-ghost btn-xs btn-square"
-          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-          title={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => dispatch({ type: 'TOGGLE_LEFT_PANEL' })}
+          title={state.panels.leftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={state.panels.leftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {state.sidebarCollapsed ? (
+          {state.panels.leftCollapsed ? (
             <ArrowRightStartOnRectangleIcon className="size-4" aria-hidden="true" />
           ) : (
             <ArrowLeftStartOnRectangleIcon className="size-4" aria-hidden="true" />

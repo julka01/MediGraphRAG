@@ -1,7 +1,37 @@
 import { createContext, useContext, useReducer, useRef } from 'react';
-import type { AppAction, AppContextValue, AppState, Layout, ViewState } from '../types/app';
+import type { AppAction, AppContextValue, AppState, Layout, PanelState, ViewState } from '../types/app';
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+const PANEL_STATE_KEY = 'panel-state';
+
+const initialPanelState: PanelState = {
+  leftCollapsed: false,
+  rightCollapsed: false,
+  bottomCollapsed: false,
+  rightWidth: 320,
+  bottomHeight: 120,
+};
+
+function loadPanelState(): PanelState {
+  try {
+    const stored = localStorage.getItem(PANEL_STATE_KEY);
+    if (stored) {
+      return { ...initialPanelState, ...JSON.parse(stored) };
+    }
+  } catch {
+    // Ignore parse errors and fall back to defaults
+  }
+  return initialPanelState;
+}
+
+function savePanelState(panels: PanelState): void {
+  try {
+    localStorage.setItem(PANEL_STATE_KEY, JSON.stringify(panels));
+  } catch {
+    // Ignore storage errors (e.g. private browsing quota exceeded)
+  }
+}
 
 const initialState: AppState = {
   currentKGId: null,
@@ -19,7 +49,7 @@ const initialState: AppState = {
   showEdgeLabels: true,
   activeView: 'kg',
   layout: 'split' as Layout,
-  sidebarCollapsed: false,
+  panels: loadPanelState(),
   kgExpanded: false,
   notification: null,
 };
@@ -63,8 +93,45 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, showEdgeLabels: !state.showEdgeLabels };
     case 'SET_VIEW':
       return { ...state, activeView: action.view };
+    // TOGGLE_SIDEBAR kept for backward compatibility — maps to left panel
     case 'TOGGLE_SIDEBAR':
-      return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
+    case 'TOGGLE_LEFT_PANEL': {
+      const panels = { ...state.panels, leftCollapsed: !state.panels.leftCollapsed };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'TOGGLE_RIGHT_PANEL': {
+      const panels = { ...state.panels, rightCollapsed: !state.panels.rightCollapsed };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'TOGGLE_BOTTOM_PANEL': {
+      const panels = { ...state.panels, bottomCollapsed: !state.panels.bottomCollapsed };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'SET_RIGHT_WIDTH': {
+      const panels = { ...state.panels, rightWidth: action.payload };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'SET_BOTTOM_HEIGHT': {
+      const panels = { ...state.panels, bottomHeight: action.payload };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'CLOSE_PANEL': {
+      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed' } as const)[action.payload];
+      const panels = { ...state.panels, [key]: true };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'OPEN_PANEL': {
+      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed' } as const)[action.payload];
+      const panels = { ...state.panels, [key]: false };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
     case 'TOGGLE_KG_EXPANDED': {
       const newLayout = state.layout === 'graph-only' ? 'split' : 'graph-only';
       return { ...state, kgExpanded: !state.kgExpanded, layout: newLayout };

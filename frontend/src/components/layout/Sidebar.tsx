@@ -14,10 +14,10 @@ interface SidebarProps {
 function SidebarRoot({ children, width }: SidebarProps) {
   const { state } = useApp();
 
-  const style = state.sidebarCollapsed ? { width: 0, minWidth: 0 } : width ? { width } : undefined;
+  const style = state.panels.leftCollapsed ? { width: 0, minWidth: 0 } : width ? { width } : undefined;
   const className = clsx(
     'flex flex-col bg-base-200 transition-all duration-300 overflow-y-auto',
-    state.sidebarCollapsed ? 'overflow-hidden' : width ? 'shrink-0' : 'w-72 min-w-72',
+    state.panels.leftCollapsed ? 'overflow-hidden' : width ? 'shrink-0' : 'w-72 min-w-72',
   );
 
   return (

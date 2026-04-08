@@ -48,6 +48,15 @@ export interface GraphData {
   relationships: GraphRelationship[];
 }
 
+/* Panel state */
+export interface PanelState {
+  leftCollapsed: boolean;
+  rightCollapsed: boolean;
+  bottomCollapsed: boolean;
+  rightWidth: number;
+  bottomHeight: number;
+}
+
 /* App state */
 export interface AppState {
   currentKGId: string | null;
@@ -65,7 +74,7 @@ export interface AppState {
   showEdgeLabels: boolean;
   activeView: ActiveView;
   layout: Layout;
-  sidebarCollapsed: boolean;
+  panels: PanelState;
   kgExpanded: boolean;
   notification: Notification | null;
 }
@@ -93,6 +102,13 @@ export type AppAction =
   | { type: 'TOGGLE_EDGE_LABELS' }
   | { type: 'SET_VIEW'; view: ActiveView }
   | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'TOGGLE_LEFT_PANEL' }
+  | { type: 'TOGGLE_RIGHT_PANEL' }
+  | { type: 'TOGGLE_BOTTOM_PANEL' }
+  | { type: 'SET_RIGHT_WIDTH'; payload: number }
+  | { type: 'SET_BOTTOM_HEIGHT'; payload: number }
+  | { type: 'CLOSE_PANEL'; payload: 'left' | 'right' | 'bottom' }
+  | { type: 'OPEN_PANEL'; payload: 'left' | 'right' | 'bottom' }
   | { type: 'TOGGLE_KG_EXPANDED' }
   | { type: 'SET_LAYOUT'; layout: Layout }
   | { type: 'SET_CLUSTERS'; clusters: Record<string, unknown> }
