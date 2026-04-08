@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { BottomBar } from './components/graph/BottomBar';
-import { OverviewPanel } from './components/graph/GraphLegend';
+import { OverviewPanel } from './components/graph/OverviewPanel';
 import { KGPanel } from './components/kg/KGPanel';
 import { ModelSelector } from './components/kg/ModelSelector';
 import { Neo4jForm } from './components/kg/Neo4jForm';
