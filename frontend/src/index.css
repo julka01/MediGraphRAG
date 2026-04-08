@@ -7,6 +7,18 @@
   --text-2xs: 0.625rem;
   --flex-graph: 1.6;
 
+  /* Slate Neutral Dark theme colors */
+  --color-base-100: oklch(15.3% 0.023 264.2);   /* #0f172a */
+  --color-base-200: oklch(23.5% 0.024 264.8);   /* #1e293b */
+  --color-base-300: oklch(33.3% 0.02 265.8);    /* #334155 */
+  --color-base-content: oklch(92.9% 0.006 264);  /* #e2e8f0 */
+  --color-primary: oklch(62.3% 0.17 253.4);      /* #3b82f6 */
+  --color-primary-content: oklch(100% 0 0);       /* white */
+  --color-secondary: oklch(50% 0.02 265);         /* #64748b */
+  --color-secondary-content: oklch(92.9% 0.006 264);
+  --color-neutral: oklch(33.3% 0.02 265.8);      /* #334155 */
+  --color-neutral-content: oklch(92.9% 0.006 264);
+
   --animate-slide-from-right: slide-from-right 200ms ease-out both;
   --animate-slide-to-right: slide-to-right 200ms ease-in both;
   --animate-slide-from-top: slide-from-top 200ms ease-out both;
@@ -90,13 +102,26 @@
 
 /* Light theme overrides for graph colors (DaisyUI applies data-theme="light" on :root) */
 [data-theme="light"] {
-  --color-graph-node-text: oklch(15% 0 0);
+  /* Stone Warm Light theme colors */
+  --color-base-100: oklch(98.3% 0.003 106.4);    /* #fafaf9 */
+  --color-base-200: oklch(96.7% 0.003 106.4);    /* #f5f5f4 */
+  --color-base-300: oklch(87.2% 0.007 83.2);     /* #d6d3d1 */
+  --color-base-content: oklch(17% 0.006 56.4);    /* #1c1917 */
+  --color-primary: oklch(54.6% 0.215 262.9);      /* #2563eb */
+  --color-primary-content: oklch(100% 0 0);
+  --color-secondary: oklch(71.2% 0.01 73.4);      /* #a8a29e */
+  --color-secondary-content: oklch(17% 0.006 56.4);
+  --color-neutral: oklch(87.2% 0.007 83.2);
+  --color-neutral-content: oklch(17% 0.006 56.4);
+
+  /* Graph utility colors for warm light theme */
+  --color-graph-node-text: oklch(17% 0.006 56.4);
   --color-graph-node-text-dimmed: oklch(75% 0 0);
-  --color-graph-edge-text: oklch(40% 0 0);
-  --color-graph-dimmed-bg: oklch(90% 0.01 260);
-  --color-graph-dimmed-border: oklch(85% 0.01 260);
-  --color-graph-dimmed-edge: oklch(92% 0.01 260);
-  --color-graph-highlight: oklch(75% 0.18 85);
+  --color-graph-edge-text: oklch(40% 0.01 73);
+  --color-graph-dimmed-bg: oklch(90% 0.005 83);
+  --color-graph-dimmed-border: oklch(82% 0.007 83);
+  --color-graph-dimmed-edge: oklch(85% 0.005 83);
+  --color-graph-highlight: oklch(75% 0.15 85);
 }
 
 /* View Transition animations — CSS is ready but ViewTransition JSX is deferred
