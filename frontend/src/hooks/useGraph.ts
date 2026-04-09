@@ -87,9 +87,19 @@ export function useGraph({
 
       const processedNodes = (data.nodes || [])
         .filter((node: GraphNode) => {
-          if (currentFilters.nodeTypes.size > 0) {
+          const hasNodeFilter = currentFilters.nodeTypes.size > 0;
+          const hasRelFilter = currentFilters.relationshipTypes.size > 0;
+
+          // When no filters active but type data exists, user deselected all — hide everything
+          if (!hasNodeFilter && !hasRelFilter) {
+            const hasTypeData = Object.keys(appState.nodeTypeColors).length > 0;
+            return !hasTypeData;
+          }
+
+          if (hasNodeFilter) {
             return currentFilters.nodeTypes.has(getNodeType(node));
-          } else if (currentFilters.relationshipTypes.size > 0) {
+          }
+          if (hasRelFilter) {
             return data.relationships.some(
               (rel: GraphRelationship) =>
                 currentFilters.relationshipTypes.has(rel.type || 'Unknown') &&
@@ -379,7 +389,7 @@ export function useGraph({
         console.error('Error creating network:', error);
       }
     },
-    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters],
+    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters, appState.nodeTypeColors],
   );
 
   useEffect(() => {
