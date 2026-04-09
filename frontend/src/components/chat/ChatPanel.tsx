@@ -140,7 +140,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   return (
     <div className="flex flex-col h-full bg-base-200">
       {/* Messages area */}
-      <div ref={chatBoxRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-2" aria-live="polite">
+      <div ref={chatBoxRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2" aria-live="polite">
         {isEmpty ? (
           <ChatSuggestions onSelect={handleSend} />
         ) : (
