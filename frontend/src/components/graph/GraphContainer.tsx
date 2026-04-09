@@ -12,15 +12,51 @@ interface GraphContainerProps {
   onProgressClose: () => void;
 }
 
+interface NodeEdge {
+  from: string;
+  to: string;
+  label: string;
+  toLabel: string;
+  fromLabel: string;
+}
+
 export function GraphContainer({ progressActive, onProgressClose }: GraphContainerProps) {
   const { state, dispatch, networkRef, idCounterRef, initialViewRef } = useApp();
   const { theme, toggleTheme } = useTheme();
   const [selectedNode, setSelectedNode] = useState<Record<string, unknown> | null>(null);
+  const [selectedNodeEdges, setSelectedNodeEdges] = useState<NodeEdge[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const getNodeEdges = useCallback((nodeId: number): NodeEdge[] => {
+    const net = networkRef.current;
+    if (!net) return [];
+    const edgeDS = (net.body as { data: { edges: { get: () => Array<Record<string, unknown>> } } }).data.edges;
+    const nodeDS = (net.body as { data: { nodes: { get: (id: number) => Record<string, unknown> | null } } }).data.nodes;
+    const allEdges = edgeDS.get();
+    return allEdges
+      .filter((e) => e.from === nodeId || e.to === nodeId)
+      .map((e) => {
+        const targetId = e.from === nodeId ? e.to : e.from;
+        const targetNode = nodeDS.get(targetId as number);
+        return {
+          from: String(e.from),
+          to: String(e.to),
+          label: String(e.label ?? e.title ?? ''),
+          toLabel: targetNode ? String(targetNode.label ?? '') : '',
+          fromLabel: '',
+        };
+      });
+  }, [networkRef]);
 
   const handleNodeClick = useCallback((node: Record<string, unknown> | null) => {
     setSelectedNode(node);
-  }, []);
+    if (node) {
+      const nodeId = (node.id ?? node.originalId) as number;
+      setSelectedNodeEdges(getNodeEdges(nodeId));
+    } else {
+      setSelectedNodeEdges([]);
+    }
+  }, [getNodeEdges]);
 
   useGraph({
     containerRef,
@@ -50,7 +86,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     : fallbackColor;
 
   return (
-    <div className="relative flex flex-col h-full bg-base-100">
+    <div className="relative flex flex-col h-full bg-base-100 min-w-[300px]">
       {/* Graph canvas */}
       <div ref={containerRef} className="flex-1 min-h-0">
         {!hasGraph && !progressActive && (
@@ -94,7 +130,12 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
 
       {/* Node detail panel */}
       {selectedNode && (
-        <NodeDetailPanel node={selectedNode} nodeColor={nodeColor} onClose={() => setSelectedNode(null)} />
+        <NodeDetailPanel
+          node={selectedNode}
+          nodeColor={nodeColor}
+          edges={selectedNodeEdges}
+          onClose={() => { setSelectedNode(null); setSelectedNodeEdges([]); }}
+        />
       )}
 
       {/* Progress overlay */}

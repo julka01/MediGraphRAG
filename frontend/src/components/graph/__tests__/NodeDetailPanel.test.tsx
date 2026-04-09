@@ -12,13 +12,13 @@ describe('NodeDetailPanel', () => {
   };
 
   it('renders node label and type', () => {
-    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" onClose={vi.fn()} />);
+    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" edges={[]} onClose={vi.fn()} />);
     expect(screen.getByText('Aspirin')).toBeInTheDocument();
     expect(screen.getByText('Drug')).toBeInTheDocument();
   });
 
   it('renders properties', () => {
-    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" onClose={vi.fn()} />);
+    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" edges={[]} onClose={vi.fn()} />);
     expect(screen.getByText('dosage')).toBeInTheDocument();
     expect(screen.getByText('100mg')).toBeInTheDocument();
     expect(screen.getByText('route')).toBeInTheDocument();
@@ -27,14 +27,14 @@ describe('NodeDetailPanel', () => {
 
   it('calls onClose when close button clicked', async () => {
     const onClose = vi.fn();
-    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" onClose={onClose} />);
+    render(<NodeDetailPanel node={mockNode} nodeColor="#ff0000" edges={[]} onClose={onClose} />);
     await userEvent.click(screen.getByLabelText('Close node details'));
     expect(onClose).toHaveBeenCalled();
   });
 
   it('shows empty message when no properties', () => {
     const emptyNode = { ...mockNode, properties: {} };
-    render(<NodeDetailPanel node={emptyNode} nodeColor="#ff0000" onClose={vi.fn()} />);
+    render(<NodeDetailPanel node={emptyNode} nodeColor="#ff0000" edges={[]} onClose={vi.fn()} />);
     expect(screen.getByText('No additional properties')).toBeInTheDocument();
   });
 });
