@@ -4,17 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OntographRAG</title>
-  <!-- Critical: vis-network CSS needed for graph layout on first paint -->
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.0/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
   <!-- Non-critical: load async -->
   <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'" />
   <noscript><link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" /></noscript>
   <!-- Preload critical JS -->
-  <link rel="preload" href="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.js" as="script" />
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.0/standalone/umd/vis-network.min.js" as="script" />
 </head>
 <body>
   <div id="root"></div>
-  <script defer src="https://cdn.jsdelivr.net/npm/vis-network@9.1.0/dist/vis-network.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.0/standalone/umd/vis-network.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
   <script type="module" src="/src/main.tsx"></script>
