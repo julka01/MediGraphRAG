@@ -83,12 +83,18 @@ export default function App() {
 
   const handleLoadKG = useCallback(
     async (loadMode: string, nodeLimit: number, kgFilter: string) => {
-      const credStr = localStorage.getItem('neo4j-credentials');
+      const credStr = sessionStorage.getItem('neo4j-credentials');
       if (!credStr) {
         showError(dispatch, 'Please configure database settings first');
         return;
       }
-      const creds = JSON.parse(credStr) as { uri: string; user: string; password: string };
+      let creds: { uri: string; user: string; password: string };
+      try {
+        creds = JSON.parse(credStr) as { uri: string; user: string; password: string };
+      } catch {
+        showError(dispatch, 'Saved credentials are corrupted. Please reconfigure in Database Settings.');
+        return;
+      }
 
       const formData = new FormData();
       formData.append('uri', creds.uri);

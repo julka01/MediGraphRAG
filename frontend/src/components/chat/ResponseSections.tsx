@@ -51,24 +51,16 @@ export const ResponseSections = memo(function ResponseSections({
   sections,
   sourceChip,
 }: ResponseSectionsProps) {
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
     <div>
       {sourceChip && (
         <div className="mt-2">
-          <button
-            type="button"
-            onClick={() => setSourcesExpanded(!sourcesExpanded)}
-            className={clsx(
-              'inline-flex items-center gap-1.5 px-3 py-1 text-xs text-base-content/60 hover:text-base-content/80 transition-colors',
-              sourcesExpanded ? 'rounded-t-full bg-base-content/10' : 'rounded-full bg-base-content/10',
-            )}
-          >
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-base-content/10 text-xs text-base-content/60">
             <Squares2X2Icon className="size-3.5" aria-hidden="true" />
             {sourceChip}
-          </button>
+          </div>
         </div>
       )}
       {hasAnySections ? (

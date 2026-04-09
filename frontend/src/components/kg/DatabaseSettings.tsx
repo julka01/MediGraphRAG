@@ -30,7 +30,7 @@ export function DatabaseSettings({ open, onClose }: DatabaseSettingsProps) {
   useEffect(() => {
     if (!open) return;
 
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         const creds = JSON.parse(stored) as StoredCredentials;
@@ -57,7 +57,7 @@ export function DatabaseSettings({ open, onClose }: DatabaseSettingsProps) {
   const resolvePassword = (): string => {
     // If the user typed something, use it; otherwise fall back to stored password
     if (password) return password;
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         return (JSON.parse(stored) as StoredCredentials).password;
@@ -94,6 +94,8 @@ export function DatabaseSettings({ open, onClose }: DatabaseSettingsProps) {
     }
   };
 
+  // Credentials are stored in sessionStorage (cleared when browser closes).
+  // For production, consider a backend-managed credential store.
   const handleSave = () => {
     if (!uri || !user) {
       showError(dispatch, 'Please fill in URI and username');
@@ -101,7 +103,7 @@ export function DatabaseSettings({ open, onClose }: DatabaseSettingsProps) {
     }
     const pw = resolvePassword();
     const creds: StoredCredentials = { uri, user, password: pw };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
     setHasSavedCreds(true);
     setPassword(''); // reset so placeholder shows again
     showSuccess(dispatch, 'Database settings saved');

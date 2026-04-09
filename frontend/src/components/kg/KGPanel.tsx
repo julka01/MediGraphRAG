@@ -248,7 +248,7 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
           onChange={(e) => setLoadMode(e.target.value)}
         >
           <option value="limited">Limited (1000 nodes max)</option>
-          <option value="smart">Smart Sample</option>
+          <option value="sample">Smart Sample</option>
           <option value="complete">Complete Import</option>
         </select>
         <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
