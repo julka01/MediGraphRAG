@@ -130,6 +130,7 @@ export default function App() {
     edge: 'left',
     minSize: 288,
     onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'left' }),
+    onOpen: () => dispatch({ type: 'OPEN_PANEL', payload: 'left' }),
     onResize: () => {}, // fixed width, no resize — only close gesture
   });
 

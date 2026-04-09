@@ -4,16 +4,18 @@ interface UseSnapToCloseOptions {
   edge: 'left' | 'right' | 'bottom';
   minSize: number;
   onClose: () => void;
+  onOpen: () => void;
   onResize: (size: number) => void;
-  snapThreshold?: number; // px from window edge to trigger snap
+  snapThreshold?: number;
 }
 
-export function useSnapToClose({ edge, minSize, onClose, onResize, snapThreshold = 40 }: UseSnapToCloseOptions) {
+export function useSnapToClose({ edge, minSize, onClose, onOpen, onResize, snapThreshold = 40 }: UseSnapToCloseOptions) {
   const dragging = useRef(false);
-  const handleRef = useRef<HTMLDivElement>(null);
+  const snapped = useRef(false);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     dragging.current = true;
+    snapped.current = false;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     document.body.classList.add('select-none');
   }, []);
@@ -39,23 +41,30 @@ export function useSnapToClose({ edge, minSize, onClose, onResize, snapThreshold
       nearEdge = clientY >= windowHeight - snapThreshold;
     }
 
-    if (nearEdge) {
-      dragging.current = false;
-      document.body.classList.remove('select-none');
+    if (nearEdge && !snapped.current) {
+      snapped.current = true;
       onClose();
       return;
     }
 
-    const maxSize = edge === 'bottom' ? windowHeight / 2 : windowWidth / 2;
-    const clamped = Math.max(minSize, Math.min(maxSize, newSize));
-    onResize(clamped);
-  }, [edge, minSize, onClose, onResize, snapThreshold]);
+    if (!nearEdge && snapped.current) {
+      snapped.current = false;
+      onOpen();
+    }
+
+    if (!snapped.current) {
+      const maxSize = edge === 'bottom' ? windowHeight / 2 : windowWidth / 2;
+      const clamped = Math.max(minSize, Math.min(maxSize, newSize));
+      onResize(clamped);
+    }
+  }, [edge, minSize, onClose, onOpen, onResize, snapThreshold]);
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     dragging.current = false;
+    snapped.current = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     document.body.classList.remove('select-none');
   }, []);
 
-  return { handleRef, onPointerDown, onPointerMove, onPointerUp, dragging };
+  return { onPointerDown, onPointerMove, onPointerUp, dragging };
 }

@@ -20,6 +20,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
     edge: 'right',
     minSize: dynamicMinWidth,
     onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'right' }),
+    onOpen: () => dispatch({ type: 'OPEN_PANEL', payload: 'right' }),
     onResize: (w) => dispatch({ type: 'SET_RIGHT_WIDTH', payload: w }),
   });
 
@@ -46,6 +47,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
             <BottomResizeHandle
               onResize={handleBottomResize}
               onClose={handleBottomClose}
+              onOpen={() => dispatch({ type: 'OPEN_PANEL', payload: 'bottom' })}
               minHeight={80}
             />
             {bottomBar}
