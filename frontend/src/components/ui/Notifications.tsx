@@ -11,20 +11,27 @@ export function Notifications() {
   useEffect(() => {
     if (!notif) return;
     if (notif.type === 'success') {
-      const timer = setTimeout(() => dispatch({ type: 'CLEAR_NOTIFICATION' }), 3000);
+      const timer = setTimeout(() => dispatch({ type: 'CLEAR_NOTIFICATION' }), 5000);
       return () => clearTimeout(timer);
     }
   }, [notif, dispatch]);
 
   if (!notif) return null;
 
+  const isError = notif.type === 'error';
+
   return (
-    <div className="toast toast-end toast-bottom z-50" role="status" aria-live="polite">
-      <div className={clsx('alert shadow-lg', notif.type === 'error' ? 'alert-error' : 'alert-success')}>
-        <span>{notif.message}</span>
+    <div className="fixed top-3 right-3 z-50" role="status" aria-live="polite">
+      <div
+        className={clsx(
+          'flex items-center gap-2 bg-base-100 border rounded-lg px-3 py-2 shadow-lg max-w-xs',
+          isError ? 'border-error/40 border-l-3 border-l-error' : 'border-success/40 border-l-3 border-l-success',
+        )}
+      >
+        <span className="flex-1 text-sm text-base-content">{notif.message}</span>
         <button
           type="button"
-          className="btn btn-ghost btn-xs"
+          className="opacity-50 hover:opacity-100 transition-opacity shrink-0"
           onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}
           aria-label="Dismiss notification"
         >
