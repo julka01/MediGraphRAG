@@ -206,12 +206,10 @@ export function GraphControls() {
   // ── Render ──────────────────────────────────────────────────────
 
   const toggleBtn = (active: boolean) =>
-    `btn btn-xs ${active ? 'btn-soft btn-primary' : 'btn-ghost'}`;
-
-  const sizeLabel = state.nodeSizeMetric === 'degree' ? 'Degree' : 'Uniform';
+    `btn btn-xs min-w-[5.5rem] ${active ? 'bg-base-300 text-[color:oklch(62%_0.10_270)]' : 'bg-base-300 text-base-content/60'}`;
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1">
+    <div className="flex flex-wrap items-center gap-1 px-2 py-1">
       {/* Left: Zoom controls */}
       <div className="join shrink-0">
         <button
@@ -259,19 +257,30 @@ export function GraphControls() {
         Labels {state.showEdgeLabels ? 'ON' : 'OFF'}
       </button>
 
-      <button
-        type="button"
-        className={toggleBtn(state.nodeSizeMetric === 'degree')}
-        onClick={handleSizeMetricToggle}
-      >
-        {sizeLabel}
-      </button>
+      {/* Degree / Uniform toggle */}
+      <div className="flex rounded-md bg-base-300 shrink-0 overflow-hidden">
+        <button
+          type="button"
+          className={`btn btn-xs border-none shadow-none ${state.nodeSizeMetric === 'degree' ? 'text-[color:oklch(62%_0.10_270)]' : 'text-base-content/60'}`}
+          onClick={() => state.nodeSizeMetric !== 'degree' && handleSizeMetricToggle()}
+        >
+          Degree
+        </button>
+        <div className="w-px bg-base-content/10 my-1" />
+        <button
+          type="button"
+          className={`btn btn-xs border-none shadow-none ${state.nodeSizeMetric !== 'degree' ? 'text-[color:oklch(62%_0.10_270)]' : 'text-base-content/60'}`}
+          onClick={() => state.nodeSizeMetric === 'degree' && handleSizeMetricToggle()}
+        >
+          Uniform
+        </button>
+      </div>
 
-      {/* Divider */}
-      <div className="w-px h-5 bg-base-300/50 shrink-0" />
+      {/* Spacer */}
+      <div className="flex-1" />
 
-      {/* Center: Search (takes remaining space) */}
-      <div className="relative flex-1 min-w-0 max-w-xs">
+      {/* Center: Search */}
+      <div className="relative flex-1 min-w-0 max-w-[160px]">
         <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-base-content/40 pointer-events-none" />
         <input
           type="text"
@@ -284,7 +293,7 @@ export function GraphControls() {
         {searchTerm && (
           <button
             type="button"
-            className="absolute right-7 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs px-0.5"
+            className="absolute right-7 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100 transition-opacity"
             onClick={handleSearchClear}
             aria-label="Clear search"
           >
@@ -298,28 +307,48 @@ export function GraphControls() {
         )}
       </div>
 
-      {/* Divider */}
-      <div className="w-px h-5 bg-base-300/50 shrink-0" />
+      {/* Highlight indicator */}
+      {state.highlightedNodes.size > 0 && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[color:oklch(85%_0.18_85_/_0.12)] shrink-0">
+          <div className="size-1.5 rounded-full bg-[color:oklch(85%_0.18_85)]" />
+          <span className="text-2xs font-medium text-[color:oklch(85%_0.18_85)]">
+            {state.highlightedNodes.size} highlighted
+          </span>
+          <button
+            type="button"
+            className="opacity-60 hover:opacity-100 transition-opacity"
+            onClick={() => dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' })}
+            aria-label="Clear highlights"
+          >
+            <XMarkIcon className="size-3" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
 
       {/* Right: Export */}
-      <button
-        type="button"
-        className="btn btn-soft btn-xs shrink-0"
-        onClick={handleExportPNG}
-        title="Export as PNG"
-        aria-label="Export as PNG"
-      >
-        <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> PNG
-      </button>
-      <button
-        type="button"
-        className="btn btn-soft btn-xs shrink-0"
-        onClick={handleExportJSON}
-        title="Export as JSON"
-        aria-label="Export as JSON"
-      >
-        <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> JSON
-      </button>
+      <div className="flex gap-1 ml-auto shrink-0">
+        <button
+          type="button"
+          className="btn btn-xs bg-base-300 text-base-content/60 shrink-0"
+          onClick={handleExportPNG}
+          title="Export as PNG"
+          aria-label="Export as PNG"
+        >
+          <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> PNG
+        </button>
+        <button
+          type="button"
+          className="btn btn-xs bg-base-300 text-base-content/60 shrink-0"
+          onClick={handleExportJSON}
+          title="Export as JSON"
+          aria-label="Export as JSON"
+        >
+          <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> JSON
+        </button>
+      </div>
     </div>
   );
 }
