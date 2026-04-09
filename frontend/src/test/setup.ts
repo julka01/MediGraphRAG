@@ -1,5 +1,12 @@
 import '@testing-library/jest-dom';
 
+// Stub ResizeObserver for jsdom (used by useDynamicMinWidth)
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
+
 // Node 25 exposes a native `localStorage` stub that lacks .clear/.setItem/.getItem
 // unless --localstorage-file is supplied. Override it with a real in-memory implementation
 // so that tests using jsdom localStorage work correctly.
