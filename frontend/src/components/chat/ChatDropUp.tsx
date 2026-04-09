@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ChevronUpIcon } from '@heroicons/react/20/solid';
+import { shortenModelName } from '../../utils/models';
 
 interface ChatDropUpProps {
   options: string[];
@@ -54,7 +55,7 @@ export function ChatDropUp({ options, value, onChange }: ChatDropUpProps) {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-0.5 px-2.5 py-1 rounded-full bg-base-300 text-xs text-base-content hover:bg-base-300/80 transition-colors whitespace-nowrap"
       >
-        {value}
+        {shortenModelName(value)}
         <ChevronUpIcon className="size-3 opacity-50" />
       </button>
     </div>

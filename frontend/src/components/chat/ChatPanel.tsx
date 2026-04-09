@@ -128,15 +128,6 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
   const isEmpty = messages.length === 0;
 
-  // Find the index of the last AI message for the three-dots menu
-  let lastAiIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].type === 'ai' && messages[i].sections) {
-      lastAiIndex = i;
-      break;
-    }
-  }
-
   return (
     <div className="flex flex-col h-full bg-base-200">
       {/* Messages area */}
@@ -144,37 +135,47 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
         {isEmpty ? (
           <ChatSuggestions onSelect={handleSend} />
         ) : (
-          messages.map((msg, i) => {
-            const msgKey = `${msg.ts ?? 0}-${i}`;
-            if (msg.type === 'ai' && msg.sections) {
-              const isLast = i === lastAiIndex;
-              return (
-                <div key={msgKey} className="chat chat-start">
-                  <div className="chat-bubble rounded-2xl text-sm">
-                    <ResponseSections
-                      sections={msg.sections}
-                      sourceChip={msg.sourceChip}
-                      isLast={isLast}
-                      onClearChat={handleClearChat}
-                      onExportChat={handleExportChat}
-                    />
+          <>
+            {messages.map((msg, i) => {
+              const msgKey = `${msg.ts ?? 0}-${i}`;
+              if (msg.type === 'ai' && msg.sections) {
+                return (
+                  <div key={msgKey} className="chat chat-start">
+                    <div className="chat-bubble before:hidden rounded-2xl text-sm">
+                      <ResponseSections
+                        sections={msg.sections}
+                        sourceChip={msg.sourceChip}
+                      />
+                    </div>
+                    <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
+                    {msg.ts && (
+                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
+                    )}
                   </div>
-                  <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
-                  {msg.ts && (
-                    <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
-                  )}
-                </div>
+                );
+              }
+              return (
+                <ChatMessage
+                  key={msgKey}
+                  message={msg.message}
+                  type={msg.type}
+                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
+                />
               );
-            }
-            return (
-              <ChatMessage
-                key={msgKey}
-                message={msg.message}
-                type={msg.type}
-                timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
-              />
-            );
-          })
+            })}
+            {messages.length > 0 && (
+              <div className="flex justify-center py-2">
+                <div className="flex bg-base-300/30 rounded-lg p-0.5">
+                  <button type="button" className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors" onClick={handleClearChat}>
+                    Clear
+                  </button>
+                  <button type="button" className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors" onClick={handleExportChat}>
+                    Export
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {sending && (
           <div className="chat chat-start">

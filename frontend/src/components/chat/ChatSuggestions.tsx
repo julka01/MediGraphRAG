@@ -11,20 +11,17 @@ interface ChatSuggestionsProps {
 
 export function ChatSuggestions({ onSelect }: ChatSuggestionsProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-4 px-4">
-      <div className="text-sm opacity-60">Ask a question about the loaded knowledge graph</div>
-      <div className="flex flex-wrap gap-2 justify-center">
-        {SUGGESTIONS.map((text) => (
-          <button
-            type="button"
-            key={text}
-            className="btn btn-ghost btn-sm text-xs normal-case"
-            onClick={() => onSelect(text)}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-2 px-2 py-4">
+      {SUGGESTIONS.map((text) => (
+        <button
+          type="button"
+          key={text}
+          className="text-left px-4 py-2.5 rounded-2xl border border-base-300 text-sm text-base-content/50 hover:border-base-content/30 hover:text-base-content/70 transition-colors"
+          onClick={() => onSelect(text)}
+        >
+          {text}
+        </button>
+      ))}
     </div>
   );
 }
