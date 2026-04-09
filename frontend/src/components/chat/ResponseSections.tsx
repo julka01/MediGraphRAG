@@ -1,5 +1,6 @@
 import { ChevronDownIcon, ChevronRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import clsx from 'clsx';
+import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ReasoningEdge, ResponseSections as ResponseSectionsType, SourceEntity } from '../../types/app';
@@ -41,92 +42,33 @@ function Section({ title, content, defaultExpanded = false, formatter }: Section
   );
 }
 
-interface ThreeDotsMenuProps {
-  onClearChat?: () => void;
-  onExportChat?: () => void;
-}
-
-function ThreeDotsMenu({ onClearChat, onExportChat }: ThreeDotsMenuProps) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  const handleAction = useCallback(
-    (action?: () => void) => {
-      setOpen(false);
-      action?.();
-    },
-    [],
-  );
-
-  return (
-    <div ref={containerRef} className="flex justify-center mt-1 relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="btn btn-ghost btn-xs text-base-content/50 hover:text-base-content"
-        aria-label="Message options"
-      >
-        &#x22EF;
-      </button>
-      {open && (
-        <div className="absolute bottom-full mb-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-20 min-w-max">
-          {onClearChat && (
-            <button
-              type="button"
-              onClick={() => handleAction(onClearChat)}
-              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg"
-            >
-              Clear Chat
-            </button>
-          )}
-          {onExportChat && (
-            <button
-              type="button"
-              onClick={() => handleAction(onExportChat)}
-              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg"
-            >
-              Export Chat
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 interface ResponseSectionsProps {
   sections: ResponseSectionsType;
   sourceChip?: string;
-  isLast?: boolean;
-  onClearChat?: () => void;
-  onExportChat?: () => void;
 }
 
 export const ResponseSections = memo(function ResponseSections({
   sections,
   sourceChip,
-  isLast = false,
-  onClearChat,
-  onExportChat,
 }: ResponseSectionsProps) {
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
     <div>
       {sourceChip && (
-        <div className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start">
-          <Squares2X2Icon className="size-4 inline" aria-hidden="true" /> {sourceChip}
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setSourcesExpanded(!sourcesExpanded)}
+            className={clsx(
+              'inline-flex items-center gap-1.5 px-3 py-1 text-xs text-base-content/60 hover:text-base-content/80 transition-colors',
+              sourcesExpanded ? 'rounded-t-full bg-base-content/10' : 'rounded-full bg-base-content/10',
+            )}
+          >
+            <Squares2X2Icon className="size-3.5" aria-hidden="true" />
+            {sourceChip}
+          </button>
         </div>
       )}
       {hasAnySections ? (
@@ -141,7 +83,6 @@ export const ResponseSections = memo(function ResponseSections({
           <Markdown remarkPlugins={[remarkGfm]}>{sections.fallback || ''}</Markdown>
         </div>
       )}
-      {isLast && <ThreeDotsMenu onClearChat={onClearChat} onExportChat={onExportChat} />}
     </div>
   );
 });
@@ -167,18 +108,17 @@ export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sou
     <div className="mt-2">
       <button
         type="button"
-        className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
+        className={clsx(
+          'inline-flex items-center gap-1.5 px-3 py-1 text-xs text-base-content/60 hover:text-base-content/80 transition-colors',
+          expanded ? 'rounded-t-full bg-base-content/10' : 'rounded-full bg-base-content/10',
+        )}
         onClick={() => setExpanded(!expanded)}
       >
-        {expanded ? (
-          <ChevronDownIcon className="size-4 inline" aria-hidden="true" />
-        ) : (
-          <ChevronRightIcon className="size-4 inline" aria-hidden="true" />
-        )}{' '}
+        <Squares2X2Icon className="size-3.5" aria-hidden="true" />
         Sources
       </button>
       {expanded && (
-        <div className="pl-4 mt-1 space-y-1 text-xs">
+        <div className="bg-base-content/5 rounded-b-lg px-3 py-2 mt-0 space-y-1 text-xs">
           {uniqueEdges.length > 0 ? (
             uniqueEdges.map((edge) => (
               <div

@@ -146,8 +146,8 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
                         sections={msg.sections}
                         sourceChip={msg.sourceChip}
                       />
+                      <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
                     </div>
-                    <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
                     {msg.ts && (
                       <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
                     )}
