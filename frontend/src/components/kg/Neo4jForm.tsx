@@ -9,16 +9,19 @@ interface Neo4jFormProps {
   open: boolean;
   onClose: () => void;
   onLoaded: (result: LoadNeo4jResponse, kgFilter: string, stats: Neo4jStats) => void;
+  initialLoadMode?: string;
+  initialNodeLimit?: number;
+  initialKgFilter?: string;
 }
 
-export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
+export function Neo4jForm({ open, onClose, onLoaded, initialLoadMode, initialNodeLimit, initialKgFilter }: Neo4jFormProps) {
   const { state, dispatch } = useApp();
   const [uri, setUri] = useState('bolt://localhost:7687');
   const [user, setUser] = useState('neo4j');
   const [password, setPassword] = useState('');
-  const [loadMode, setLoadMode] = useState('limited');
-  const [nodeLimit, setNodeLimit] = useState(1000);
-  const [kgFilter, setKgFilter] = useState('');
+  const [loadMode, setLoadMode] = useState(initialLoadMode ?? 'limited');
+  const [nodeLimit, setNodeLimit] = useState(initialNodeLimit ?? 1000);
+  const [kgFilter, setKgFilter] = useState(initialKgFilter ?? '');
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<Neo4jStats | null>(null);
 
@@ -31,6 +34,15 @@ export function Neo4jForm({ open, onClose, onLoaded }: Neo4jFormProps) {
       })
       .catch(() => {});
   }, []);
+
+  // Sync load params from KGPanel when the form opens
+  useEffect(() => {
+    if (open) {
+      if (initialLoadMode !== undefined) setLoadMode(initialLoadMode);
+      if (initialNodeLimit !== undefined) setNodeLimit(initialNodeLimit);
+      if (initialKgFilter !== undefined) setKgFilter(initialKgFilter);
+    }
+  }, [open, initialLoadMode, initialNodeLimit, initialKgFilter]);
 
   const handleConnect = async () => {
     if (!uri || !user) {

@@ -1,5 +1,5 @@
-import { CheckIcon } from '@heroicons/react/24/outline';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowUpTrayIcon, CheckIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useRef, useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
 import type { UseModelsReturn } from '../../types/app';
@@ -9,12 +9,12 @@ import { ModelSelector } from './ModelSelector';
 
 interface KGPanelProps {
   kgModelHook: UseModelsReturn;
-  onNeo4jOpen: () => void;
+  onLoadKG: (loadMode: string, nodeLimit: number, kgFilter: string) => void;
   onProgressStart: () => void;
   onProgressStop: () => void;
 }
 
-export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressStop }: KGPanelProps) {
+export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop }: KGPanelProps) {
   const { state, dispatch } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const ontologyRef = useRef<HTMLInputElement>(null);
@@ -26,12 +26,20 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
   const [maxChunks, setMaxChunks] = useState(20);
   const [creating, setCreating] = useState(false);
 
-  // Sync KG name from state when a KG is loaded from Neo4j
-  useEffect(() => {
-    if (state.currentKGName) {
-      setKgName(state.currentKGName);
-    }
-  }, [state.currentKGName]);
+  // Load section state
+  const [loadMode, setLoadMode] = useState('limited');
+  const [nodeLimit, setNodeLimit] = useState(1000);
+  const [kgFilter, setKgFilter] = useState('');
+
+  // KG name placeholder: show loaded KG name when user hasn't typed anything
+  const kgNamePlaceholder = !kgName && state.currentKGName ? state.currentKGName : 'optional';
+
+  const canCreate =
+    file !== null &&
+    ontologyFile !== null &&
+    Boolean(kgModelHook.vendor) &&
+    Boolean(kgModelHook.selectedModel) &&
+    Boolean(embeddingModel);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -49,7 +57,23 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
     setOntologyFile(selected);
   };
 
-  const canCreate = file && kgModelHook.vendor && kgModelHook.selectedModel && embeddingModel;
+  // Drag-and-drop handlers for file upload zones
+  const handleFileDrop = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) setFile(dropped);
+  };
+
+  const handleOntologyDrop = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    const dropped = e.dataTransfer.files?.[0];
+    if (!dropped) return;
+    if (!dropped.name.endsWith('.json') && !dropped.name.endsWith('.owl')) {
+      showError(dispatch, 'Only JSON and OWL ontology files are supported');
+      return;
+    }
+    setOntologyFile(dropped);
+  };
 
   const handleCreate = async () => {
     if (!file) {
@@ -87,7 +111,7 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
     }
   };
 
-  const handleClear = async () => {
+  const handleDelete = async () => {
     if (!confirm('WARNING: This will permanently delete ALL nodes and relationships from Neo4j. Continue?')) return;
     try {
       const result = await api.clearKG();
@@ -100,47 +124,65 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
     }
   };
 
+  const handleLoadKG = () => {
+    onLoadKG(loadMode, nodeLimit, kgFilter);
+  };
+
   return (
     <div className="flex flex-col gap-3">
-      {/* 1. Load KG + Clear KG */}
-      <div className="flex gap-2">
-        <button type="button" className="btn btn-primary btn-sm flex-1" onClick={() => onNeo4jOpen()}>
-          Load KG
-        </button>
-        <button type="button" className="btn btn-ghost btn-sm text-error" onClick={handleClear}>
-          Clear KG
-        </button>
-      </div>
+      {/* ── Build Section ─────────────────────────────────── */}
 
-      {/* 2. Select File */}
+      {/* File upload drop zone */}
       <input ref={fileRef} type="file" accept=".pdf,.txt,.json,.csv" className="hidden" onChange={handleFileChange} />
       <button
         type="button"
-        className="btn btn-outline btn-sm w-full justify-between"
+        className={[
+          'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+          file
+            ? 'border-success/60 bg-success/5 text-base-content'
+            : 'border-dashed border-base-300 text-base-content/50 hover:border-base-content/30 hover:text-base-content/70',
+        ].join(' ')}
         onClick={() => fileRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleFileDrop}
       >
-        <span className="truncate">{file ? file.name : 'Select File'}</span>
-        {file && <CheckIcon className="size-4 text-success shrink-0" />}
+        {file ? (
+          <CheckIcon className="size-4 shrink-0 text-success" />
+        ) : (
+          <ArrowUpTrayIcon className="size-4 shrink-0" />
+        )}
+        <span className="truncate">{file ? `File: ${file.name}` : 'Drop or select file'}</span>
       </button>
 
-      {/* 3. Select Ontology */}
+      {/* Ontology upload drop zone */}
       <input ref={ontologyRef} type="file" accept=".json,.owl" className="hidden" onChange={handleOntologyChange} />
       <button
         type="button"
-        className="btn btn-outline btn-sm w-full justify-between"
+        className={[
+          'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+          ontologyFile
+            ? 'border-success/60 bg-success/5 text-base-content'
+            : 'border-dashed border-base-300 text-base-content/50 hover:border-base-content/30 hover:text-base-content/70',
+        ].join(' ')}
         onClick={() => ontologyRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleOntologyDrop}
       >
-        <span className="truncate">{ontologyFile ? ontologyFile.name : 'Select Ontology'}</span>
-        {ontologyFile && <CheckIcon className="size-4 text-success shrink-0" />}
+        {ontologyFile ? (
+          <CheckIcon className="size-4 shrink-0 text-success" />
+        ) : (
+          <ArrowUpTrayIcon className="size-4 shrink-0" />
+        )}
+        <span className="truncate">{ontologyFile ? `Ontology: ${ontologyFile.name}` : 'Drop or select ontology'}</span>
       </button>
 
-      {/* 4. KG Vendor + KG Model */}
+      {/* KG Vendor + KG Model */}
       <ModelSelector vendorLabel="KG Vendor" modelLabel="KG Model" vendorHook={kgModelHook} />
 
-      {/* 5. Embedding Model */}
+      {/* Embedding Model */}
       <div className="relative">
         <select
-          className="select select-bordered select-sm w-full"
+          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
           value={embeddingModel}
           onChange={(e) => setEmbeddingModel(e.target.value)}
         >
@@ -149,50 +191,119 @@ export function KGPanel({ kgModelHook, onNeo4jOpen, onProgressStart, onProgressS
           <option value="vertexai">Google Vertex AI</option>
           <option value="titan">AWS Titan</option>
         </select>
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
-          Embedding Model
-        </span>
+        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Embedding Model</span>
       </div>
 
-      {/* 6. Max Chunks per Report */}
+      {/* Max Chunks */}
       <div className="relative">
         <input
           type="number"
-          className="input input-bordered input-sm w-full"
+          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
           value={maxChunks}
           onChange={(e) => setMaxChunks(Number(e.target.value))}
           min={1}
           max={100}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
-          Max Chunks
-        </span>
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Max Chunks</span>
       </div>
 
-      {/* 7. KG Name */}
+      {/* KG Name */}
       <div className="relative">
         <input
           type="text"
-          className="input input-bordered input-sm w-full"
-          placeholder="optional"
+          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
+          placeholder={kgNamePlaceholder}
           value={kgName}
           onChange={(e) => setKgName(e.target.value)}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">
-          KG Name
-        </span>
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">KG Name</span>
       </div>
 
-      {/* 8. Create KG */}
+      {/* Create KG */}
       <button
         type="button"
         className="btn btn-primary btn-sm w-full"
         onClick={handleCreate}
         disabled={creating || !canCreate}
       >
-        {creating ? <span className="loading loading-spinner loading-sm" /> : null}
+        {creating && <span className="loading loading-spinner loading-sm" />}
         {creating ? 'Creating KG...' : 'Create KG'}
       </button>
+
+      {/* ── Decorative Separator ──────────────────────────── */}
+      <div className="flex items-center gap-3 my-2">
+        <div className="h-px flex-1 bg-gradient-to-r from-transparent to-base-300" />
+        <div className="size-1 rounded-full bg-base-300" />
+        <div className="h-px flex-1 bg-gradient-to-l from-transparent to-base-300" />
+      </div>
+
+      {/* ── Load Section ──────────────────────────────────── */}
+
+      {/* Import Options */}
+      <div className="relative">
+        <select
+          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
+          value={loadMode}
+          onChange={(e) => setLoadMode(e.target.value)}
+        >
+          <option value="limited">Limited (1000 nodes max)</option>
+          <option value="smart">Smart Sample</option>
+          <option value="complete">Complete Import</option>
+        </select>
+        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Import Options</span>
+      </div>
+
+      {/* Node Limit */}
+      <div className="relative">
+        <input
+          type="number"
+          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
+          value={nodeLimit}
+          onChange={(e) => setNodeLimit(Number(e.target.value))}
+          min={1}
+        />
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Node Limit</span>
+      </div>
+
+      {/* KG Name Filter */}
+      <div className="relative">
+        <select
+          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
+          value={kgFilter}
+          onChange={(e) => setKgFilter(e.target.value)}
+        >
+          <option value="">All KGs</option>
+          {state.kgList.map((kg) => (
+            <option key={kg.name} value={kg.name}>
+              {kg.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
+        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">KG Name</span>
+      </div>
+
+      {/* Load KG + Delete KG */}
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-primary btn-sm flex-1" onClick={handleLoadKG}>
+          Load KG
+        </button>
+        <button
+          type="button"
+          className={[
+            'btn btn-sm flex-1',
+            state.currentKGId
+              ? 'btn-outline border-error/50 text-error hover:bg-error hover:text-error-content'
+              : 'btn-outline text-base-content/30 pointer-events-none',
+          ].join(' ')}
+          onClick={handleDelete}
+          disabled={!state.currentKGId}
+        >
+          Delete KG
+        </button>
+      </div>
     </div>
   );
 }

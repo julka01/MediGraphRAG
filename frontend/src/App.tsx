@@ -39,6 +39,11 @@ export default function App() {
   const [neo4jOpen, setNeo4jOpen] = useState(false);
   const [progressActive, setProgressActive] = useState(false);
 
+  // Pending load params from KGPanel; forwarded to Neo4jForm once credentials are stored (Task 5)
+  const [pendingLoadMode, setPendingLoadMode] = useState('limited');
+  const [pendingNodeLimit, setPendingNodeLimit] = useState(1000);
+  const [pendingKgFilter, setPendingKgFilter] = useState('');
+
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +85,16 @@ export default function App() {
     [dispatch],
   );
 
+  const handleLoadKG = useCallback(
+    (loadMode: string, nodeLimit: number, kgFilter: string) => {
+      setPendingLoadMode(loadMode);
+      setPendingNodeLimit(nodeLimit);
+      setPendingKgFilter(kgFilter);
+      setNeo4jOpen(true);
+    },
+    [],
+  );
+
   void theme; // used by ThemeContext to apply data-theme attribute
 
   const leftSnap = useSnapToClose({
@@ -104,7 +119,7 @@ export default function App() {
           <Sidebar>
             <KGPanel
               kgModelHook={kgModelHook}
-              onNeo4jOpen={() => setNeo4jOpen(true)}
+              onLoadKG={handleLoadKG}
               onProgressStart={() => setProgressActive(true)}
               onProgressStop={() => setProgressActive(false)}
             />
@@ -140,7 +155,14 @@ export default function App() {
         />
       </div>
 
-      <Neo4jForm open={neo4jOpen} onClose={() => setNeo4jOpen(false)} onLoaded={handleNeo4jLoaded} />
+      <Neo4jForm
+        open={neo4jOpen}
+        onClose={() => setNeo4jOpen(false)}
+        onLoaded={handleNeo4jLoaded}
+        initialLoadMode={pendingLoadMode}
+        initialNodeLimit={pendingNodeLimit}
+        initialKgFilter={pendingKgFilter}
+      />
       <Notifications />
     </div>
   );
