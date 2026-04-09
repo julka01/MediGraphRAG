@@ -1,16 +1,17 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { BottomBar } from './components/graph/BottomBar';
+import { DatabaseSettings } from './components/kg/DatabaseSettings';
 import { KGPanel } from './components/kg/KGPanel';
-import { Neo4jForm } from './components/kg/Neo4jForm';
 import { MainLayout } from './components/layout/MainLayout';
 import { Sidebar } from './components/layout/Sidebar';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { Notifications, showSuccess } from './components/ui/Notifications';
+import { Notifications, showError, showSuccess } from './components/ui/Notifications';
 import { useApp } from './context/AppContext';
 import { useTheme } from './context/ThemeContext';
 import { useModels } from './hooks/useModels';
 import { useSnapToClose } from './hooks/useSnapToClose';
 import { useStartup } from './hooks/useStartup';
+import { api } from './api';
 import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
 import { safeSet } from './utils/storage';
 
@@ -34,15 +35,10 @@ export default function App() {
 
   const startup = useStartup(['openai', 'openrouter']);
   const kgModelHook = useModels('openai', startup.modelsByVendor.openai);
-  const ragModelHook = useModels('openrouter', startup.modelsByVendor.openrouter);
+  const ragModelHook = useModels('openai', startup.modelsByVendor.openai);
 
-  const [neo4jOpen, setNeo4jOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressActive, setProgressActive] = useState(false);
-
-  // Pending load params from KGPanel; forwarded to Neo4jForm once credentials are stored (Task 5)
-  const [pendingLoadMode, setPendingLoadMode] = useState('limited');
-  const [pendingNodeLimit, setPendingNodeLimit] = useState(1000);
-  const [pendingKgFilter, setPendingKgFilter] = useState('');
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -86,13 +82,46 @@ export default function App() {
   );
 
   const handleLoadKG = useCallback(
-    (loadMode: string, nodeLimit: number, kgFilter: string) => {
-      setPendingLoadMode(loadMode);
-      setPendingNodeLimit(nodeLimit);
-      setPendingKgFilter(kgFilter);
-      setNeo4jOpen(true);
+    async (loadMode: string, nodeLimit: number, kgFilter: string) => {
+      const credStr = localStorage.getItem('neo4j-credentials');
+      if (!credStr) {
+        showError(dispatch, 'Please configure database settings first');
+        return;
+      }
+      const creds = JSON.parse(credStr) as { uri: string; user: string; password: string };
+
+      const formData = new FormData();
+      formData.append('uri', creds.uri);
+      formData.append('user', creds.user);
+      formData.append('password', creds.password);
+      if (kgFilter) formData.append('kg_label', kgFilter);
+
+      switch (loadMode) {
+        case 'limited':
+          formData.append('limit', String(nodeLimit));
+          formData.append('sample_mode', 'false');
+          formData.append('load_complete', 'false');
+          break;
+        case 'sample':
+          formData.append('sample_mode', 'true');
+          formData.append('load_complete', 'false');
+          if (nodeLimit) formData.append('limit', String(nodeLimit));
+          break;
+        case 'complete':
+          formData.append('load_complete', 'true');
+          formData.append('sample_mode', 'false');
+          break;
+      }
+
+      try {
+        const result = await api.loadFromNeo4j(formData);
+        handleNeo4jLoaded(result, kgFilter, result.stats ?? {} as Neo4jStats);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        showError(dispatch, `Loading failed: ${msg}`);
+      }
     },
-    [],
+    [dispatch, handleNeo4jLoaded],
   );
 
   void theme; // used by ThemeContext to apply data-theme attribute
@@ -116,7 +145,7 @@ export default function App() {
       {/* Left sidebar */}
       {!state.panels.leftCollapsed && (
         <>
-          <Sidebar>
+          <Sidebar onSettingsClick={() => setSettingsOpen(true)}>
             <KGPanel
               kgModelHook={kgModelHook}
               onLoadKG={handleLoadKG}
@@ -155,13 +184,9 @@ export default function App() {
         />
       </div>
 
-      <Neo4jForm
-        open={neo4jOpen}
-        onClose={() => setNeo4jOpen(false)}
-        onLoaded={handleNeo4jLoaded}
-        initialLoadMode={pendingLoadMode}
-        initialNodeLimit={pendingNodeLimit}
-        initialKgFilter={pendingKgFilter}
+      <DatabaseSettings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
       <Notifications />
     </div>
