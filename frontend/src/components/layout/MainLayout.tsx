@@ -1,5 +1,4 @@
 import { type ReactNode, useRef } from 'react';
-import { BottomResizeHandle } from './BottomResizeHandle';
 import { useApp } from '../../context/AppContext';
 import { useDynamicMinWidth } from '../../hooks/useDynamicMinWidth';
 import { useSnapToClose } from '../../hooks/useSnapToClose';
@@ -8,11 +7,12 @@ interface MainLayoutProps {
   graphPanel: ReactNode;
   chatPanel: ReactNode;
   bottomBar: ReactNode;
+  topBar: ReactNode;
 }
 
-export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps) {
+export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLayoutProps) {
   const { state, dispatch } = useApp();
-  const { rightCollapsed, bottomCollapsed, rightWidth } = state.panels;
+  const { rightCollapsed, bottomCollapsed, topCollapsed, rightWidth } = state.panels;
   const rightSidebarRef = useRef<HTMLDivElement>(null);
   const dynamicMinWidth = useDynamicMinWidth(rightSidebarRef);
 
@@ -24,18 +24,40 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
     onResize: (w) => dispatch({ type: 'SET_RIGHT_WIDTH', payload: w }),
   });
 
-  function handleBottomResize(height: number) {
-    dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: height });
-  }
+  const bottomSnap = useSnapToClose({
+    edge: 'bottom',
+    minSize: 80,
+    onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'bottom' }),
+    onOpen: () => dispatch({ type: 'OPEN_PANEL', payload: 'bottom' }),
+    onResize: (h) => dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: h }),
+  });
 
-  function handleBottomClose() {
-    dispatch({ type: 'CLOSE_PANEL', payload: 'bottom' });
-  }
+  const topSnap = useSnapToClose({
+    edge: 'top',
+    minSize: 48,
+    onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'top' }),
+    onOpen: () => dispatch({ type: 'OPEN_PANEL', payload: 'top' }),
+    onResize: () => {}, // fixed height, no resize — only close gesture
+  });
 
   return (
     <div className="flex flex-1 min-w-0 min-h-0">
-      {/* Graph + Bottom stack */}
+      {/* Graph + Top + Bottom stack */}
       <div className="flex flex-col flex-1 min-w-0">
+        {/* Top panel + snap handle */}
+        {!topCollapsed && (
+          <>
+            {topBar}
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Drag to close top panel"
+              className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
+              onPointerDown={topSnap.onPointerDown}
+            />
+          </>
+        )}
+
         {/* Graph view */}
         <div className="flex-1 min-h-0">
           {graphPanel}
@@ -44,11 +66,12 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
         {/* Bottom resize handle + bottom bar */}
         {!bottomCollapsed && (
           <>
-            <BottomResizeHandle
-              onResize={handleBottomResize}
-              onClose={handleBottomClose}
-              onOpen={() => dispatch({ type: 'OPEN_PANEL', payload: 'bottom' })}
-              minHeight={80}
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize bottom panel"
+              className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
+              onPointerDown={bottomSnap.onPointerDown}
             />
             {bottomBar}
           </>
@@ -62,8 +85,6 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar }: MainLayoutProps
             role="separator"
             className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
             onPointerDown={rightSnap.onPointerDown}
-            onPointerMove={rightSnap.onPointerMove}
-            onPointerUp={rightSnap.onPointerUp}
           />
           <div
             ref={rightSidebarRef}

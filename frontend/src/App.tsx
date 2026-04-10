@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { BottomBar } from './components/graph/BottomBar';
-import { DatabaseSettings } from './components/kg/DatabaseSettings';
+import { TopBar } from './components/graph/TopBar';
 import { KGPanel } from './components/kg/KGPanel';
 import { MainLayout } from './components/layout/MainLayout';
 import { Sidebar } from './components/layout/Sidebar';
@@ -37,16 +37,9 @@ export default function App() {
   const kgModelHook = useModels('openai', startup.modelsByVendor.openai);
   const ragModelHook = useModels('openai', startup.modelsByVendor.openai);
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [progressActive, setProgressActive] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!startup.loading && startup.kgList.length > 0) {
-      dispatch({ type: 'SET_KG_LIST', kgList: startup.kgList });
-    }
-  }, [startup.loading, startup.kgList, dispatch]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -83,23 +76,7 @@ export default function App() {
 
   const handleLoadKG = useCallback(
     async (loadMode: string, nodeLimit: number, kgFilter: string) => {
-      const credStr = sessionStorage.getItem('neo4j-credentials');
-      if (!credStr) {
-        showError(dispatch, 'Please configure database settings first');
-        return;
-      }
-      let creds: { uri: string; user: string; password: string };
-      try {
-        creds = JSON.parse(credStr) as { uri: string; user: string; password: string };
-      } catch {
-        showError(dispatch, 'Saved credentials are corrupted. Please reconfigure in Database Settings.');
-        return;
-      }
-
       const formData = new FormData();
-      formData.append('uri', creds.uri);
-      formData.append('user', creds.user);
-      formData.append('password', creds.password);
       if (kgFilter) formData.append('kg_label', kgFilter);
 
       switch (loadMode) {
@@ -121,13 +98,18 @@ export default function App() {
 
       try {
         const result = await api.loadFromNeo4j(formData);
+        if (kgFilter && !result.graph_data?.nodes?.length) {
+          showError(dispatch, `KG "${kgFilter}" not found`);
+          dispatch({ type: 'SET_KG_LIST', kgList: state.kgList.filter((kg) => kg.name !== kgFilter) });
+          return;
+        }
         handleNeo4jLoaded(result, kgFilter, result.stats ?? {} as Neo4jStats);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         showError(dispatch, `Loading failed: ${msg}`);
       }
     },
-    [dispatch, handleNeo4jLoaded],
+    [dispatch, handleNeo4jLoaded, state.kgList],
   );
 
   void theme; // used by ThemeContext to apply data-theme attribute
@@ -152,7 +134,7 @@ export default function App() {
       {/* Left sidebar */}
       {!state.panels.leftCollapsed && (
         <>
-          <Sidebar onSettingsClick={() => setSettingsOpen(true)}>
+          <Sidebar>
             <KGPanel
               kgModelHook={kgModelHook}
               onLoadKG={handleLoadKG}
@@ -162,10 +144,8 @@ export default function App() {
           </Sidebar>
           <div
             role="separator"
-            className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+            className="hidden md:block w-1 shrink-0 bg-base-300"
             onPointerDown={leftSnap.onPointerDown}
-            onPointerMove={leftSnap.onPointerMove}
-            onPointerUp={leftSnap.onPointerUp}
           />
         </>
       )}
@@ -188,13 +168,10 @@ export default function App() {
             </ErrorBoundary>
           }
           bottomBar={<BottomBar height={state.panels.bottomHeight} />}
+          topBar={<TopBar />}
         />
       </div>
 
-      <DatabaseSettings
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
       <Notifications />
     </div>
   );
