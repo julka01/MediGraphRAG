@@ -1,19 +1,14 @@
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
-  MagnifyingGlassIcon,
   MinusIcon,
   PlusIcon,
-  XMarkIcon,
 } from '@heroicons/react/20/solid';
-import { useCallback, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
 
 export function GraphControls() {
   const { state, dispatch, networkRef, initialViewRef } = useApp();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [matchCount, setMatchCount] = useState<number | null>(null);
 
   // ── Zoom ────────────────────────────────────────────────────────
 
@@ -34,8 +29,7 @@ export function GraphControls() {
     if (!network) return;
     dispatch({ type: 'CLEAR_FILTERS' });
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
-    setSearchTerm('');
-    setMatchCount(null);
+    dispatch({ type: 'SET_SEARCH_TERM', payload: '' });
     setTimeout(() => {
       if (initialViewRef.current?.position && initialViewRef.current?.scale) {
         network.moveTo({
@@ -104,67 +98,6 @@ export function GraphControls() {
     );
   };
 
-  // ── Search ──────────────────────────────────────────────────────
-
-  const performSearch = useCallback(
-    (term: string) => {
-      const network = networkRef.current;
-      if (!network) return;
-
-      const nodeDS = network.body.data.nodes;
-      const edgeDS = network.body.data.edges;
-      const t = (term || '').toLowerCase().trim();
-
-      if (!t) {
-        nodeDS.update(
-          nodeDS.get().map((n: Record<string, unknown>) => ({ id: n.id, opacity: 1, hidden: false })),
-        );
-        edgeDS.update(
-          edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })),
-        );
-        setMatchCount(null);
-        network.redraw();
-        return;
-      }
-
-      const matched = new Set<string | number>();
-      const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
-        const hit =
-          ((node.label as string) || '').toLowerCase().includes(t) ||
-          ((node.title as string) || '').toLowerCase().includes(t) ||
-          JSON.stringify(node.properties || {}).toLowerCase().includes(t);
-        if (hit) matched.add(node.id as string | number);
-        return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
-      });
-      nodeDS.update(nodeUpdates);
-
-      const edgeUpdates = edgeDS.get().map((edge: Record<string, unknown>) => ({
-        id: edge.id,
-        hidden: false,
-        opacity:
-          matched.has(edge.from as string | number) || matched.has(edge.to as string | number)
-            ? 1
-            : 0.06,
-      }));
-      edgeDS.update(edgeUpdates);
-
-      setMatchCount(matched.size);
-      network.redraw();
-    },
-    [networkRef],
-  );
-
-  const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    performSearch(value);
-  };
-
-  const handleSearchClear = () => {
-    setSearchTerm('');
-    performSearch('');
-  };
-
   // ── Export ──────────────────────────────────────────────────────
 
   const handleExportPNG = () => {
@@ -206,37 +139,19 @@ export function GraphControls() {
   // ── Render ──────────────────────────────────────────────────────
 
   const toggleBtn = (active: boolean) =>
-    `btn btn-xs min-w-[5.5rem] ${active ? 'bg-base-300 text-[color:oklch(62%_0.10_270)]' : 'bg-base-300 text-base-content/60'}`;
+    `btn btn-xs shadow-none min-w-[5.5rem] ${active ? 'bg-base-300 text-[color:oklch(62%_0.10_270)]' : 'bg-base-300 text-base-content/60'}`;
 
   return (
     <div className="flex flex-wrap items-center gap-1 px-2 py-1">
       {/* Left: Zoom controls */}
       <div className="join shrink-0">
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleZoomIn}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
+        <button type="button" className="btn btn-xs shadow-none bg-base-300 text-base-content/60 join-item" onClick={handleZoomIn} aria-label="Zoom in" title="Zoom in">
           <PlusIcon className="size-4" aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleZoomOut}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
+        <button type="button" className="btn btn-xs shadow-none bg-base-300 text-base-content/60 join-item" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out">
           <MinusIcon className="size-4" aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-xs join-item"
-          onClick={handleResetZoom}
-          aria-label="Reset view"
-          title="Reset view"
-        >
+        <button type="button" className="btn btn-xs shadow-none bg-base-300 text-base-content/60 join-item" onClick={handleResetZoom} aria-label="Reset view" title="Reset view">
           <ArrowPathIcon className="size-4" aria-hidden="true" />
         </button>
       </div>
@@ -249,103 +164,37 @@ export function GraphControls() {
         Physics {state.physicsEnabled ? 'ON' : 'OFF'}
       </button>
 
-      <button
-        type="button"
-        className={toggleBtn(state.showEdgeLabels)}
-        onClick={handleLabelsToggle}
-      >
+      <button type="button" className={toggleBtn(state.showEdgeLabels)} onClick={handleLabelsToggle}>
         Labels {state.showEdgeLabels ? 'ON' : 'OFF'}
       </button>
 
-      {/* Degree / Uniform toggle */}
-      <div className="flex rounded-md bg-base-300 shrink-0 overflow-hidden">
+      {/* Uniform / Degree toggle */}
+      <div className="flex shrink-0 isolate">
         <button
           type="button"
-          className={`btn btn-xs border-none shadow-none ${state.nodeSizeMetric === 'degree' ? 'text-[color:oklch(62%_0.10_270)]' : 'text-base-content/60'}`}
-          onClick={() => state.nodeSizeMetric !== 'degree' && handleSizeMetricToggle()}
-        >
-          Degree
-        </button>
-        <div className="w-px bg-base-content/10 my-1" />
-        <button
-          type="button"
-          className={`btn btn-xs border-none shadow-none ${state.nodeSizeMetric !== 'degree' ? 'text-[color:oklch(62%_0.10_270)]' : 'text-base-content/60'}`}
+          className={`btn btn-xs shadow-none min-w-0 px-2 rounded-r-none relative hover:z-10 ${state.nodeSizeMetric !== 'degree' ? 'bg-base-300 text-[color:oklch(62%_0.10_270)]' : 'bg-base-300 text-base-content/60'}`}
           onClick={() => state.nodeSizeMetric === 'degree' && handleSizeMetricToggle()}
         >
           Uniform
         </button>
+        <button
+          type="button"
+          className={`btn btn-xs shadow-none min-w-0 px-2 rounded-l-none -ml-px relative hover:z-10 ${state.nodeSizeMetric === 'degree' ? 'bg-base-300 text-[color:oklch(62%_0.10_270)]' : 'bg-base-300 text-base-content/60'}`}
+          onClick={() => state.nodeSizeMetric !== 'degree' && handleSizeMetricToggle()}
+        >
+          Degree
+        </button>
       </div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Center: Search */}
-      <div className="relative flex-1 min-w-0 max-w-[160px]">
-        <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-base-content/40 pointer-events-none" />
-        <input
-          type="text"
-          className="input input-bordered input-xs w-full pl-7 pr-14"
-          placeholder="Search nodes..."
-          value={searchTerm}
-          onChange={handleSearchInput}
-          autoComplete="off"
-        />
-        {searchTerm && (
-          <button
-            type="button"
-            className="absolute right-7 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100 transition-opacity"
-            onClick={handleSearchClear}
-            aria-label="Clear search"
-          >
-            <XMarkIcon className="size-3.5" aria-hidden="true" />
-          </button>
-        )}
-        {matchCount !== null && matchCount > 0 && (
-          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-2xs font-semibold text-accent pointer-events-none">
-            {matchCount}
-          </span>
-        )}
-      </div>
-
-      {/* Highlight indicator */}
-      {state.highlightedNodes.size > 0 && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[color:oklch(85%_0.18_85_/_0.12)] shrink-0">
-          <div className="size-1.5 rounded-full bg-[color:oklch(85%_0.18_85)]" />
-          <span className="text-2xs font-medium text-[color:oklch(85%_0.18_85)]">
-            {state.highlightedNodes.size} highlighted
-          </span>
-          <button
-            type="button"
-            className="opacity-60 hover:opacity-100 transition-opacity"
-            onClick={() => dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' })}
-            aria-label="Clear highlights"
-          >
-            <XMarkIcon className="size-3" aria-hidden="true" />
-          </button>
-        </div>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />
 
       {/* Right: Export */}
-      <div className="flex gap-1 ml-auto shrink-0">
-        <button
-          type="button"
-          className="btn btn-xs bg-base-300 text-base-content/60 shrink-0"
-          onClick={handleExportPNG}
-          title="Export as PNG"
-          aria-label="Export as PNG"
-        >
+      <div className="join ml-auto shrink-0">
+        <button type="button" className="btn btn-xs shadow-none bg-base-300 text-base-content/60 join-item w-20" onClick={handleExportPNG} title="Export as PNG" aria-label="Export as PNG">
           <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> PNG
         </button>
-        <button
-          type="button"
-          className="btn btn-xs bg-base-300 text-base-content/60 shrink-0"
-          onClick={handleExportJSON}
-          title="Export as JSON"
-          aria-label="Export as JSON"
-        >
+        <button type="button" className="btn btn-xs shadow-none bg-base-300 text-base-content/60 join-item w-20" onClick={handleExportJSON} title="Export as JSON" aria-label="Export as JSON">
           <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> JSON
         </button>
       </div>
