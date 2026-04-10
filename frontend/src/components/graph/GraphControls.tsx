@@ -28,6 +28,8 @@ export function GraphControls() {
     const network = networkRef.current;
     if (!network) return;
     dispatch({ type: 'CLEAR_FILTERS' });
+    // CLEAR_HIGHLIGHTED_NODES triggers a full graph rebuild in useGraph,
+    // which resets any search-applied opacity on nodes/edges.
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
     dispatch({ type: 'SET_SEARCH_TERM', payload: '' });
     setTimeout(() => {

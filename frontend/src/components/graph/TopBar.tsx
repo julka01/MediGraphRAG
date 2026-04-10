@@ -1,9 +1,18 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useApp } from '../../context/AppContext';
 
+function matchesSearch(node: Record<string, unknown>, term: string): boolean {
+  return (
+    ((node.label as string) || '').toLowerCase().includes(term) ||
+    ((node.title as string) || '').toLowerCase().includes(term) ||
+    JSON.stringify(node.properties || {}).toLowerCase().includes(term)
+  );
+}
+
 export function TopBar() {
   const { state, dispatch, networkRef } = useApp();
+  const matchCountRef = useRef(0);
 
   const performSearch = useCallback(
     (term: string) => {
@@ -21,16 +30,14 @@ export function TopBar() {
         edgeDS.update(
           edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })),
         );
+        matchCountRef.current = 0;
         network.redraw();
         return;
       }
 
       const matched = new Set<string | number>();
       const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
-        const hit =
-          ((node.label as string) || '').toLowerCase().includes(t) ||
-          ((node.title as string) || '').toLowerCase().includes(t) ||
-          JSON.stringify(node.properties || {}).toLowerCase().includes(t);
+        const hit = matchesSearch(node, t);
         if (hit) matched.add(node.id as string | number);
         return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
       });
@@ -46,6 +53,7 @@ export function TopBar() {
       }));
       edgeDS.update(edgeUpdates);
 
+      matchCountRef.current = matched.size;
       network.redraw();
     },
     [networkRef],
@@ -66,22 +74,7 @@ export function TopBar() {
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
   };
 
-  // Compute match count from the network
-  const matchCount = (() => {
-    const network = networkRef.current;
-    if (!network || !state.searchTerm.trim()) return 0;
-    const t = state.searchTerm.toLowerCase().trim();
-    const nodeDS = network.body.data.nodes;
-    let count = 0;
-    for (const node of nodeDS.get() as Array<Record<string, unknown>>) {
-      const hit =
-        ((node.label as string) || '').toLowerCase().includes(t) ||
-        ((node.title as string) || '').toLowerCase().includes(t) ||
-        JSON.stringify(node.properties || {}).toLowerCase().includes(t);
-      if (hit) count++;
-    }
-    return count;
-  })();
+  const matchCount = state.searchTerm.trim() ? matchCountRef.current : 0;
 
   return (
     <div className="bg-base-200 shrink-0 h-12">
