@@ -77,7 +77,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
   }, []);
 
   const hasGraph = state.graphData && state.graphData.nodes.length > 0;
-  const { leftCollapsed, bottomCollapsed, rightCollapsed } = state.panels;
+  const { leftCollapsed, bottomCollapsed, rightCollapsed, topCollapsed } = state.panels;
 
   const fallbackColor =
     getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim() || '#428bca';
@@ -109,23 +109,38 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         </button>
       </div>
 
-      {/* Panel toggles — top right */}
-      <div className="absolute top-2 right-2 z-10 flex gap-0.5 bg-base-200/80 backdrop-blur rounded-lg p-0.5">
+      {/* Panel toggles — top right, cross layout */}
+      <div className="absolute top-2 right-2 z-10 grid grid-cols-3 grid-rows-3 bg-base-200/80 backdrop-blur rounded-lg p-0.5">
+        {/* Row 1: top toggle centered */}
+        <div />
+        <PanelToggleIcon
+          panel="top"
+          isOpen={!topCollapsed}
+          onClick={() => dispatch({ type: 'TOGGLE_TOP_PANEL' })}
+        />
+        <div />
+
+        {/* Row 2: left, empty center, right */}
         <PanelToggleIcon
           panel="left"
           isOpen={!leftCollapsed}
           onClick={() => dispatch({ type: 'TOGGLE_LEFT_PANEL' })}
         />
-        <PanelToggleIcon
-          panel="bottom"
-          isOpen={!bottomCollapsed}
-          onClick={() => dispatch({ type: 'TOGGLE_BOTTOM_PANEL' })}
-        />
+        <div />
         <PanelToggleIcon
           panel="right"
           isOpen={!rightCollapsed}
           onClick={() => dispatch({ type: 'TOGGLE_RIGHT_PANEL' })}
         />
+
+        {/* Row 3: bottom toggle centered */}
+        <div />
+        <PanelToggleIcon
+          panel="bottom"
+          isOpen={!bottomCollapsed}
+          onClick={() => dispatch({ type: 'TOGGLE_BOTTOM_PANEL' })}
+        />
+        <div />
       </div>
 
       {/* Node detail panel */}
