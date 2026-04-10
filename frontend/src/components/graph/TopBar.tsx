@@ -80,10 +80,10 @@ export function TopBar() {
     <div className="bg-base-200 shrink-0 h-12">
       <div className="flex items-center px-3 h-full">
         <div className="relative flex-1 min-w-0">
-          <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-base-content/40 pointer-events-none" />
+          <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-base-content/40 pointer-events-none" />
           <input
             type="text"
-            className="input input-bordered input-sm w-full pl-9 pr-4"
+            className="w-full h-8 pl-7 pr-4 rounded-lg border border-base-300 bg-base-100 text-sm placeholder:text-base-content/30 outline-none focus:border-primary/50 transition-colors"
             placeholder="Search nodes..."
             value={state.searchTerm}
             onChange={handleSearchInput}

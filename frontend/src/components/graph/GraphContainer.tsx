@@ -97,20 +97,8 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         )}
       </div>
 
-      {/* Theme toggle — top left */}
-      <div className="absolute top-2 left-2 z-10">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="btn btn-ghost btn-sm btn-square"
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-        >
-          {theme === 'dark' ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
-        </button>
-      </div>
-
-      {/* Panel toggles — top right, cross layout */}
-      <div className="absolute top-2 right-2 z-10 grid grid-cols-3 grid-rows-3 bg-base-200/80 backdrop-blur rounded-lg p-0.5">
+      {/* Panel toggles — top left, cross layout with theme toggle in center */}
+      <div className="absolute top-2 left-2 z-10 grid grid-cols-3 grid-rows-3 bg-base-200/80 backdrop-blur rounded-lg p-0.5">
         {/* Row 1: top toggle centered */}
         <div />
         <PanelToggleIcon
@@ -120,13 +108,20 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         />
         <div />
 
-        {/* Row 2: left, empty center, right */}
+        {/* Row 2: left, theme toggle center, right */}
         <PanelToggleIcon
           panel="left"
           isOpen={!leftCollapsed}
           onClick={() => dispatch({ type: 'TOGGLE_LEFT_PANEL' })}
         />
-        <div />
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="p-1 rounded-md transition-colors text-base-content/50 hover:text-base-content/80"
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+        >
+          {theme === 'dark' ? <SunIcon className="size-[22px]" /> : <MoonIcon className="size-[22px]" />}
+        </button>
         <PanelToggleIcon
           panel="right"
           isOpen={!rightCollapsed}
