@@ -9,6 +9,7 @@ const initialPanelState: PanelState = {
   leftCollapsed: false,
   rightCollapsed: false,
   bottomCollapsed: false,
+  topCollapsed: true,
   rightWidth: 320,
   bottomHeight: 120,
 };
@@ -40,9 +41,10 @@ const initialState: AppState = {
   graphData: null,
   fullGraphData: null,
   highlightedNodes: new Set(),
+  searchTerm: '',
   nodeTypeColors: {},
   relationshipTypeColors: {},
-  currentFilters: { nodeTypes: new Set(), relationshipTypes: new Set() },
+  currentFilters: { nodeTypes: null, relationshipTypes: null },
   clusters: {},
   physicsEnabled: true,
   nodeSizeMetric: 'fixed',
@@ -76,13 +78,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         currentFilters: {
-          nodeTypes: new Set(action.nodeTypes ?? state.currentFilters.nodeTypes),
-          relationshipTypes: new Set(action.relationshipTypes ?? state.currentFilters.relationshipTypes),
+          nodeTypes: action.nodeTypes !== undefined ? new Set(action.nodeTypes) : state.currentFilters.nodeTypes,
+          relationshipTypes: action.relationshipTypes !== undefined ? new Set(action.relationshipTypes) : state.currentFilters.relationshipTypes,
         },
       };
     }
     case 'CLEAR_FILTERS':
-      return { ...state, currentFilters: { nodeTypes: new Set(), relationshipTypes: new Set() } };
+      return { ...state, currentFilters: { nodeTypes: null, relationshipTypes: null } };
     case 'TOGGLE_PHYSICS':
       return { ...state, physicsEnabled: !state.physicsEnabled };
     case 'SET_PHYSICS':
@@ -110,6 +112,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       savePanelState(panels);
       return { ...state, panels };
     }
+    case 'TOGGLE_TOP_PANEL': {
+      const panels = { ...state.panels, topCollapsed: !state.panels.topCollapsed };
+      savePanelState(panels);
+      return { ...state, panels };
+    }
+    case 'SET_SEARCH_TERM':
+      return { ...state, searchTerm: action.payload };
     case 'SET_RIGHT_WIDTH': {
       const panels = { ...state.panels, rightWidth: action.payload };
       savePanelState(panels);
@@ -121,13 +130,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, panels };
     }
     case 'CLOSE_PANEL': {
-      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed' } as const)[action.payload];
+      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const)[action.payload];
       const panels = { ...state.panels, [key]: true };
       savePanelState(panels);
       return { ...state, panels };
     }
     case 'OPEN_PANEL': {
-      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed' } as const)[action.payload];
+      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const)[action.payload];
       const panels = { ...state.panels, [key]: false };
       savePanelState(panels);
       return { ...state, panels };
@@ -154,7 +163,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         highlightedNodes: new Set(),
         nodeTypeColors: {},
         relationshipTypeColors: {},
-        currentFilters: { nodeTypes: new Set(), relationshipTypes: new Set() },
+        currentFilters: { nodeTypes: null, relationshipTypes: null },
         clusters: {},
       };
     default:

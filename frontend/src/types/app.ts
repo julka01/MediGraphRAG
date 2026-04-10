@@ -20,8 +20,9 @@ export interface Notification {
 
 /* Filters */
 export interface Filters {
-  nodeTypes: Set<string>;
-  relationshipTypes: Set<string>;
+  /** null = uninitialized (show all); empty Set = user explicitly cleared all */
+  nodeTypes: Set<string> | null;
+  relationshipTypes: Set<string> | null;
 }
 
 /* Graph data from API */
@@ -53,6 +54,7 @@ export interface PanelState {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   bottomCollapsed: boolean;
+  topCollapsed: boolean;
   rightWidth: number;
   bottomHeight: number;
 }
@@ -65,6 +67,7 @@ export interface AppState {
   graphData: GraphData | null;
   fullGraphData: GraphData | null;
   highlightedNodes: Set<string>;
+  searchTerm: string;
   nodeTypeColors: Record<string, string>;
   relationshipTypeColors: Record<string, string>;
   currentFilters: Filters;
@@ -105,10 +108,12 @@ export type AppAction =
   | { type: 'TOGGLE_LEFT_PANEL' }
   | { type: 'TOGGLE_RIGHT_PANEL' }
   | { type: 'TOGGLE_BOTTOM_PANEL' }
+  | { type: 'TOGGLE_TOP_PANEL' }
   | { type: 'SET_RIGHT_WIDTH'; payload: number }
   | { type: 'SET_BOTTOM_HEIGHT'; payload: number }
-  | { type: 'CLOSE_PANEL'; payload: 'left' | 'right' | 'bottom' }
-  | { type: 'OPEN_PANEL'; payload: 'left' | 'right' | 'bottom' }
+  | { type: 'CLOSE_PANEL'; payload: 'left' | 'right' | 'bottom' | 'top' }
+  | { type: 'OPEN_PANEL'; payload: 'left' | 'right' | 'bottom' | 'top' }
+  | { type: 'SET_SEARCH_TERM'; payload: string }
   | { type: 'TOGGLE_KG_EXPANDED' }
   | { type: 'SET_LAYOUT'; layout: Layout }
   | { type: 'SET_CLUSTERS'; clusters: Record<string, unknown> }
@@ -179,11 +184,6 @@ export interface ModelsResponse {
 
 export interface KGListResponse {
   kgs: KGListItem[];
-}
-
-export interface DefaultCredentialsResponse {
-  uri?: string;
-  user?: string;
 }
 
 export interface ChatPayload {
