@@ -1,7 +1,7 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 interface UseSnapToCloseOptions {
-  edge: 'left' | 'right' | 'bottom';
+  edge: 'left' | 'right' | 'bottom' | 'top';
   minSize: number;
   onClose: () => void;
   onOpen: () => void;
@@ -9,62 +9,100 @@ interface UseSnapToCloseOptions {
   snapThreshold?: number;
 }
 
+/**
+ * Drag-to-resize with snap-to-close/open behavior.
+ *
+ * Move and up listeners are attached to `document` so they survive the
+ * resize-handle element being unmounted mid-drag (which happens when the
+ * panel snaps closed and React removes it from the tree).
+ */
 export function useSnapToClose({ edge, minSize, onClose, onOpen, onResize, snapThreshold = 40 }: UseSnapToCloseOptions) {
   const dragging = useRef(false);
   const snapped = useRef(false);
 
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    dragging.current = true;
-    snapped.current = false;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    document.body.classList.add('select-none');
-  }, []);
+  // Keep latest callbacks in refs so the document listeners always call
+  // the current version without needing to re-attach on every render.
+  const cbRef = useRef({ onClose, onOpen, onResize });
+  cbRef.current = { onClose, onOpen, onResize };
 
-  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  const configRef = useRef({ edge, minSize, snapThreshold });
+  configRef.current = { edge, minSize, snapThreshold };
+
+  const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;
 
     const { clientX, clientY } = e;
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
+    const { edge: ed, minSize: min, snapThreshold: thresh } = configRef.current;
 
     let nearEdge = false;
     let newSize: number;
 
-    if (edge === 'left') {
+    if (ed === 'left') {
       newSize = clientX;
-      nearEdge = clientX <= snapThreshold;
-    } else if (edge === 'right') {
+      nearEdge = clientX <= thresh;
+    } else if (ed === 'right') {
       newSize = windowWidth - clientX;
-      nearEdge = clientX >= windowWidth - snapThreshold;
+      nearEdge = clientX >= windowWidth - thresh;
+    } else if (ed === 'top') {
+      newSize = clientY;
+      nearEdge = clientY <= thresh;
     } else {
       newSize = windowHeight - clientY;
-      nearEdge = clientY >= windowHeight - snapThreshold;
+      nearEdge = clientY >= windowHeight - thresh;
     }
 
     if (nearEdge && !snapped.current) {
       snapped.current = true;
-      onClose();
+      cbRef.current.onClose();
       return;
     }
 
     if (!nearEdge && snapped.current) {
       snapped.current = false;
-      onOpen();
+      cbRef.current.onOpen();
     }
 
     if (!snapped.current) {
-      const maxSize = edge === 'bottom' ? windowHeight / 2 : windowWidth / 2;
-      const clamped = Math.max(minSize, Math.min(maxSize, newSize));
-      onResize(clamped);
+      const maxSize = (ed === 'bottom' || ed === 'top') ? windowHeight / 2 : windowWidth / 2;
+      const clamped = Math.max(min, Math.min(maxSize, newSize));
+      cbRef.current.onResize(clamped);
     }
-  }, [edge, minSize, onClose, onOpen, onResize, snapThreshold]);
-
-  const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    dragging.current = false;
-    snapped.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    document.body.classList.remove('select-none');
   }, []);
 
-  return { onPointerDown, onPointerMove, onPointerUp, dragging };
+  const handlePointerUp = useCallback(() => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    snapped.current = false;
+    document.removeEventListener('pointermove', handlePointerMove);
+    document.removeEventListener('pointerup', handlePointerUp);
+    document.body.classList.remove('select-none');
+  }, [handlePointerMove]);
+
+  // Clean up document listeners if the hook unmounts mid-drag.
+  useEffect(() => {
+    return () => {
+      if (dragging.current) {
+        document.removeEventListener('pointermove', handlePointerMove);
+        document.removeEventListener('pointerup', handlePointerUp);
+        document.body.classList.remove('select-none');
+        dragging.current = false;
+      }
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      dragging.current = true;
+      snapped.current = false;
+      document.body.classList.add('select-none');
+      document.addEventListener('pointermove', handlePointerMove);
+      document.addEventListener('pointerup', handlePointerUp);
+    },
+    [handlePointerMove, handlePointerUp],
+  );
+
+  return { onPointerDown, dragging };
 }
