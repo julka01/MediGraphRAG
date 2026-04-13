@@ -80,7 +80,7 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
 
   return (
     <div key={msgKey} className="chat chat-start">
-      <div className="chat-bubble before:hidden rounded-2xl text-sm">
+      <div className="chat-bubble rounded-2xl text-sm">
         <ResponseSections sections={msg.sections} />
         <SourcesSection
           reasoningEdges={msg.reasoningEdges}
@@ -220,7 +220,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             })}
             {sending && (
               <div className="chat chat-start">
-                <div className="chat-bubble before:hidden rounded-2xl bg-base-300 text-sm flex items-center justify-center">
+                <div className="chat-bubble rounded-2xl bg-base-300 text-sm flex items-center justify-center">
                   <span
                     className="loading loading-dots loading-xs text-base-content"
                     aria-label="AI is thinking"

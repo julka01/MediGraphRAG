@@ -43,7 +43,7 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
   return (
     <div className={clsx('chat', isUser ? 'chat-end' : 'chat-start')}>
       <div
-        className={clsx('chat-bubble before:hidden rounded-2xl text-sm break-words', {
+        className={clsx('chat-bubble rounded-2xl text-sm break-words', {
           'bg-brand/50 text-base-content': isUser,
           'chat-bubble-error': isError,
         })}
