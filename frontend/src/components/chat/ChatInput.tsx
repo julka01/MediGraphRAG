@@ -60,11 +60,14 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
     <div className="border border-base-content/20 rounded-xl p-2 has-focus-within:border-primary/50 transition-colors">
       <textarea
         ref={inputRef}
-        placeholder="Ask about the knowledge graph..."
+        aria-label="Ask about the knowledge graph"
+        name="chat-question"
+        autoComplete="off"
+        placeholder="Ask about the knowledge graph\u2026"
         onKeyDown={handleKeyDown}
         onInput={handleInput}
         disabled={disabled}
-        className="w-full bg-transparent text-sm resize-none outline-none min-h-6 max-h-[33vh] overflow-y-auto"
+        className="w-full bg-transparent text-sm resize-none focus-visible:outline-none min-h-6 max-h-[33vh] overflow-y-auto"
         rows={1}
       />
       <div data-chat-controls className="flex items-center justify-between gap-8 mt-1.5">
