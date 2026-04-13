@@ -4,7 +4,6 @@ import { useStartup } from '../useStartup';
 
 vi.mock('../../api', () => ({
   api: {
-    fetchKGList: vi.fn(),
     checkHealth: vi.fn(),
     fetchModels: vi.fn(),
   },
@@ -15,12 +14,10 @@ describe('useStartup', () => {
     vi.clearAllMocks();
   });
 
-  it('fetches KG list, health, and models in parallel', async () => {
-    const mockKgList = { kgs: [{ name: 'test-kg' }] };
+  it('fetches health and models in parallel', async () => {
     const mockHealth = { status: 'ok', checks: [] };
     const mockModels = { models: ['model-a', 'model-b'] };
 
-    vi.mocked(api.fetchKGList).mockResolvedValue(mockKgList);
     vi.mocked(api.checkHealth).mockResolvedValue(mockHealth);
     vi.mocked(api.fetchModels).mockResolvedValue(mockModels);
 
@@ -32,13 +29,11 @@ describe('useStartup', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(api.fetchKGList).toHaveBeenCalledTimes(1);
     expect(api.checkHealth).toHaveBeenCalledTimes(1);
     expect(api.fetchModels).toHaveBeenCalledTimes(2);
     expect(api.fetchModels).toHaveBeenCalledWith('openai');
     expect(api.fetchModels).toHaveBeenCalledWith('openrouter');
 
-    expect(result.current.kgList).toEqual([{ name: 'test-kg' }]);
     expect(result.current.health).toEqual(mockHealth);
     expect(result.current.modelsByVendor).toEqual({
       openai: ['model-a', 'model-b'],
@@ -47,7 +42,6 @@ describe('useStartup', () => {
   });
 
   it('handles partial failures gracefully', async () => {
-    vi.mocked(api.fetchKGList).mockRejectedValue(new Error('fail'));
     vi.mocked(api.checkHealth).mockResolvedValue({ status: 'ok', checks: [] });
     vi.mocked(api.fetchModels).mockResolvedValue({ models: ['m1'] });
 
@@ -57,7 +51,6 @@ describe('useStartup', () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(result.current.kgList).toEqual([]);
     expect(result.current.health).toEqual({ status: 'ok', checks: [] });
     expect(result.current.modelsByVendor).toEqual({ openai: ['m1'] });
   });

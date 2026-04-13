@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ResponseSections, SourcesSection } from '../ResponseSections';
 
@@ -30,7 +29,7 @@ describe('ResponseSections', () => {
     expect(screen.getByText('Evidence')).toBeInTheDocument();
   });
 
-  it('renders source chip when provided', () => {
+  it('renders sections without source chip', () => {
     const sections = {
       recommendation: 'test',
       reasoning: '',
@@ -38,8 +37,8 @@ describe('ResponseSections', () => {
       nextSteps: '',
       fallback: '',
     };
-    render(<ResponseSections sections={sections} sourceChip="3 sources · 85% confidence" />);
-    expect(screen.getByText(/3 sources/)).toBeInTheDocument();
+    render(<ResponseSections sections={sections} />);
+    expect(screen.getByText('Summary')).toBeInTheDocument();
   });
 });
 
@@ -49,16 +48,10 @@ describe('SourcesSection', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('renders Sources button with edges', () => {
+  it('renders source header and edges inline', () => {
     const edges = [{ from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' }];
     render(<SourcesSection reasoningEdges={edges} />);
-    expect(screen.getByText('Sources')).toBeInTheDocument();
-  });
-
-  it('expands to show edge details when Sources clicked', async () => {
-    const edges = [{ from: '1', to: '2', from_name: 'Aspirin', to_name: 'Pain', relationship: 'TREATS' }];
-    render(<SourcesSection reasoningEdges={edges} />);
-    await userEvent.click(screen.getByText('Sources'));
+    expect(screen.getByText('1 Source')).toBeInTheDocument();
     expect(screen.getByText('Aspirin')).toBeInTheDocument();
     expect(screen.getByText('Pain')).toBeInTheDocument();
   });

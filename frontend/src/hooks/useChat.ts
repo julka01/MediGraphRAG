@@ -34,7 +34,7 @@ export function useChat(): UseChatReturn {
 
   const sendQuestion = useCallback(
     async (question: string, kgName: string | null, vendor: string, model: string): Promise<ChatResponse> => {
-      addMessage({ type: 'user', message: `You: ${question}`, ts: Date.now() });
+      addMessage({ type: 'user', message: question, ts: Date.now() });
       setSending(true);
 
       try {
@@ -70,7 +70,7 @@ export function useChat(): UseChatReturn {
       let md = `# Chat Export — ${kgName || 'Knowledge Graph'}\n_Exported ${new Date().toLocaleString()}_\n\n`;
       messages.forEach((m) => {
         if (m.type === 'user') {
-          md += `**You:** ${m.message.replace(/^You: /, '')}\n\n`;
+          md += `**You:** ${m.message}\n\n`;
         } else if (m.type === 'ai') {
           const tmp = document.createElement('div');
           tmp.innerHTML = m.message;

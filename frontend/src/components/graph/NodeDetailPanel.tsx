@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface NodeEdge {
@@ -23,28 +24,28 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
   const nodeName = (node.label as string) || String(node.originalId);
   const props = (node.properties || {}) as Record<string, unknown>;
 
+  const [showAllConnections, setShowAllConnections] = useState(false);
   const totalConnections = edges.length;
   const outEdges = edges.filter((e) => e.from === String(node.id ?? node.originalId));
   const inEdges = edges.filter((e) => e.to === String(node.id ?? node.originalId));
-  const outTypes = new Set(outEdges.map((e) => e.label)).size;
-  const inTypes = new Set(inEdges.map((e) => e.label)).size;
+  const outCount = outEdges.length;
+  const inCount = inEdges.length;
 
   return (
-    <div className="absolute top-0 right-0 w-72 h-full z-20 animate-slide-from-right">
-      <div className="card bg-base-100 h-full shadow-lg rounded-none rounded-l-lg overflow-hidden flex flex-col">
+    <div className="absolute top-0 right-0 w-72 h-full z-20 animate-slide-from-right flex">
+      <div className="w-1 shrink-0 bg-base-300" />
+      <div className="card bg-base-100 h-full shadow-lg rounded-none overflow-hidden flex flex-col flex-1">
 
-        {/* Header with colored left accent */}
-        <div
-          style={{ borderLeftColor: nodeColor, borderLeftWidth: '3px' }}
-          className="border-l px-4 py-3 bg-base-200 shrink-0"
-        >
+        {/* Header */}
+        <div className="px-4 py-3 bg-base-200 shrink-0">
           <div className="flex justify-between items-start">
             <div className="pr-6">
               <div className="font-bold text-base leading-tight">{nodeName}</div>
-              <span
-                className="inline-block mt-1 px-2 py-0.5 rounded-full text-2xs font-medium"
-                style={{ backgroundColor: `${nodeColor}20`, color: nodeColor }}
-              >
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-base-300 text-2xs text-base-content">
+                <span
+                  className="size-2 rounded-full shrink-0"
+                  style={{ backgroundColor: nodeColor }}
+                />
                 {nodeType}
               </span>
             </div>
@@ -66,12 +67,12 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
             connections
           </div>
           <div className="flex-1 py-2 border-r border-base-300">
-            <div className="text-base font-semibold text-base-content">{outTypes}</div>
-            types out
+            <div className="text-base font-semibold text-base-content">{inCount}</div>
+            in
           </div>
           <div className="flex-1 py-2">
-            <div className="text-base font-semibold text-base-content">{inTypes}</div>
-            types in
+            <div className="text-base font-semibold text-base-content">{outCount}</div>
+            out
           </div>
         </div>
 
@@ -124,7 +125,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
             <div className="px-4 pb-3">
               <div className="text-2xs uppercase tracking-wider text-base-content/40 mb-2">Connections</div>
               <div className="space-y-1">
-                {edges.slice(0, 5).map((edge, i) => (
+                {(showAllConnections ? edges : edges.slice(0, 5)).map((edge, i) => (
                   <div
                     key={i}
                     className="flex items-center gap-1.5 px-2 py-1 rounded bg-base-300/30 text-xs"
@@ -134,7 +135,13 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
                   </div>
                 ))}
                 {edges.length > 5 && (
-                  <div className="text-2xs text-base-content/40 text-right">+ {edges.length - 5} more</div>
+                  <button
+                    type="button"
+                    className="text-2xs text-base-content/40 hover:text-base-content/60 transition-colors w-full text-right mt-1"
+                    onClick={() => setShowAllConnections(!showAllConnections)}
+                  >
+                    {showAllConnections ? 'Show less' : `Show ${edges.length - 5} more`}
+                  </button>
                 )}
               </div>
             </div>

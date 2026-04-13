@@ -730,7 +730,7 @@ async def create_ontology_guided_kg(  # noqa: C901
         _log_progress("🔍 Extracting entities and relationships…")
         kg = await asyncio.to_thread(
             kg_creator.generate_knowledge_graph,
-            text_content, llm, file.filename, model, max_chunks, kg_name, None, doc_hash,
+            text_content, llm, file.filename, model, max_chunks, kg_name, None, doc_hash, provider,
         )
 
         # Log results like test script
@@ -1001,24 +1001,18 @@ def list_models(provider: str):
 
     return {"models": model_map.get(provider.lower(), [])}
 
-@app.get("/neo4j/default_credentials")
-def default_credentials():
-    """Return non-sensitive Neo4j connection defaults for the frontend form."""
-    return {
-        "uri": os.getenv("NEO4J_URI", "bolt://localhost:7687"),
-        "user": os.getenv("NEO4J_USERNAME", "neo4j"),
-        "database": os.getenv("NEO4J_DATABASE", "neo4j"),
-        # Password is intentionally omitted — the user must enter it manually.
-    }
-
 @app.post("/clear_kg")
-async def clear_kg():
+async def clear_kg(kg_name: str = Form(None)):
     """
-    Clear the entire Neo4j knowledge graph by removing all nodes and relationships.
+    Delete a knowledge graph from Neo4j.
+
+    When *kg_name* is provided, only nodes (``__Entity__`` and ``Document``)
+    whose ``kgName`` property matches are removed together with their
+    relationships.  When omitted, the entire database is wiped (all nodes,
+    relationships, constraints, and indexes).
     """
     require_neo4j()
     try:
-        # Use Neo4j driver from environment
         driver = get_graphDB_driver(
             os.getenv("NEO4J_URI"),
             os.getenv("NEO4J_USERNAME"),
@@ -1026,14 +1020,34 @@ async def clear_kg():
             os.getenv("NEO4J_DATABASE"),
         )
 
-        logger.info("Clearing entire Neo4j knowledge graph")
-
         with driver.session(database=os.getenv("NEO4J_DATABASE", "neo4j")) as session:
-            # Drop constraints — backtick-quote names to guard against special characters
+            if kg_name:
+                # Scoped delete: only nodes belonging to this KG
+                logger.info("Deleting KG '%s' from Neo4j", kg_name)
+
+                result = session.run(
+                    "MATCH (n {kgName: $kg_name}) DETACH DELETE n RETURN count(n) AS deleted_count",
+                    {"kg_name": kg_name},
+                )
+                record = result.single()
+                deleted_count = record["deleted_count"] if record else 0
+                logger.info("Deleted %d nodes for KG '%s'", deleted_count, kg_name)
+
+                return JSONResponse(content={
+                    "message": f"KG '{kg_name}' deleted successfully! Removed {deleted_count} nodes.",
+                    "status": "cleared",
+                    "kg_name": kg_name,
+                    "nodes_deleted": deleted_count,
+                })
+
+            # Full wipe: remove everything
+            logger.info("Clearing entire Neo4j knowledge graph")
+
+            # Drop constraints
             try:
                 constraints = [record["name"] for record in session.run("SHOW CONSTRAINTS")]
                 for name in constraints:
-                    safe = name.replace("`", "")  # strip any embedded backticks
+                    safe = name.replace("`", "")
                     try:
                         session.run(f"DROP CONSTRAINT `{safe}`")
                         logger.debug("Dropped constraint: %s", safe)
@@ -1075,7 +1089,7 @@ async def clear_kg():
         return JSONResponse(content={
             "message": f"Knowledge graph cleared successfully! Deleted {deleted_count} nodes and all relationships.",
             "status": "cleared",
-            "nodes_deleted": deleted_count
+            "nodes_deleted": deleted_count,
         })
 
     except HTTPException:
@@ -1309,20 +1323,22 @@ async def save_kg_to_neo4j(
 
 @app.post("/load_kg_from_neo4j")
 async def load_kg_from_neo4j(
-    uri: str = Form(...),
-    user: str = Form(...),
-    password: str = Form(...),
     limit: int = Form(1000),
     sample_mode: bool = Form(False),
     load_complete: bool = Form(False),
-    kg_label: str = Form(None)
+    kg_label: str = Form(None),
 ):
     """
     Load the entire KG from Neo4j with optional sampling and filtering.
     """
     require_neo4j()
     try:
-        driver = get_graphDB_driver(uri, user, password, os.getenv("NEO4J_DATABASE"))
+        driver = get_graphDB_driver(
+            os.getenv("NEO4J_URI"),
+            os.getenv("NEO4J_USERNAME"),
+            os.getenv("NEO4J_PASSWORD"),
+            os.getenv("NEO4J_DATABASE"),
+        )
         with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
             total_nodes = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
             total_rels = session.run("MATCH ()-[r]->() RETURN count(r) AS c").single()["c"]
@@ -1430,19 +1446,36 @@ async def load_kg_from_neo4j(
                             len(entity_ids), total_nodes, len(relationships), total_rels
                         )
 
+                # Read KG creation settings from Document node
+                kg_settings = None
+                doc_record = session.run(
+                    "MATCH (d:Document {kgName: $kg_name}) "
+                    "RETURN d.provider AS provider, d.model AS model, "
+                    "d.embeddingModel AS embeddingModel, d.maxChunks AS maxChunks LIMIT 1",
+                    {"kg_name": kg_label},
+                ).single()
+                if doc_record:
+                    kg_settings = {
+                        "provider": doc_record["provider"],
+                        "model": doc_record["model"],
+                        "embeddingModel": doc_record["embeddingModel"],
+                        "maxChunks": doc_record["maxChunks"],
+                    }
+
                 stats = {
                     "total_nodes_in_db": total_nodes,
                     "total_relationships_in_db": total_rels,
                     "loaded_nodes": len(nodes),
                     "loaded_relationships": len(relationships),
                     "sample_mode": sample_mode,
-                    "complete_import": load_complete
+                    "complete_import": load_complete,
                 }
                 return JSONResponse(content={
                     "kg_id": str(uuid.uuid4()),
                     "kg_name": kg_label,
                     "graph_data": {"nodes": nodes, "relationships": relationships},
-                    "stats": stats
+                    "stats": stats,
+                    "kg_settings": kg_settings,
                 })
 
             # Fallback: no kg_label match — load all __Entity__ nodes and their
@@ -1470,13 +1503,14 @@ async def load_kg_from_neo4j(
             "loaded_nodes": len(nodes),
             "loaded_relationships": len(relationships),
             "sample_mode": sample_mode,
-            "complete_import": load_complete
+            "complete_import": load_complete,
         }
         return JSONResponse(content={
             "kg_id": str(uuid.uuid4()),
             "kg_name": kg_label,
             "graph_data": {"nodes": nodes, "relationships": relationships},
-            "stats": stats
+            "stats": stats,
+            "kg_settings": None,
         })
     except HTTPException:
         raise

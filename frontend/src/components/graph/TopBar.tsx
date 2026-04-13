@@ -2,12 +2,51 @@ import { useCallback, useRef } from 'react';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useApp } from '../../context/AppContext';
 
-function matchesSearch(node: Record<string, unknown>, term: string): boolean {
-  return (
-    ((node.label as string) || '').toLowerCase().includes(term) ||
-    ((node.title as string) || '').toLowerCase().includes(term) ||
-    JSON.stringify(node.properties || {}).toLowerCase().includes(term)
-  );
+export function applySearchToNetwork(
+  networkRef: { current: vis.Network | null },
+  term: string,
+): number {
+  const network = networkRef.current;
+  if (!network) return 0;
+
+  const nodeDS = network.body.data.nodes;
+  const edgeDS = network.body.data.edges;
+  const t = (term || '').toLowerCase().trim();
+
+  if (!t) {
+    nodeDS.update(
+      nodeDS.get().map((n: Record<string, unknown>) => ({ id: n.id, opacity: 1, hidden: false })),
+    );
+    edgeDS.update(
+      edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })),
+    );
+    network.redraw();
+    return 0;
+  }
+
+  const matched = new Set<string | number>();
+  const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
+    const hit =
+      ((node.label as string) || '').toLowerCase().includes(t) ||
+      ((node.title as string) || '').toLowerCase().includes(t) ||
+      JSON.stringify(node.properties || {}).toLowerCase().includes(t);
+    if (hit) matched.add(node.id as string | number);
+    return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
+  });
+  nodeDS.update(nodeUpdates);
+
+  const edgeUpdates = edgeDS.get().map((edge: Record<string, unknown>) => ({
+    id: edge.id,
+    hidden: false,
+    opacity:
+      matched.has(edge.from as string | number) || matched.has(edge.to as string | number)
+        ? 1
+        : 0.06,
+  }));
+  edgeDS.update(edgeUpdates);
+
+  network.redraw();
+  return matched.size;
 }
 
 export function TopBar() {
@@ -16,45 +55,7 @@ export function TopBar() {
 
   const performSearch = useCallback(
     (term: string) => {
-      const network = networkRef.current;
-      if (!network) return;
-
-      const nodeDS = network.body.data.nodes;
-      const edgeDS = network.body.data.edges;
-      const t = (term || '').toLowerCase().trim();
-
-      if (!t) {
-        nodeDS.update(
-          nodeDS.get().map((n: Record<string, unknown>) => ({ id: n.id, opacity: 1, hidden: false })),
-        );
-        edgeDS.update(
-          edgeDS.get().map((e: Record<string, unknown>) => ({ id: e.id, opacity: 1, hidden: false })),
-        );
-        matchCountRef.current = 0;
-        network.redraw();
-        return;
-      }
-
-      const matched = new Set<string | number>();
-      const nodeUpdates = nodeDS.get().map((node: Record<string, unknown>) => {
-        const hit = matchesSearch(node, t);
-        if (hit) matched.add(node.id as string | number);
-        return { id: node.id, hidden: false, opacity: hit ? 1 : 0.1 };
-      });
-      nodeDS.update(nodeUpdates);
-
-      const edgeUpdates = edgeDS.get().map((edge: Record<string, unknown>) => ({
-        id: edge.id,
-        hidden: false,
-        opacity:
-          matched.has(edge.from as string | number) || matched.has(edge.to as string | number)
-            ? 1
-            : 0.06,
-      }));
-      edgeDS.update(edgeUpdates);
-
-      matchCountRef.current = matched.size;
-      network.redraw();
+      matchCountRef.current = applySearchToNetwork(networkRef, term);
     },
     [networkRef],
   );
@@ -83,7 +84,7 @@ export function TopBar() {
           <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-4 text-base-content/40 pointer-events-none" />
           <input
             type="text"
-            className="w-full h-8 pl-7 pr-4 rounded-lg border border-base-300 bg-base-100 text-sm placeholder:text-base-content/30 outline-none focus:border-primary/50 transition-colors"
+            className="w-full h-8 pl-7 pr-4 rounded-lg border border-base-content/20 bg-transparent text-sm placeholder:text-base-content/30 outline-none focus:border-primary/50 transition-colors"
             placeholder="Search nodes..."
             value={state.searchTerm}
             onChange={handleSearchInput}
@@ -117,10 +118,9 @@ export function TopBar() {
               </button>
             )}
             {/* Highlighted nodes badge */}
-            {state.highlightedNodes.size > 0 && (
+            {state.highlightedCount > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[color:oklch(85%_0.18_85_/_0.12)] text-[color:oklch(85%_0.18_85)] text-2xs font-semibold">
-                <span className="size-1.5 rounded-full bg-[color:oklch(85%_0.18_85)]" />
-                {state.highlightedNodes.size} highlighted
+                {state.highlightedCount} highlighted
                 <button
                   type="button"
                   className="opacity-60 hover:opacity-100 transition-opacity"

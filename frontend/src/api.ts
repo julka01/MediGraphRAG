@@ -3,7 +3,6 @@ import type {
   ChatResponse,
   ClearKGResponse,
   CreateKGResponse,
-  DefaultCredentialsResponse,
   HealthResponse,
   KGListResponse,
   LoadNeo4jResponse,
@@ -22,13 +21,15 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   fetchModels: (vendor: string) => request<ModelsResponse>(`/models/${vendor}`),
   fetchKGList: () => request<KGListResponse>('/kg/list'),
-  fetchDefaultCredentials: () => request<DefaultCredentialsResponse>('/neo4j/default_credentials'),
   checkHealth: () => request<HealthResponse>('/doctor'),
-  clearKG: () =>
-    request<ClearKGResponse>('/clear_kg', {
+  clearKG: (kgName?: string) => {
+    const formData = new FormData();
+    if (kgName) formData.append('kg_name', kgName);
+    return request<ClearKGResponse>('/clear_kg', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }),
+      body: formData,
+    });
+  },
   createKG: (formData: FormData) =>
     request<CreateKGResponse>('/create_ontology_guided_kg', {
       method: 'POST',

@@ -27,6 +27,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
   const bottomSnap = useSnapToClose({
     edge: 'bottom',
     minSize: 80,
+    snapThreshold: 120,
     onClose: () => dispatch({ type: 'CLOSE_PANEL', payload: 'bottom' }),
     onOpen: () => dispatch({ type: 'OPEN_PANEL', payload: 'bottom' }),
     onResize: (h) => dispatch({ type: 'SET_BOTTOM_HEIGHT', payload: h }),
@@ -43,7 +44,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
   return (
     <div className="flex flex-1 min-w-0 min-h-0">
       {/* Graph + Top + Bottom stack */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         {/* Top panel + snap handle */}
         {!topCollapsed && (
           <>
@@ -63,38 +64,36 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
           {graphPanel}
         </div>
 
-        {/* Bottom resize handle + bottom bar */}
+        {/* Bottom resize handle + bottom bar — always mounted to preserve filter state */}
         {!bottomCollapsed && (
-          <>
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize bottom panel"
-              className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
-              onPointerDown={bottomSnap.onPointerDown}
-            />
-            {bottomBar}
-          </>
-        )}
-      </div>
-
-      {/* Right sidebar resize handle + chat panel */}
-      {!rightCollapsed && (
-        <>
           <div
             role="separator"
-            className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
-            onPointerDown={rightSnap.onPointerDown}
+            aria-orientation="horizontal"
+            aria-label="Resize bottom panel"
+            className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
+            onPointerDown={bottomSnap.onPointerDown}
           />
-          <div
-            ref={rightSidebarRef}
-            className="shrink-0 overflow-hidden"
-            style={{ width: Math.max(rightWidth, dynamicMinWidth) }}
-          >
-            {chatPanel}
-          </div>
-        </>
+        )}
+        <div className={bottomCollapsed ? 'hidden' : ''}>
+          {bottomBar}
+        </div>
+      </div>
+
+      {/* Right sidebar resize handle + chat panel — always mounted to preserve chat state */}
+      {!rightCollapsed && (
+        <div
+          role="separator"
+          className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+          onPointerDown={rightSnap.onPointerDown}
+        />
       )}
+      <div
+        ref={rightSidebarRef}
+        className={rightCollapsed ? 'hidden' : 'overflow-hidden'}
+        style={rightCollapsed ? undefined : { width: Math.max(rightWidth, dynamicMinWidth), minWidth: 0 }}
+      >
+        {chatPanel}
+      </div>
     </div>
   );
 }

@@ -41,13 +41,14 @@ const initialState: AppState = {
   graphData: null,
   fullGraphData: null,
   highlightedNodes: new Set(),
+  highlightedCount: 0,
   searchTerm: '',
   nodeTypeColors: {},
   relationshipTypeColors: {},
   currentFilters: { nodeTypes: null, relationshipTypes: null },
   clusters: {},
   physicsEnabled: true,
-  nodeSizeMetric: 'fixed',
+  nodeSizeMetric: 'degree',
   showEdgeLabels: true,
   activeView: 'kg',
   layout: 'split' as Layout,
@@ -69,7 +70,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_HIGHLIGHTED_NODES':
       return { ...state, highlightedNodes: new Set(action.nodes) };
     case 'CLEAR_HIGHLIGHTED_NODES':
-      return { ...state, highlightedNodes: new Set() };
+      return { ...state, highlightedNodes: new Set(), highlightedCount: 0 };
+    case 'SET_HIGHLIGHTED_COUNT':
+      return { ...state, highlightedCount: action.count };
     case 'SET_NODE_TYPE_COLORS':
       return { ...state, nodeTypeColors: action.colors };
     case 'SET_RELATIONSHIP_TYPE_COLORS':

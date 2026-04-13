@@ -26,21 +26,29 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
     });
   };
 
+  if (isThinking) {
+    return (
+      <div className="chat chat-start">
+        <div className="rounded-2xl bg-base-300 px-4 py-2 text-sm max-w-[80%]">
+          <span className="loading loading-dots loading-xs text-base-content" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={clsx('chat', isUser ? 'chat-end' : 'chat-start')}>
       <div
         className={clsx('chat-bubble before:hidden rounded-2xl text-sm', {
-          'chat-bubble-primary': isUser,
+          'bg-[color:oklch(62%_0.10_270)]/50 text-base-content': isUser,
           'chat-bubble-error': isError,
-          'chat-bubble-ghost': isThinking,
         })}
       >
-        {isThinking && <span className="loading loading-dots loading-xs" />}
         {isUser || isError ? (
           <span>{message}</span>
-        ) : !isThinking ? (
+        ) : (
           <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>
-        ) : null}
+        )}
         {isAI && (
           <button type="button" className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1" onClick={handleCopy}>
             {copied ? 'copied!' : 'copy'}

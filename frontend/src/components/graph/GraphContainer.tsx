@@ -6,6 +6,7 @@ import { useGraph } from '../../hooks/useGraph';
 import { NodeDetailPanel } from './NodeDetailPanel';
 import { ProgressPanel } from '../kg/ProgressPanel';
 import { PanelToggleIcon } from './PanelToggleIcons';
+import { applySearchToNetwork } from './TopBar';
 
 interface GraphContainerProps {
   progressActive: boolean;
@@ -58,6 +59,11 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     }
   }, [getNodeEdges]);
 
+  const applySearch = useCallback(
+    (term: string) => applySearchToNetwork(networkRef, term),
+    [networkRef],
+  );
+
   useGraph({
     containerRef,
     appState: state,
@@ -66,6 +72,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     idCounterRef,
     initialViewRef,
     onNodeClick: handleNodeClick,
+    applySearch,
   });
 
   useEffect(() => {

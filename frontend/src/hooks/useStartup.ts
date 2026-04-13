@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { HealthResponse, KGListItem } from '../types/app';
+import type { HealthResponse } from '../types/app';
 
 interface StartupData {
   loading: boolean;
-  kgList: KGListItem[];
   health: HealthResponse | null;
   modelsByVendor: Record<string, string[]>;
 }
@@ -12,7 +11,6 @@ interface StartupData {
 export function useStartup(vendors: string[]): StartupData {
   const [data, setData] = useState<StartupData>({
     loading: true,
-    kgList: [],
     health: null,
     modelsByVendor: {},
   });
@@ -23,11 +21,6 @@ export function useStartup(vendors: string[]): StartupData {
 
     // Fire all requests in parallel but update state as each resolves
     // so fast responses render immediately without waiting for slow ones.
-    api.fetchKGList().then(
-      (res) => !cancelled && setData((d) => ({ ...d, kgList: res.kgs || [] })),
-      () => {},
-    );
-
     api.checkHealth().then(
       (res) => !cancelled && setData((d) => ({ ...d, health: res })),
       () => {},

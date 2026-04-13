@@ -38,15 +38,6 @@ describe('api', () => {
     });
   });
 
-  describe('fetchDefaultCredentials', () => {
-    it('calls GET /neo4j/default_credentials', async () => {
-      mockFetch.mockResolvedValue(okResponse({ uri: 'bolt://localhost', user: 'neo4j' }));
-      const result = await api.fetchDefaultCredentials();
-      expect(mockFetch).toHaveBeenCalledWith('/neo4j/default_credentials', undefined);
-      expect(result).toEqual({ uri: 'bolt://localhost', user: 'neo4j' });
-    });
-  });
-
   describe('checkHealth', () => {
     it('calls GET /doctor', async () => {
       mockFetch.mockResolvedValue(okResponse({ status: 'ok', checks: [] }));
@@ -57,16 +48,21 @@ describe('api', () => {
   });
 
   describe('clearKG', () => {
-    it('calls POST /clear_kg with JSON content-type', async () => {
+    it('calls POST /clear_kg with FormData', async () => {
       mockFetch.mockResolvedValue(okResponse({ message: 'cleared' }));
       await api.clearKG();
       expect(mockFetch).toHaveBeenCalledWith(
         '/clear_kg',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }),
+        expect.objectContaining({ method: 'POST' }),
       );
+    });
+
+    it('includes kg_name in FormData when provided', async () => {
+      mockFetch.mockResolvedValue(okResponse({ message: 'cleared' }));
+      await api.clearKG('my-kg');
+      const call = mockFetch.mock.calls[0];
+      const body = call[1].body as FormData;
+      expect(body.get('kg_name')).toBe('my-kg');
     });
   });
 

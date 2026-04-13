@@ -12,7 +12,7 @@ import { useModels } from './hooks/useModels';
 import { useSnapToClose } from './hooks/useSnapToClose';
 import { useStartup } from './hooks/useStartup';
 import { api } from './api';
-import type { LoadNeo4jResponse, Neo4jStats } from './types/app';
+import type { KGSettings, LoadNeo4jResponse, Neo4jStats } from './types/app';
 import { safeSet } from './utils/storage';
 
 const GraphContainer = lazy(() =>
@@ -56,6 +56,8 @@ export default function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const [loadedKGSettings, setLoadedKGSettings] = useState<KGSettings | null>(null);
+
   const handleNeo4jLoaded = useCallback(
     (result: LoadNeo4jResponse, kgFilter: string, stats: Neo4jStats) => {
       dispatch({ type: 'SET_KG', kgId: result.kg_id, kgName: result.kg_name || kgFilter || null });
@@ -64,6 +66,15 @@ export default function App() {
       dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
       dispatch({ type: 'CLEAR_FILTERS' });
 
+      // Restore KG creation settings
+      const settings = result.kg_settings;
+      if (settings) {
+        if (settings.provider && settings.model) {
+          kgModelHook.restoreVendorModel(settings.provider, settings.model);
+        }
+        setLoadedKGSettings(settings);
+      }
+
       const nodeCount = result.graph_data?.nodes?.length ?? 0;
       const relCount = result.graph_data?.relationships?.length ?? 0;
       let msg = result.message || `Loaded KG from Neo4j with ${nodeCount} nodes and ${relCount} relationships`;
@@ -71,7 +82,7 @@ export default function App() {
       else if (stats?.complete_import) msg += ' (Complete Import)';
       showSuccess(dispatch, msg);
     },
-    [dispatch],
+    [dispatch, kgModelHook],
   );
 
   const handleLoadKG = useCallback(
@@ -131,23 +142,22 @@ export default function App() {
         Skip to content
       </a>
 
-      {/* Left sidebar */}
+      {/* Left sidebar — always mounted to preserve form state */}
+      <Sidebar hidden={state.panels.leftCollapsed}>
+        <KGPanel
+          kgModelHook={kgModelHook}
+          onLoadKG={handleLoadKG}
+          onProgressStart={() => setProgressActive(true)}
+          onProgressStop={() => setProgressActive(false)}
+          loadedKGSettings={loadedKGSettings}
+        />
+      </Sidebar>
       {!state.panels.leftCollapsed && (
-        <>
-          <Sidebar>
-            <KGPanel
-              kgModelHook={kgModelHook}
-              onLoadKG={handleLoadKG}
-              onProgressStart={() => setProgressActive(true)}
-              onProgressStop={() => setProgressActive(false)}
-            />
-          </Sidebar>
-          <div
-            role="separator"
-            className="hidden md:block w-1 shrink-0 bg-base-300"
-            onPointerDown={leftSnap.onPointerDown}
-          />
-        </>
+        <div
+          role="separator"
+          className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+          onPointerDown={leftSnap.onPointerDown}
+        />
       )}
 
       {/* Main content area */}

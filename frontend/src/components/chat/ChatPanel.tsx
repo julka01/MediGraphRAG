@@ -6,6 +6,7 @@ import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
 import { ResponseSections, SourcesSection } from './ResponseSections';
+import { showError } from '../ui/Notifications';
 
 function parseResponse(text: string): ResponseSectionsType {
   const sections: ResponseSectionsType = {
@@ -70,7 +71,12 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const handleExportChat = useCallback(() => exportChat(state.currentKGName), [exportChat, state.currentKGName]);
 
   const handleSend = useCallback(
-    async (question: string) => {
+    (question: string): boolean => {
+      if (!state.currentKGId) {
+        showError(dispatch, 'Load a knowledge graph first');
+        return false;
+      }
+      void (async () => {
       try {
         const result = await sendQuestion(
           question,
@@ -93,15 +99,6 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
         const cleanedText = responseText.replace(/【Source:[^】]*】/g, '').replace(/\[Source:[^\]]*\]/g, '');
         const sections = parseResponse(cleanedText);
 
-        const confidence = result.info?.confidence_score;
-        const entityCount = usedEntities.length;
-        let sourceChip = '';
-        if (entityCount > 0) {
-          const pct = confidence !== undefined ? `${Math.round(confidence * 100)}% confidence` : '';
-          const src = `${entityCount} source${entityCount !== 1 ? 's' : ''}`;
-          sourceChip = [src, pct].filter(Boolean).join(' · ');
-        }
-
         const reasoningEdges = result.info?.entities?.reasoning_edges || [];
         const sourceEntities = result.info?.entities?.used_entities || [];
 
@@ -110,7 +107,6 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
           message: cleanedText,
           ts: Date.now(),
           sections,
-          sourceChip,
           reasoningEdges,
           sourceEntities,
         });
@@ -122,8 +118,10 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             : `Error: ${err.message}`;
         addMessage({ type: 'error', message: msg, ts: Date.now() });
       }
+      })();
+      return true;
     },
-    [sendQuestion, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel, dispatch, addMessage],
+    [sendQuestion, state.currentKGId, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel, dispatch, addMessage],
   );
 
   const isEmpty = messages.length === 0;
@@ -139,17 +137,37 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             {messages.map((msg, i) => {
               const msgKey = `${msg.ts ?? 0}-${i}`;
               if (msg.type === 'ai' && msg.sections) {
+                const entities = msg.sourceEntities || [];
+                const nodeNames = new Set<string>();
+                entities.forEach((e) => {
+                  const readable = (e.description || '').toLowerCase().trim();
+                  const idKey = (e.id || '').toLowerCase().trim();
+                  if (readable) nodeNames.add(readable);
+                  if (idKey) nodeNames.add(idKey);
+                });
+                const hasEntities = nodeNames.size > 0;
+                const isMsgHighlighted = hasEntities && nodeNames.size === state.highlightedNodes.size
+                  && [...nodeNames].every((n) => state.highlightedNodes.has(n));
+
                 return (
                   <div key={msgKey} className="chat chat-start">
                     <div className="chat-bubble before:hidden rounded-2xl text-sm">
-                      <ResponseSections
-                        sections={msg.sections}
-                        sourceChip={msg.sourceChip}
+                      <ResponseSections sections={msg.sections} />
+                      <SourcesSection
+                        reasoningEdges={msg.reasoningEdges}
+                        sourceEntities={msg.sourceEntities}
+                        isHighlighted={isMsgHighlighted}
+                        onHighlight={hasEntities ? () => {
+                          if (isMsgHighlighted) {
+                            dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
+                          } else {
+                            dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
+                          }
+                        } : undefined}
                       />
-                      <SourcesSection reasoningEdges={msg.reasoningEdges} sourceEntities={msg.sourceEntities} />
                     </div>
                     {msg.ts && (
-                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString()}</div>
+                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
                     )}
                   </div>
                 );
@@ -159,10 +177,17 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
                   key={msgKey}
                   message={msg.message}
                   type={msg.type}
-                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString() : undefined}
+                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined}
                 />
               );
             })}
+            {sending && (
+              <div className="chat chat-start">
+                <div className="chat-bubble before:hidden rounded-2xl bg-base-300 text-sm flex items-center justify-center">
+                  <span className="loading loading-dots loading-xs text-base-content" />
+                </div>
+              </div>
+            )}
             {messages.length > 0 && (
               <div className="flex justify-center py-2">
                 <div className="flex bg-base-300/30 rounded-lg p-0.5">
@@ -176,13 +201,6 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
               </div>
             )}
           </>
-        )}
-        {sending && (
-          <div className="chat chat-start">
-            <div className="chat-bubble chat-bubble-ghost">
-              <span className="loading loading-dots loading-xs" />
-            </div>
-          </div>
         )}
       </div>
       {/* Chat input at bottom */}

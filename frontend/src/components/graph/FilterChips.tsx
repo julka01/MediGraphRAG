@@ -1,98 +1,10 @@
-import { memo, useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { CheckIcon, MinusIcon } from '@heroicons/react/20/solid';
-import { StopIcon } from '@heroicons/react/24/outline';
+import { memo, useMemo, useState } from 'react';
+import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useApp } from '../../context/AppContext';
 
-// ── Smart Select ────────────────────────────────────────────────────────────
+// ── Select-all checkbox state ───────────────────────────────────────────────
 
-type SmartSelectState = 'all' | 'none' | 'partial';
-
-interface SmartSelectProps {
-  selectState: SmartSelectState;
-  onAll: () => void;
-  onNone: () => void;
-  onOntology: () => void;
-  onEdges: () => void;
-}
-
-function SmartSelect({ selectState, onAll, onNone, onOntology, onEdges }: SmartSelectProps) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  const handleSelect = useCallback(
-    (action: () => void) => {
-      action();
-      setOpen(false);
-    },
-    [],
-  );
-
-  return (
-    <div ref={containerRef} className="relative flex items-center shrink-0">
-      {/* Drop-up menu */}
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-20 min-w-max">
-          <button
-            type="button"
-            onClick={() => handleSelect(onAll)}
-            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg text-base-content"
-          >
-            <CheckIcon className="size-3.5 text-primary" />
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSelect(onNone)}
-            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors text-base-content"
-          >
-            <StopIcon className="size-3.5 text-base-content/50" />
-            None
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSelect(onOntology)}
-            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors text-base-content"
-          >
-            <span className="size-3.5 rounded-full bg-primary/20 border border-primary/40 shrink-0" />
-            Ontology
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSelect(onEdges)}
-            className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors last:rounded-b-lg text-base-content"
-          >
-            <span className="size-3.5 rounded-sm bg-secondary/20 border border-secondary/40 shrink-0" />
-            Edges
-          </button>
-        </div>
-      )}
-
-      {/* Trigger: checkbox icon */}
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex items-center justify-center size-6 rounded hover:bg-base-200 transition-colors text-base-content/70 hover:text-base-content"
-        title="Select filter preset"
-      >
-        {selectState === 'all' && <CheckIcon className="size-4 text-primary" />}
-        {selectState === 'none' && <StopIcon className="size-4 text-base-content/40" />}
-        {selectState === 'partial' && <MinusIcon className="size-4 text-base-content/60" />}
-      </button>
-    </div>
-  );
-}
+type CheckState = 'all' | 'none' | 'partial';
 
 // ── Chip ─────────────────────────────────────────────────────────────────────
 
@@ -100,22 +12,17 @@ interface ChipProps {
   type: string;
   color: string;
   active: boolean;
-  highlighted: boolean;
   onClick: () => void;
 }
 
-function Chip({ type, color, active, highlighted, onClick }: ChipProps) {
+function Chip({ type, color, active, onClick }: ChipProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={[
-        'flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs whitespace-nowrap transition-opacity shrink-0',
-        active ? 'bg-base-300 text-base-content' : 'bg-base-300/40 text-base-content/30',
-        highlighted ? 'outline outline-1.5 outline-offset-1 outline-[oklch(72%_0.12_200)]' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs whitespace-nowrap transition-opacity shrink-0 ${
+        active ? 'bg-base-300 text-base-content' : 'bg-base-300/40 text-base-content/30'
+      }`}
     >
       <span
         className="size-2 rounded-full shrink-0 transition-opacity"
@@ -133,9 +40,11 @@ interface ChipColumnProps {
   entries: [string, string][];
   activeSet: Set<string>;
   onToggle: (type: string) => void;
+  onAll: () => void;
+  onNone: () => void;
 }
 
-function ChipColumn({ placeholder, entries, activeSet, onToggle }: ChipColumnProps) {
+function ChipColumn({ placeholder, entries, activeSet, onToggle, onAll, onNone }: ChipColumnProps) {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(
@@ -143,17 +52,48 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle }: ChipColumnPro
     [entries, query],
   );
 
+  const checkState = useMemo((): CheckState => {
+    if (entries.length === 0 || activeSet.size === 0) return 'none';
+    if (activeSet.size === entries.length) return 'all';
+    return 'partial';
+  }, [entries.length, activeSet.size]);
+
+  const isChecked = checkState === 'all';
+  const isIndeterminate = checkState === 'partial';
+
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0 gap-1">
-      {/* Search input */}
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={placeholder}
-        className="border border-base-300 rounded px-2 py-0.5 text-2xs bg-transparent text-base-content placeholder:text-base-content/30 focus:outline-none focus:border-primary/50 shrink-0"
-      />
-      {/* Chips */}
+    <div className="flex flex-col flex-1 min-w-0 min-h-0 gap-1.5">
+      {/* Sticky header: checkbox + search */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <input
+          type="checkbox"
+          checked={isChecked}
+          ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
+          onChange={() => (isChecked || isIndeterminate) ? onNone() : onAll()}
+          className="checkbox rounded-sm border-base-content/30 [--chkbg:transparent] checked:bg-transparent indeterminate:bg-transparent size-[1.5rem] shrink-0 translate-y-px shadow-none text-base-content/60"
+          title={isChecked ? 'Deselect all' : 'Select all'}
+        />
+        <div className="relative flex-1 min-w-0">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={placeholder}
+            className="w-full border border-base-content/20 rounded px-2 py-1 text-2xs bg-transparent text-base-content placeholder:text-base-content/30 focus:outline-none focus:border-primary/50"
+          />
+          {query && (
+            <button
+              type="button"
+              className="absolute inset-y-0 right-1.5 my-auto flex items-center justify-center size-3.5 translate-y-px opacity-50 hover:opacity-100 transition-opacity"
+              onClick={() => setQuery('')}
+              aria-label="Clear filter"
+            >
+              <XMarkIcon className="size-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </div>
+      {/* Scrollable chips */}
       <div className="flex flex-wrap gap-1 overflow-y-auto min-h-0">
         {filtered.map(([type, color]) => (
           <Chip
@@ -161,7 +101,6 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle }: ChipColumnPro
             type={type}
             color={color}
             active={activeSet.has(type)}
-            highlighted={query.trim() !== '' && type.toLowerCase().includes(query.toLowerCase())}
             onClick={() => onToggle(type)}
           />
         ))}
@@ -174,7 +113,7 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle }: ChipColumnPro
 
 function VSeparator() {
   return (
-    <div className="w-px self-stretch bg-gradient-to-b from-transparent via-base-300 to-transparent shrink-0" />
+    <div className="w-px self-stretch bg-gradient-to-b from-transparent via-base-content/20 to-transparent shrink-0" />
   );
 }
 
@@ -186,72 +125,56 @@ export const FilterChips = memo(function FilterChips() {
   const nodeTypes = useMemo(() => Object.entries(state.nodeTypeColors), [state.nodeTypeColors]);
   const relTypes = useMemo(() => Object.entries(state.relationshipTypeColors), [state.relationshipTypeColors]);
 
-  const activeNodes = state.currentFilters.nodeTypes;
-  const activeRels = state.currentFilters.relationshipTypes;
+  const rawActiveNodes = state.currentFilters.nodeTypes;
+  const rawActiveRels = state.currentFilters.relationshipTypes;
 
-  // Derive smart-select checkbox state
-  const selectState = useMemo((): SmartSelectState => {
-    const totalTypes = nodeTypes.length + relTypes.length;
-    if (totalTypes === 0) return 'none';
-    const activeCount = activeNodes.size + activeRels.size;
-    if (activeCount === 0) return 'none';
-    if (activeCount === totalTypes) return 'all';
-    return 'partial';
-  }, [nodeTypes.length, relTypes.length, activeNodes.size, activeRels.size]);
+  // null = all selected (uninitialized); materialize for display
+  const activeNodes = useMemo(
+    () => rawActiveNodes ?? new Set(nodeTypes.map(([t]) => t)),
+    [rawActiveNodes, nodeTypes],
+  );
+  const activeRels = useMemo(
+    () => rawActiveRels ?? new Set(relTypes.map(([t]) => t)),
+    [rawActiveRels, relTypes],
+  );
 
-  function activateAll() {
-    const nodes = new Set(nodeTypes.map(([t]) => t));
-    const rels = new Set(relTypes.map(([t]) => t));
-    dispatch({ type: 'SET_FILTERS', nodeTypes: nodes, relationshipTypes: rels });
+  function selectAllNodes() {
+    dispatch({ type: 'SET_FILTERS', nodeTypes: new Set(nodeTypes.map(([t]) => t)) });
   }
-
-  function deactivateAll() {
-    dispatch({ type: 'SET_FILTERS', nodeTypes: new Set(), relationshipTypes: new Set() });
+  function selectNoNodes() {
+    dispatch({ type: 'SET_FILTERS', nodeTypes: new Set() });
   }
-
-  function activateOntology() {
-    const nodes = new Set(nodeTypes.map(([t]) => t));
-    dispatch({ type: 'SET_FILTERS', nodeTypes: nodes, relationshipTypes: new Set() });
+  function selectAllRels() {
+    dispatch({ type: 'SET_FILTERS', relationshipTypes: new Set(relTypes.map(([t]) => t)) });
   }
-
-  function activateEdges() {
-    const rels = new Set(relTypes.map(([t]) => t));
-    dispatch({ type: 'SET_FILTERS', nodeTypes: new Set(), relationshipTypes: rels });
+  function selectNoRels() {
+    dispatch({ type: 'SET_FILTERS', relationshipTypes: new Set() });
   }
 
   function toggleNode(type: string) {
     const nodes = new Set(activeNodes);
     if (nodes.has(type)) nodes.delete(type);
     else nodes.add(type);
-    dispatch({ type: 'SET_FILTERS', nodeTypes: nodes, relationshipTypes: new Set(activeRels) });
+    dispatch({ type: 'SET_FILTERS', nodeTypes: nodes });
   }
 
   function toggleRel(type: string) {
     const rels = new Set(activeRels);
     if (rels.has(type)) rels.delete(type);
     else rels.add(type);
-    dispatch({ type: 'SET_FILTERS', nodeTypes: new Set(activeNodes), relationshipTypes: rels });
+    dispatch({ type: 'SET_FILTERS', relationshipTypes: rels });
   }
 
   return (
-    <div className="flex items-stretch gap-2 px-2 py-1.5 min-h-0">
-      {/* Smart select checkbox */}
-      <SmartSelect
-        selectState={selectState}
-        onAll={activateAll}
-        onNone={deactivateAll}
-        onOntology={activateOntology}
-        onEdges={activateEdges}
-      />
-
-      <VSeparator />
-
+    <div className="flex items-stretch gap-2 px-2 py-1.5 min-h-0 h-full">
       {/* Nodes column */}
       <ChipColumn
         placeholder="Filter nodes..."
         entries={nodeTypes}
         activeSet={activeNodes}
         onToggle={toggleNode}
+        onAll={selectAllNodes}
+        onNone={selectNoNodes}
       />
 
       <VSeparator />
@@ -262,6 +185,8 @@ export const FilterChips = memo(function FilterChips() {
         entries={relTypes}
         activeSet={activeRels}
         onToggle={toggleRel}
+        onAll={selectAllRels}
+        onNone={selectNoRels}
       />
     </div>
   );

@@ -1,5 +1,4 @@
-import { ChevronDownIcon, ChevronRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
-import clsx from 'clsx';
+import { ChevronDownIcon, ChevronRightIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -44,25 +43,15 @@ function Section({ title, content, defaultExpanded = false, formatter }: Section
 
 interface ResponseSectionsProps {
   sections: ResponseSectionsType;
-  sourceChip?: string;
 }
 
 export const ResponseSections = memo(function ResponseSections({
   sections,
-  sourceChip,
 }: ResponseSectionsProps) {
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
     <div>
-      {sourceChip && (
-        <div className="mt-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-base-content/10 text-xs text-base-content/60">
-            <Squares2X2Icon className="size-3.5" aria-hidden="true" />
-            {sourceChip}
-          </div>
-        </div>
-      )}
       {hasAnySections ? (
         <>
           <Section title="Summary" content={sections.recommendation} defaultExpanded={true} />
@@ -82,10 +71,14 @@ export const ResponseSections = memo(function ResponseSections({
 interface SourcesSectionProps {
   reasoningEdges?: ReasoningEdge[];
   sourceEntities?: SourceEntity[];
+  onHighlight?: () => void;
+  isHighlighted?: boolean;
 }
 
-export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sourceEntities }: SourcesSectionProps) {
-  const [expanded, setExpanded] = useState(false);
+const INITIAL_VISIBLE = 4;
+
+export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sourceEntities, onHighlight, isHighlighted }: SourcesSectionProps) {
+  const [showAll, setShowAll] = useState(false);
   if (!reasoningEdges?.length && !sourceEntities?.length) return null;
 
   const seenEdges = new Set<string>();
@@ -95,42 +88,64 @@ export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sou
     seenEdges.add(key);
     return true;
   });
+  const uniqueEntities = [...new Set((sourceEntities || []).map((e) => e.description || e.id).filter(Boolean))];
+  const hasEdges = uniqueEdges.length > 0;
+  const count = hasEdges ? uniqueEdges.length : uniqueEntities.length;
+  const visibleEdges = showAll ? uniqueEdges : uniqueEdges.slice(0, INITIAL_VISIBLE);
+  const overflow = hasEdges ? uniqueEdges.length - INITIAL_VISIBLE : 0;
 
   return (
-    <div className="mt-2">
-      <button
-        type="button"
-        className={clsx(
-          'inline-flex items-center gap-1.5 px-3 py-1 text-xs text-base-content/60 hover:text-base-content/80 transition-colors',
-          expanded ? 'rounded-t-full bg-base-content/10' : 'rounded-full bg-base-content/10',
+    <div className="mt-3 pt-2 border-t border-base-content/5">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-2xs uppercase tracking-wider text-base-content/40">
+          {count} {count === 1 ? 'Source' : 'Sources'}
+        </div>
+        {onHighlight && (
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs transition-colors ${
+              isHighlighted
+                ? 'bg-[color:oklch(85%_0.18_85_/_0.15)] text-[color:oklch(85%_0.18_85)]'
+                : 'text-base-content/40 hover:text-base-content/60'
+            }`}
+            onClick={onHighlight}
+          >
+            <SparklesIcon className="size-3" aria-hidden="true" />
+            Highlight
+          </button>
         )}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <Squares2X2Icon className="size-3.5" aria-hidden="true" />
-        Sources
-      </button>
-      {expanded && (
-        <div className="bg-base-content/5 rounded-b-lg px-3 py-2 mt-0 space-y-1 text-xs">
-          {uniqueEdges.length > 0 ? (
-            uniqueEdges.map((edge) => (
-              <div
-                key={`${edge.from_name || edge.from}|${edge.relationship}|${edge.to_name || edge.to}`}
-                className="flex items-center gap-1 flex-wrap"
-              >
-                <span className="badge badge-xs badge-outline">{edge.from_name || edge.from || '?'}</span>
-                <span className="opacity-50">──{(edge.relationship || 'CONNECTED_TO').replace(/_/g, ' ')}──▶</span>
-                <span className="badge badge-xs badge-outline">{edge.to_name || edge.to || '?'}</span>
-              </div>
-            ))
-          ) : (
-            <div className="flex flex-wrap gap-1">
-              {[...new Set((sourceEntities || []).map((e) => e.description || e.id).filter(Boolean))].map((name) => (
-                <span key={name} className="badge badge-xs badge-outline">
-                  {name}
-                </span>
-              ))}
+      </div>
+      {hasEdges ? (
+        <div className="space-y-1">
+          {visibleEdges.map((edge) => (
+            <div
+              key={`${edge.from_name || edge.from}|${edge.relationship}|${edge.to_name || edge.to}`}
+              className="flex items-center gap-1.5 px-2 py-1 rounded bg-base-content/5 text-xs"
+            >
+              <span className="font-medium truncate">{edge.from_name || edge.from || '?'}</span>
+              <span className="text-base-content/40 shrink-0 text-2xs">
+                {(edge.relationship || 'CONNECTED_TO').replace(/_/g, ' ').toLowerCase()} →
+              </span>
+              <span className="font-medium truncate">{edge.to_name || edge.to || '?'}</span>
             </div>
+          ))}
+          {overflow > 0 && (
+            <button
+              type="button"
+              className="text-2xs text-base-content/40 hover:text-base-content/60 transition-colors w-full text-right mt-0.5"
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? 'Show less' : `Show ${overflow} more`}
+            </button>
           )}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {uniqueEntities.map((name) => (
+            <span key={name} className="px-2 py-0.5 rounded bg-base-content/5 text-xs font-medium">
+              {name}
+            </span>
+          ))}
         </div>
       )}
     </div>

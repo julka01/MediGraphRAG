@@ -1,9 +1,10 @@
-import { ArrowUpTrayIcon, CheckIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
-import { useRef, useState } from 'react';
+import { ArrowUpTrayIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
-import type { UseModelsReturn } from '../../types/app';
+import type { KGSettings, UseModelsReturn } from '../../types/app';
 import { safeSet } from '../../utils/storage';
+import { FieldsetDropdown } from '../ui/FieldsetDropdown';
 import { showError, showSuccess } from '../ui/Notifications';
 import { ModelSelector } from './ModelSelector';
 
@@ -12,9 +13,10 @@ interface KGPanelProps {
   onLoadKG: (loadMode: string, nodeLimit: number, kgFilter: string) => void;
   onProgressStart: () => void;
   onProgressStop: () => void;
+  loadedKGSettings?: KGSettings | null;
 }
 
-export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop }: KGPanelProps) {
+export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop, loadedKGSettings }: KGPanelProps) {
   const { state, dispatch } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const ontologyRef = useRef<HTMLInputElement>(null);
@@ -23,13 +25,24 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   const [ontologyFile, setOntologyFile] = useState<File | null>(null);
   const [kgName, setKgName] = useState('');
   const [embeddingModel, setEmbeddingModel] = useState('sentence_transformers');
-  const [maxChunks, setMaxChunks] = useState(20);
+  const [maxChunks, setMaxChunks] = useState('20');
   const [creating, setCreating] = useState(false);
 
   // Load section state
-  const [loadMode, setLoadMode] = useState('limited');
-  const [nodeLimit, setNodeLimit] = useState(1000);
+  const [importMode, setImportMode] = useState('limited-1000');
   const [kgFilter, setKgFilter] = useState('');
+
+  // Apply settings from loaded KG
+  const EMBEDDING_OPTIONS = ['sentence_transformers', 'openai', 'vertexai', 'titan'];
+  useEffect(() => {
+    if (!loadedKGSettings) return;
+    if (loadedKGSettings.embeddingModel && EMBEDDING_OPTIONS.includes(loadedKGSettings.embeddingModel)) {
+      setEmbeddingModel(loadedKGSettings.embeddingModel);
+    }
+    if (loadedKGSettings.maxChunks != null) {
+      setMaxChunks(String(loadedKGSettings.maxChunks));
+    }
+  }, [loadedKGSettings]); // eslint-disable-line react-hooks/exhaustive-deps -- EMBEDDING_OPTIONS is stable
 
   // KG name placeholder: show loaded KG name when user hasn't typed anything
   const kgNamePlaceholder = !kgName && state.currentKGName ? state.currentKGName : 'optional';
@@ -37,6 +50,7 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   const canCreate =
     file !== null &&
     ontologyFile !== null &&
+    maxChunks !== '' &&
     Boolean(kgModelHook.vendor) &&
     Boolean(kgModelHook.selectedModel) &&
     Boolean(embeddingModel);
@@ -76,10 +90,7 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   };
 
   const handleCreate = async () => {
-    if (!file) {
-      showError(dispatch, 'Please select a file first');
-      return;
-    }
+    if (!file) return;
     setCreating(true);
     onProgressStart();
     try {
@@ -88,16 +99,21 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
       formData.append('provider', kgModelHook.vendor);
       formData.append('model', kgModelHook.selectedModel);
       formData.append('embedding_model', embeddingModel);
-      formData.append('max_chunks', String(maxChunks));
+      formData.append('max_chunks', maxChunks);
       if (kgName) formData.append('kg_name', kgName);
       if (ontologyFile) formData.append('ontology_file', ontologyFile);
       const result = await api.createKG(formData);
-      onProgressStop();
       dispatch({ type: 'SET_KG', kgId: result.kg_id, kgName: result.kg_name || null });
-      if (result.kg_name) safeSet('currentKGName', result.kg_name);
+      if (result.kg_name) {
+        safeSet('currentKGName', result.kg_name);
+        setKgFilter(result.kg_name);
+        dispatch({ type: 'SET_KG_LIST', kgList: [...state.kgList, { name: result.kg_name }] });
+      }
       if (result.graph_data) dispatch({ type: 'SET_GRAPH_DATA', data: result.graph_data });
       setFile(null);
       if (fileRef.current) fileRef.current.value = '';
+      setOntologyFile(null);
+      if (ontologyRef.current) ontologyRef.current.value = '';
       showSuccess(
         dispatch,
         `KG created: ${result.graph_data?.nodes?.length || 0} nodes, ${result.graph_data?.relationships?.length || 0} edges`,
@@ -112,11 +128,21 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   };
 
   const handleDelete = async () => {
-    if (!confirm('WARNING: This will permanently delete ALL nodes and relationships from Neo4j. Continue?')) return;
+    const targetName = kgFilter || state.currentKGName;
     try {
-      const result = await api.clearKG();
-      dispatch({ type: 'CLEAR_KG' });
-      localStorage.removeItem('currentKGName');
+      const result = await api.clearKG(targetName || undefined);
+      const isLoadedKG = !targetName || targetName === state.currentKGName;
+      if (isLoadedKG) {
+        dispatch({ type: 'CLEAR_KG' });
+        localStorage.removeItem('currentKGName');
+        setKgName('');
+      }
+      if (targetName) {
+        dispatch({ type: 'SET_KG_LIST', kgList: state.kgList.filter((kg) => kg.name !== targetName) });
+      } else {
+        dispatch({ type: 'SET_KG_LIST', kgList: [] });
+      }
+      setKgFilter('');
       showSuccess(dispatch, result.message || 'KG cleared');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -125,11 +151,30 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   };
 
   const handleLoadKG = () => {
+    let loadMode: string;
+    let nodeLimit: number;
+    if (importMode === 'sample') {
+      loadMode = 'sample';
+      nodeLimit = 0;
+    } else if (importMode === 'complete') {
+      loadMode = 'complete';
+      nodeLimit = 0;
+    } else {
+      loadMode = 'limited';
+      nodeLimit = Number(importMode.split('-')[1]);
+    }
     onLoadKG(loadMode, nodeLimit, kgFilter);
   };
 
+  const refreshKGList = useCallback(() => {
+    api.fetchKGList().then(
+      (res) => dispatch({ type: 'SET_KG_LIST', kgList: res.kgs || [] }),
+      () => {},
+    );
+  }, [dispatch]);
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 min-w-0">
       {/* ── Build Section ─────────────────────────────────── */}
 
       {/* File upload drop zone */}
@@ -139,8 +184,8 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
         className={[
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           file
-            ? 'border-success/60 bg-success/5 text-base-content'
-            : 'border-dashed border-base-300 text-base-content/50 hover:border-base-content/30 hover:text-base-content/70',
+            ? 'border-file-selected-border text-base-content'
+            : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
         ].join(' ')}
         onClick={() => fileRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
@@ -161,8 +206,8 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
         className={[
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           ontologyFile
-            ? 'border-success/60 bg-success/5 text-base-content'
-            : 'border-dashed border-base-300 text-base-content/50 hover:border-base-content/30 hover:text-base-content/70',
+            ? 'border-file-selected-border text-base-content'
+            : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
         ].join(' ')}
         onClick={() => ontologyRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
@@ -180,50 +225,52 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
       <ModelSelector vendorLabel="KG Vendor" modelLabel="KG Model" vendorHook={kgModelHook} />
 
       {/* Embedding Model */}
-      <div className="relative">
-        <select
-          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
-          value={embeddingModel}
-          onChange={(e) => setEmbeddingModel(e.target.value)}
-        >
-          <option value="sentence_transformers">Sentence Transformers</option>
-          <option value="openai">OpenAI Embeddings</option>
-          <option value="vertexai">Google Vertex AI</option>
-          <option value="titan">AWS Titan</option>
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Embedding Model</span>
-      </div>
+      <FieldsetDropdown
+        label="Embedding Model"
+        options={[
+          { value: 'sentence_transformers', label: 'Sentence Transformers' },
+          { value: 'openai', label: 'OpenAI Embeddings' },
+          { value: 'vertexai', label: 'Google Vertex AI' },
+          { value: 'titan', label: 'AWS Titan' },
+        ]}
+        value={embeddingModel}
+        onChange={setEmbeddingModel}
+      />
 
       {/* Max Chunks */}
-      <div className="relative">
+      <fieldset className="border border-base-content/20 focus-within:border-primary/50 rounded-lg px-3 pb-2 pt-0 transition-colors">
+        <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">Max Chunks</legend>
         <input
           type="number"
-          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
+          className="w-full bg-transparent text-sm outline-none"
           value={maxChunks}
-          onChange={(e) => setMaxChunks(Number(e.target.value))}
+          onChange={(e) => setMaxChunks(e.target.value)}
           min={1}
           max={100}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Max Chunks</span>
-      </div>
+      </fieldset>
 
       {/* KG Name */}
-      <div className="relative">
+      <fieldset className="border border-base-content/20 focus-within:border-primary/50 rounded-lg px-3 pb-2 pt-0 transition-colors">
+        <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">KG Name</legend>
         <input
           type="text"
-          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
+          className="w-full bg-transparent text-sm outline-none"
           placeholder={kgNamePlaceholder}
           value={kgName}
           onChange={(e) => setKgName(e.target.value)}
         />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">KG Name</span>
-      </div>
+      </fieldset>
 
       {/* Create KG */}
       <button
         type="button"
-        className="btn btn-primary btn-sm w-full"
+        className={[
+          'btn btn-sm w-full shadow-none',
+          creating || !canCreate
+            ? 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none'
+            : 'bg-transparent border border-[color:oklch(62%_0.10_270)]/50 text-[color:oklch(62%_0.10_270)] hover:bg-[color:oklch(62%_0.10_270)] hover:text-white',
+        ].join(' ')}
         onClick={handleCreate}
         disabled={creating || !canCreate}
       >
@@ -233,73 +280,61 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
 
       {/* ── Decorative Separator ──────────────────────────── */}
       <div className="flex items-center gap-3 my-2">
-        <div className="h-px flex-1 bg-gradient-to-r from-transparent to-base-300" />
-        <div className="size-1 rounded-full bg-base-300" />
-        <div className="h-px flex-1 bg-gradient-to-l from-transparent to-base-300" />
+        <div className="h-px flex-1 bg-gradient-to-r from-transparent to-base-content/20" />
+        <div className="size-1 rounded-full bg-base-content/20" />
+        <div className="h-px flex-1 bg-gradient-to-l from-transparent to-base-content/20" />
       </div>
 
       {/* ── Load Section ──────────────────────────────────── */}
 
-      {/* Import Options */}
-      <div className="relative">
-        <select
-          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
-          value={loadMode}
-          onChange={(e) => setLoadMode(e.target.value)}
-        >
-          <option value="limited">Limited (1000 nodes max)</option>
-          <option value="sample">Smart Sample</option>
-          <option value="complete">Complete Import</option>
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Import Options</span>
-      </div>
-
-      {/* Node Limit */}
-      <div className="relative">
-        <input
-          type="number"
-          className="input input-bordered input-sm w-full focus:outline-none focus:ring-1 focus:ring-primary/30"
-          value={nodeLimit}
-          onChange={(e) => setNodeLimit(Number(e.target.value))}
-          min={1}
-        />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">Node Limit</span>
-      </div>
+      {/* Import Mode */}
+      <FieldsetDropdown
+        label="Import Mode"
+        options={[
+          { value: 'limited-500', label: 'First 500 nodes' },
+          { value: 'limited-1000', label: 'First 1000 nodes' },
+          { value: 'sample', label: 'Top hubs (smart sample)' },
+          { value: 'complete', label: 'Complete graph' },
+        ]}
+        value={importMode}
+        onChange={setImportMode}
+      />
 
       {/* KG Name Filter */}
-      <div className="relative">
-        <select
-          className="select select-bordered select-sm w-full appearance-none pr-8 focus:outline-none focus:ring-1 focus:ring-primary/30"
-          value={kgFilter}
-          onChange={(e) => setKgFilter(e.target.value)}
-        >
-          <option value="">All KGs</option>
-          {state.kgList.map((kg) => (
-            <option key={kg.name} value={kg.name}>
-              {kg.name}
-            </option>
-          ))}
-        </select>
-        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-base-content/40" />
-        <span className="absolute -top-2 right-3 bg-base-200 px-1 text-2xs text-base-content/50">KG Name</span>
-      </div>
+      <FieldsetDropdown
+        label="KG Name"
+        placeholder="Select KG"
+        options={state.kgList.map((kg) => ({ value: kg.name, label: kg.name }))}
+        value={kgFilter}
+        onChange={setKgFilter}
+        onOpen={refreshKGList}
+      />
 
       {/* Load KG + Delete KG */}
       <div className="flex gap-2">
-        <button type="button" className="btn btn-primary btn-sm flex-1" onClick={handleLoadKG}>
+        <button
+          type="button"
+          className={[
+            'btn btn-sm flex-1 shadow-none',
+            kgFilter
+              ? 'bg-transparent border border-[color:oklch(62%_0.10_270)]/50 text-[color:oklch(62%_0.10_270)] hover:bg-[color:oklch(62%_0.10_270)] hover:text-white'
+              : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
+          ].join(' ')}
+          onClick={handleLoadKG}
+          disabled={!kgFilter}
+        >
           Load KG
         </button>
         <button
           type="button"
           className={[
             'btn btn-sm flex-1',
-            state.currentKGId
+            kgFilter || state.currentKGId
               ? 'btn-outline border-error/50 text-error hover:bg-error hover:text-error-content'
-              : 'btn-outline text-base-content/30 pointer-events-none',
+              : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
           ].join(' ')}
           onClick={handleDelete}
-          disabled={!state.currentKGId}
+          disabled={!kgFilter && !state.currentKGId}
         >
           Delete KG
         </button>

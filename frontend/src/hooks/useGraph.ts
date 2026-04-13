@@ -1,7 +1,7 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { AppAction, AppState, GraphData, GraphNode, GraphRelationship, ViewState } from '../types/app';
 import { generateNodeTypeColors, generateRelationshipTypeColors } from '../utils/colors';
-import { confidenceEdgeColor, getGraphTheme, normName } from '../utils/graph-helpers';
+import { getGraphTheme, normName } from '../utils/graph-helpers';
 
 interface UseGraphOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -11,6 +11,7 @@ interface UseGraphOptions {
   idCounterRef: React.MutableRefObject<number>;
   initialViewRef: React.MutableRefObject<ViewState | null>;
   onNodeClick?: (node: Record<string, unknown> | null) => void;
+  applySearch?: (term: string) => void;
 }
 
 export function useGraph({
@@ -21,8 +22,17 @@ export function useGraph({
   idCounterRef,
   initialViewRef,
   onNodeClick,
+  applySearch,
 }: UseGraphOptions) {
-  const { graphData, highlightedNodes, currentFilters } = appState;
+  const { graphData, highlightedNodes, currentFilters, searchTerm, physicsEnabled, showEdgeLabels, nodeSizeMetric } = appState;
+
+  // Refs for toggle state so initializeGraph reads latest values without re-creating
+  const physicsRef = useRef(physicsEnabled);
+  const labelsRef = useRef(showEdgeLabels);
+  const sizeMetricRef = useRef(nodeSizeMetric);
+  physicsRef.current = physicsEnabled;
+  labelsRef.current = showEdgeLabels;
+  sizeMetricRef.current = nodeSizeMetric;
 
   const initializeGraph = useCallback(
     (data: GraphData) => {
@@ -82,27 +92,30 @@ export function useGraph({
         });
       }
       const isHighlightMode = referencedOriginalIds.size > 0;
+      dispatch({ type: 'SET_HIGHLIGHTED_COUNT', count: referencedOriginalIds.size });
 
       const nodeIdMap = new Map<string | number, number>();
+      const BASE_WIDTH = 60;
+      const maxDegree = Math.max(...Array.from(nodeDegreeMap.values()), 1);
 
       const processedNodes = (data.nodes || [])
         .filter((node: GraphNode) => {
-          const hasNodeFilter = currentFilters.nodeTypes.size > 0;
-          const hasRelFilter = currentFilters.relationshipTypes.size > 0;
+          const nodeFilter = currentFilters.nodeTypes;
+          const relFilter = currentFilters.relationshipTypes;
 
-          // When no filters active but type data exists, user deselected all — hide everything
-          if (!hasNodeFilter && !hasRelFilter) {
-            const hasTypeData = Object.keys(appState.nodeTypeColors).length > 0;
-            return !hasTypeData;
-          }
+          // null = uninitialized, show all; empty Set = user cleared all, show none
+          if (nodeFilter === null && relFilter === null) return true;
 
-          if (hasNodeFilter) {
-            return currentFilters.nodeTypes.has(getNodeType(node));
+          // If both are explicit empty sets, user deselected everything
+          if (nodeFilter !== null && nodeFilter.size === 0 && relFilter !== null && relFilter.size === 0) return false;
+
+          if (nodeFilter !== null && nodeFilter.size > 0) {
+            return nodeFilter.has(getNodeType(node));
           }
-          if (hasRelFilter) {
+          if (relFilter !== null && relFilter.size > 0) {
             return data.relationships.some(
               (rel: GraphRelationship) =>
-                currentFilters.relationshipTypes.has(rel.type || 'Unknown') &&
+                relFilter.has(rel.type || 'Unknown') &&
                 ((rel.from || rel.start || rel.source) === node.id || (rel.to || rel.end || rel.target) === node.id),
             );
           }
@@ -127,10 +140,8 @@ export function useGraph({
 
           const isReferenced = referencedOriginalIds.has(originalId);
           const degree = nodeDegreeMap.get(originalId) || 0;
-          const MIN_WIDTH = 60;
-          const MAX_WIDTH = 180;
-          const maxDegree = Math.max(...Array.from(nodeDegreeMap.values()), 1);
-          const nodeWidth = MIN_WIDTH + Math.round((degree / maxDegree) * (MAX_WIDTH - MIN_WIDTH));
+          const degreeWidth = Math.round(BASE_WIDTH * (1 + 2.5 * (degree / maxDegree)));
+          const nodeWidth = sizeMetricRef.current === 'uniform' ? BASE_WIDTH : degreeWidth;
 
           let finalColor: {
             background: string;
@@ -187,7 +198,7 @@ export function useGraph({
             widthConstraint: { minimum: nodeWidth, maximum: nodeWidth },
             borderWidth,
             font: {
-              size: isReferenced ? 13 : 11,
+              size: labelsRef.current ? (isReferenced ? 13 : 11) : 0,
               face: 'Helvetica, Arial, sans-serif',
               color: isHighlightMode && !isReferenced ? gTheme.nodeTextDimmed : gTheme.nodeText,
               strokeWidth: 0,
@@ -196,17 +207,17 @@ export function useGraph({
             },
             shape: 'circle',
             shadow: false,
-            _baseWidth: nodeWidth,
+            _baseWidth: degreeWidth,
             _baseColor: nodeColor,
           };
         });
 
       const processedEdges = (data.relationships || [])
         .filter((rel: GraphRelationship) => {
-          if (currentFilters.relationshipTypes.size > 0) {
-            return currentFilters.relationshipTypes.has(rel.type || 'Unknown');
-          }
-          return true;
+          const relFilter = currentFilters.relationshipTypes;
+          if (relFilter === null) return true;
+          if (relFilter.size === 0) return false;
+          return relFilter.has(rel.type || 'Unknown');
         })
         .map((rel: GraphRelationship) => {
           const fromOrigId = rel.from || rel.start || rel.source;
@@ -219,12 +230,10 @@ export function useGraph({
           const relType = rel.type || 'Unknown';
           const edgeColor = rtColors[relType] || '#888888';
           const confidence = (rel.properties?.confidence as number) ?? null;
-          const confColor = confidenceEdgeColor(confidence);
           const sourceReferenced = referencedOriginalIds.has(fromOrigId);
           const targetReferenced = referencedOriginalIds.has(toOrigId);
           const isHighlightedEdge = sourceReferenced && targetReferenced;
           const isDimmed = isHighlightMode && !isHighlightedEdge;
-          const normalColor = confColor || edgeColor;
           const confWidth = confidence != null ? 0.8 + confidence * 2.2 : 1;
           const confLabel = confidence != null ? `\nConfidence: ${(confidence * 100).toFixed(0)}%` : '';
 
@@ -236,13 +245,13 @@ export function useGraph({
             originalId: rel.id,
             arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } },
             color: {
-              color: isDimmed ? gTheme.dimmedEdge : isHighlightedEdge ? gTheme.highlight : normalColor,
+              color: isDimmed ? gTheme.dimmedEdge : isHighlightedEdge ? gTheme.highlight : edgeColor,
               highlight: gTheme.highlight,
               hover: gTheme.highlight,
               opacity: isDimmed ? 0.25 : 1.0,
             },
             font: {
-              size: 11,
+              size: labelsRef.current ? 11 : 0,
               face: 'Helvetica, Arial, sans-serif',
               color: isDimmed ? gTheme.nodeTextDimmed : isHighlightedEdge ? gTheme.highlight : gTheme.edgeText,
               background: gTheme.edgeLabelBg,
@@ -252,7 +261,7 @@ export function useGraph({
             },
             title: `${relType}\nFrom: ${fromOrigId}\nTo: ${toOrigId}${confLabel}`,
             width: isHighlightedEdge ? 3 : confWidth,
-            _baseColor: normalColor,
+            _baseColor: edgeColor,
             _baseWidth: confWidth,
             smooth: { enabled: true, type: 'straightCross', forceDirection: false },
             shadow: false,
@@ -274,32 +283,32 @@ export function useGraph({
         physicsSettings = { enabled: false, stabilization: false };
       } else if (isLargeGraph) {
         physicsSettings = {
-          enabled: true,
+          enabled: physicsRef.current,
           stabilization: { enabled: true, iterations: 500, updateInterval: 25 },
           barnesHut: {
-            gravitationalConstant: -2000,
+            gravitationalConstant: -3000,
             centralGravity: 0.3,
-            springLength: 100,
+            springLength: 120,
             springConstant: 0.04,
-            damping: 0.25,
-            avoidOverlap: 0.02,
+            damping: 0.3,
+            avoidOverlap: 0.1,
           },
           solver: 'barnesHut',
-          minVelocity: 0.5,
+          minVelocity: 0.75,
           maxVelocity: 50,
           timestep: 0.4,
         };
       } else {
         physicsSettings = {
-          enabled: true,
+          enabled: physicsRef.current,
           stabilization: { enabled: true, iterations: 500, updateInterval: 25 },
           barnesHut: {
-            gravitationalConstant: -5000,
+            gravitationalConstant: -2000,
             centralGravity: 0.3,
             springLength: 150,
             springConstant: 0.04,
-            damping: 0.09,
-            avoidOverlap: 0.1,
+            damping: 0.2,
+            avoidOverlap: 0.2,
           },
           solver: 'barnesHut',
           minVelocity: 0.75,
@@ -308,12 +317,13 @@ export function useGraph({
         };
       }
 
+      const labelSize = labelsRef.current && !isLargeGraph;
       const options = {
         nodes: {
           shape: 'circle',
           size: isLargeGraph ? 20 : 30,
           font: {
-            size: isLargeGraph ? 0 : 12,
+            size: labelSize ? 12 : 0,
             face: 'Helvetica, Arial, sans-serif',
             color: gTheme.nodeText,
             strokeWidth: 0,
@@ -328,7 +338,7 @@ export function useGraph({
           width: 1,
           arrows: { to: { enabled: true, scaleFactor: 0.8, type: 'arrow' } },
           font: {
-            size: isLargeGraph ? 0 : 11,
+            size: labelSize ? 11 : 0,
             face: 'Helvetica, Arial, sans-serif',
             color: gTheme.edgeText,
             background: gTheme.edgeLabelBg,
@@ -336,7 +346,7 @@ export function useGraph({
             align: 'top',
             vadjust: 15,
           },
-          color: { inherit: 'from' },
+          color: { inherit: false },
           smooth: { enabled: !isLargeGraph, type: 'straightCross', forceDirection: false },
           shadow: false,
         },
@@ -349,7 +359,7 @@ export function useGraph({
           dragNodes: !isVeryLargeGraph,
           multiselect: false,
           navigationButtons: false,
-          keyboard: true,
+          keyboard: { enabled: true, bindToWindow: false },
           selectConnectedEdges: false,
         },
         layout: { improvedLayout: !isLargeGraph, hierarchical: false },
@@ -389,14 +399,18 @@ export function useGraph({
         console.error('Error creating network:', error);
       }
     },
-    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters, appState.nodeTypeColors],
+    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters],
   );
 
   useEffect(() => {
     if (graphData) {
       initializeGraph(graphData);
+      if (searchTerm.trim() && applySearch) applySearch(searchTerm);
+    } else if (networkRef.current) {
+      networkRef.current.destroy();
+      networkRef.current = null;
     }
-  }, [graphData, initializeGraph]);
+  }, [graphData, initializeGraph]); // eslint-disable-line react-hooks/exhaustive-deps -- searchTerm/applySearch are intentionally excluded to avoid search-driven rebuilds
 
   return { initializeGraph };
 }

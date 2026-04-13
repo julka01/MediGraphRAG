@@ -65,7 +65,7 @@ describe('useChat', () => {
     });
 
     expect(result.current.messages[0].type).toBe('user');
-    expect(result.current.messages[0].message).toBe('You: What is X?');
+    expect(result.current.messages[0].message).toBe('What is X?');
     expect(mockSendChat).toHaveBeenCalledWith(
       { question: 'What is X?', provider_rag: 'openai', model_rag: 'gpt-4', kg_name: 'my-kg' },
       expect.any(AbortSignal),

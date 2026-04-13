@@ -1093,7 +1093,7 @@ Rules:
 
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", max_chunks: int = None, kg_name: str = None, doc_metadata: dict = None, doc_hash: str = None) -> Dict[str, Any]:
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", max_chunks: int = None, kg_name: str = None, doc_metadata: dict = None, doc_hash: str = None, provider: str = "openai") -> Dict[str, Any]:
         """
         Generate knowledge graph from text with ontology-guided entity extraction
 
@@ -1259,6 +1259,9 @@ Rules:
                 "ontology_relationships": len(self.ontology_relationships),
                 "extraction_method": "ontology_guided_llm" if has_ontology else "natural_llm",
                 "kg_name": kg_name,
+                "provider": provider,
+                "model": model_name,
+                "max_chunks_setting": max_chunks,
                 "created_at": datetime.now().isoformat(),
                 "visualization_ready": True,
                 "file_name": file_name,
@@ -1334,7 +1337,10 @@ Rules:
                 d.schemaCard = $schemaCard,
                 d.schemaVersion = $schemaVersion,
                 d.schemaHash = $schemaHash,
-                d.embeddingModel = $embeddingModel
+                d.embeddingModel = $embeddingModel,
+                d.provider = $provider,
+                d.model = $model,
+                d.maxChunks = $maxChunks
             """
             graph.query(doc_query, {
                 "kgVersion": kg_version,
@@ -1350,6 +1356,9 @@ Rules:
                 "schemaVersion": schema_card["schemaVersion"],
                 "schemaHash": schema_card["schemaHash"],
                 "embeddingModel": self.embedding_model,
+                "provider": kg['metadata'].get('provider', 'openai'),
+                "model": kg['metadata'].get('model', ''),
+                "maxChunks": kg['metadata'].get('max_chunks_setting'),
             })
 
             # Store document-level metadata from source (e.g. CSV columns like SUBJECT_ID, HADM_ID)

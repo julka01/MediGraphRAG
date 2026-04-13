@@ -1,0 +1,85 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronDownIcon } from '@heroicons/react/20/solid';
+
+interface Option {
+  value: string;
+  label: string;
+}
+
+interface FieldsetDropdownProps {
+  label: string;
+  options: Option[];
+  value: string;
+  onChange: (value: string) => void;
+  onOpen?: () => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export function FieldsetDropdown({ label, options, value, onChange, onOpen, placeholder, disabled }: FieldsetDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLFieldSetElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const handleSelect = useCallback(
+    (val: string) => {
+      onChange(val);
+      setOpen(false);
+    },
+    [onChange],
+  );
+
+  const selected = options.find((o) => o.value === value);
+  const displayLabel = selected?.label ?? (value || placeholder || '—');
+
+  return (
+    <fieldset ref={containerRef} className={`relative border rounded-lg px-3 pb-2 pt-0 transition-colors min-w-0 ${open ? 'border-primary/50' : 'border-base-content/20'}`}>
+      <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">{label}</legend>
+      <button
+        type="button"
+        onClick={() => {
+          if (disabled) return;
+          if (!open) onOpen?.();
+          setOpen(!open);
+        }}
+        disabled={disabled}
+        className="flex w-full items-center justify-between text-sm outline-none text-left disabled:opacity-50"
+      >
+        <span className="truncate">{displayLabel}</span>
+        <ChevronDownIcon
+          className={`size-4 shrink-0 text-base-content/40 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-30 max-h-72 overflow-y-auto">
+          {options.length > 0 ? (
+            options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleSelect(option.value)}
+                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                  option.value === value ? 'text-[color:oklch(62%_0.10_270)] font-semibold' : 'text-base-content'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))
+          ) : (
+            <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
+          )}
+        </div>
+      )}
+    </fieldset>
+  );
+}

@@ -67,6 +67,7 @@ export interface AppState {
   graphData: GraphData | null;
   fullGraphData: GraphData | null;
   highlightedNodes: Set<string>;
+  highlightedCount: number;
   searchTerm: string;
   nodeTypeColors: Record<string, string>;
   relationshipTypeColors: Record<string, string>;
@@ -95,6 +96,7 @@ export type AppAction =
   | { type: 'SET_FULL_GRAPH_DATA'; data: GraphData | null }
   | { type: 'SET_HIGHLIGHTED_NODES'; nodes: Iterable<string> }
   | { type: 'CLEAR_HIGHLIGHTED_NODES' }
+  | { type: 'SET_HIGHLIGHTED_COUNT'; count: number }
   | { type: 'SET_NODE_TYPE_COLORS'; colors: Record<string, string> }
   | { type: 'SET_RELATIONSHIP_TYPE_COLORS'; colors: Record<string, string> }
   | { type: 'SET_FILTERS'; nodeTypes?: Iterable<string>; relationshipTypes?: Iterable<string> }
@@ -141,7 +143,6 @@ export interface ChatMessage {
   message: string;
   ts?: number;
   sections?: ResponseSections;
-  sourceChip?: string;
   reasoningEdges?: ReasoningEdge[];
   sourceEntities?: SourceEntity[];
 }
@@ -211,12 +212,20 @@ export interface CreateKGResponse {
   graph_data?: GraphData;
 }
 
+export interface KGSettings {
+  provider?: string | null;
+  model?: string | null;
+  embeddingModel?: string | null;
+  maxChunks?: number | null;
+}
+
 export interface LoadNeo4jResponse {
   kg_id: string;
   kg_name?: string;
   message?: string;
   graph_data: GraphData;
   stats?: Neo4jStats;
+  kg_settings?: KGSettings | null;
 }
 
 export interface Neo4jStats {
@@ -241,6 +250,7 @@ export interface UseModelsReturn {
   setSelectedModel: (model: string) => void;
   changeVendor: (vendor: string) => void;
   fetchModels: (vendor?: string) => Promise<void>;
+  restoreVendorModel: (vendor: string, model: string) => Promise<void>;
 }
 
 export interface UseHealthReturn {

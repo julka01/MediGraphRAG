@@ -1,3 +1,6 @@
+# Superpowers brainstorm artifacts
+.superpowers/
+
 # Python
 __pycache__/
 *.pyc
