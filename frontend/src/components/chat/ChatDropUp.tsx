@@ -120,7 +120,7 @@ export function ChatDropUp({ options, value, onChange, placeholder }: ChatDropUp
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         onKeyDown={handleKeyDown}
-        className="flex items-center gap-0.5 px-2.5 py-1 rounded-full bg-base-300 text-xs text-base-content hover:bg-base-300/80 transition-colors min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+        className="flex items-center gap-0.5 px-2.5 py-1 rounded-full bg-base-300 text-xs text-base-content hover:bg-base-300/80 transition-colors min-w-0 max-w-full overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
         <span className="truncate">
           {displayLabel ? optLabel(displayLabel) : value ? shortenModelName(value) : (placeholder ?? '—')}

@@ -70,7 +70,7 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
         className="w-full bg-transparent text-sm resize-none focus-visible:outline-none min-h-6 max-h-[33vh] overflow-y-auto"
         rows={1}
       />
-      <div data-chat-controls className="flex items-center justify-between gap-8 mt-1.5">
+      <div data-chat-controls className="flex items-center gap-2 mt-1.5">
         <div className="flex items-center gap-3 min-w-0">
           <ChatDropUp
             options={VENDORS}
@@ -88,7 +88,7 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
           type="button"
           onClick={handleSend}
           disabled={disabled}
-          className="size-7 shrink-0 rounded-full bg-primary text-primary-content flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-40"
+          className="size-7 shrink-0 ml-auto rounded-full bg-primary text-primary-content flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-40"
           aria-label="Send message"
         >
           {disabled ? (
