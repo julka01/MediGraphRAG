@@ -140,7 +140,14 @@ export function KGBuildSection({
   return (
     <>
       {/* File upload drop zone */}
-      <input ref={fileRef} type="file" accept=".pdf,.txt,.json,.csv" className="hidden" onChange={handleFileChange} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,.txt,.json,.csv"
+        className="hidden"
+        onChange={handleFileChange}
+        aria-label="Select document file"
+      />
       <button
         type="button"
         className={[
@@ -154,15 +161,22 @@ export function KGBuildSection({
         onDrop={handleFileDrop}
       >
         {file ? (
-          <CheckIcon className="size-4 shrink-0 text-success" />
+          <CheckIcon className="size-4 shrink-0 text-success" aria-hidden="true" />
         ) : (
-          <ArrowUpTrayIcon className="size-4 shrink-0" />
+          <ArrowUpTrayIcon className="size-4 shrink-0" aria-hidden="true" />
         )}
         <span className="truncate">{file ? `File: ${file.name}` : 'Drop or select file'}</span>
       </button>
 
       {/* Ontology upload drop zone */}
-      <input ref={ontologyRef} type="file" accept=".json,.owl" className="hidden" onChange={handleOntologyChange} />
+      <input
+        ref={ontologyRef}
+        type="file"
+        accept=".json,.owl"
+        className="hidden"
+        onChange={handleOntologyChange}
+        aria-label="Select ontology file"
+      />
       <button
         type="button"
         className={[
@@ -176,9 +190,9 @@ export function KGBuildSection({
         onDrop={handleOntologyDrop}
       >
         {ontologyFile ? (
-          <CheckIcon className="size-4 shrink-0 text-success" />
+          <CheckIcon className="size-4 shrink-0 text-success" aria-hidden="true" />
         ) : (
-          <ArrowUpTrayIcon className="size-4 shrink-0" />
+          <ArrowUpTrayIcon className="size-4 shrink-0" aria-hidden="true" />
         )}
         <span className="truncate">{ontologyFile ? `Ontology: ${ontologyFile.name}` : 'Drop or select ontology'}</span>
       </button>
@@ -204,7 +218,9 @@ export function KGBuildSection({
         <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">Max Chunks</legend>
         <input
           type="number"
-          className="w-full bg-transparent text-sm outline-none"
+          name="max-chunks"
+          autoComplete="off"
+          className="w-full bg-transparent text-sm focus-visible:outline-none"
           value={maxChunks}
           onChange={(e) => setMaxChunks(e.target.value)}
           min={1}
@@ -217,8 +233,10 @@ export function KGBuildSection({
         <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">KG Name</legend>
         <input
           type="text"
-          className="w-full bg-transparent text-sm outline-none"
-          placeholder={kgNamePlaceholder}
+          name="kg-name"
+          autoComplete="off"
+          className="w-full bg-transparent text-sm focus-visible:outline-none"
+          placeholder={`${kgNamePlaceholder}\u2026`}
           value={kgName}
           onChange={(e) => setKgName(e.target.value)}
         />
@@ -237,7 +255,7 @@ export function KGBuildSection({
         disabled={creating || !canCreate}
       >
         {creating && <span className="loading loading-spinner loading-sm" />}
-        {creating ? 'Creating KG...' : 'Create KG'}
+        {creating ? 'Creating KG\u2026' : 'Create KG'}
       </button>
     </>
   );
