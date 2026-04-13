@@ -78,7 +78,7 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle, onAll, onNone }
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`${placeholder}…`}
+            placeholder={placeholder}
             aria-label={placeholder}
             className="w-full border border-base-content/20 rounded px-2 py-1 text-2xs bg-transparent text-base-content placeholder:text-base-content/30 focus-visible:outline-none focus-visible:border-primary/50"
           />
