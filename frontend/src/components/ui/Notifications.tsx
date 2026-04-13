@@ -25,7 +25,7 @@ export function Notifications() {
       <div
         className={clsx(
           'flex items-center gap-2 bg-base-100 border rounded-lg px-3 py-2 shadow-lg max-w-xs',
-          isError ? 'border-error/40 border-l-3 border-l-error' : 'border-success/40 border-l-3 border-l-success',
+          isError ? 'border-error/40 border-l-[3px] border-l-error' : 'border-success/40 border-l-[3px] border-l-success',
         )}
       >
         <span className="flex-1 text-sm text-base-content">{notif.message}</span>

@@ -61,7 +61,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
         </div>
 
         {/* Quick stats row */}
-        <div className="flex border-b border-base-300 text-center text-2xs text-base-content/60 shrink-0 [font-variant-numeric:tabular-nums]">
+        <div className="flex border-b border-base-300 text-center text-2xs text-base-content/60 shrink-0 tabular-nums">
           <div className="flex-1 py-2 border-r border-base-300">
             <div className="text-base font-semibold text-base-content">{totalConnections}</div>
             connections

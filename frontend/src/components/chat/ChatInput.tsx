@@ -57,7 +57,7 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
   useEffect(() => { autoResize(); }, [autoResize]);
 
   return (
-    <div className="border border-base-content/20 rounded-xl p-2 has-focus-within:border-primary/50 transition-colors">
+    <div className="border border-base-content/20 rounded-xl p-2 focus-within:border-primary/50 transition-colors">
       <textarea
         ref={inputRef}
         aria-label="Ask about the knowledge graph"
