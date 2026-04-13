@@ -98,7 +98,7 @@ export function FieldsetDropdown({
       onKeyDown={handleKeyDown}
       className={`fieldset relative border rounded-lg transition-colors min-w-0 ${open ? 'border-primary/50' : 'border-base-content/20'}`}
     >
-      <legend className="fieldset-legend text-2xs text-base-content/50">{label}</legend>
+      <legend className="fieldset-legend text-2xs text-base-content/50 ml-auto mr-2">{label}</legend>
       <button
         type="button"
         aria-haspopup="listbox"
