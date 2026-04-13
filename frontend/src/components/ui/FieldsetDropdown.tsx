@@ -35,7 +35,7 @@ export function FieldsetDropdown({
     // Position the fixed dropdown below the fieldset
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceBelow = window.innerHeight - rect.bottom - 12;
       setDropdownStyle({
         position: 'fixed',
         top: rect.bottom + 4,
