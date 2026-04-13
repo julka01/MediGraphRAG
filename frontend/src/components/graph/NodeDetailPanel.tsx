@@ -32,7 +32,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
   const inCount = inEdges.length;
 
   return (
-    <div className="absolute top-0 right-0 w-72 h-full z-20 animate-slide-from-right flex">
+    <div className="absolute top-0 right-0 w-72 h-full z-20 motion-safe:animate-slide-from-right flex">
       <div className="w-1 shrink-0 bg-base-300" />
       <div className="card bg-base-100 h-full shadow-lg rounded-none overflow-hidden flex flex-col flex-1">
 
@@ -61,7 +61,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
         </div>
 
         {/* Quick stats row */}
-        <div className="flex border-b border-base-300 text-center text-2xs text-base-content/60 shrink-0">
+        <div className="flex border-b border-base-300 text-center text-2xs text-base-content/60 shrink-0 [font-variant-numeric:tabular-nums]">
           <div className="flex-1 py-2 border-r border-base-300">
             <div className="text-base font-semibold text-base-content">{totalConnections}</div>
             connections
