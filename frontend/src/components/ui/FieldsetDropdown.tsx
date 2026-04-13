@@ -136,29 +136,34 @@ export function FieldsetDropdown({
       </button>
       {open && createPortal(
         <div
-          role="listbox"
-          aria-label={label}
-          className="bg-base-100 border border-base-300 rounded-lg shadow-lg z-50 overflow-y-auto"
+          className="rounded-lg overflow-hidden border border-base-300 shadow-lg z-50"
           style={dropdownStyle}
         >
-          {options.length > 0 ? (
-            options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                role="option"
-                aria-selected={option.value === value}
-                onClick={() => handleSelect(option.value)}
-                className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                  option.value === value ? 'text-primary font-semibold' : 'text-base-content'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))
-          ) : (
-            <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
-          )}
+          <div
+            role="listbox"
+            aria-label={label}
+            className="bg-base-100 overflow-y-auto"
+            style={{ maxHeight: 'inherit' }}
+          >
+            {options.length > 0 ? (
+              options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="option"
+                  aria-selected={option.value === value}
+                  onClick={() => handleSelect(option.value)}
+                  className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 transition-colors ${
+                    option.value === value ? 'text-primary font-semibold' : 'text-base-content'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))
+            ) : (
+              <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
+            )}
+          </div>
         </div>,
         document.body,
       )}
