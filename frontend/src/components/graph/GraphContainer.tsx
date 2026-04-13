@@ -102,7 +102,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
   return (
     <div className="relative flex flex-col h-full bg-base-100 min-w-[300px]">
       {/* Graph canvas */}
-      <div ref={containerRef} className="flex-1 min-h-0 outline-none" tabIndex={-1}>
+      <div ref={containerRef} className="flex-1 min-h-0">
         {!hasGraph && !progressActive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-base-content/40">
             <span className="text-5xl mb-2" aria-hidden="true">

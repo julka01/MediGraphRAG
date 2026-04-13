@@ -13,6 +13,10 @@ html {
   display: none !important;
 }
 
+.vis-network:focus {
+  outline: none;
+}
+
 /* Always show number input stepper arrows */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
