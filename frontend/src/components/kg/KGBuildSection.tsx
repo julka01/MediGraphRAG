@@ -1,4 +1,5 @@
 // frontend/src/components/kg/KGBuildSection.tsx
+import clsx from 'clsx';
 import { ArrowUpTrayIcon, CheckIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api';
@@ -150,12 +151,12 @@ export function KGBuildSection({
       />
       <button
         type="button"
-        className={[
+        className={clsx(
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           file
             ? 'border-file-selected-border text-base-content'
             : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
-        ].join(' ')}
+        )}
         onClick={() => fileRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleFileDrop}
@@ -179,12 +180,12 @@ export function KGBuildSection({
       />
       <button
         type="button"
-        className={[
+        className={clsx(
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           ontologyFile
             ? 'border-file-selected-border text-base-content'
             : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
-        ].join(' ')}
+        )}
         onClick={() => ontologyRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleOntologyDrop}
@@ -245,12 +246,12 @@ export function KGBuildSection({
       {/* Create KG */}
       <button
         type="button"
-        className={[
+        className={clsx(
           'btn btn-sm w-full shadow-none',
           creating || !canCreate
             ? 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none'
-            : 'bg-transparent border border-[color:oklch(62%_0.10_270)]/50 text-[color:oklch(62%_0.10_270)] hover:bg-[color:oklch(62%_0.10_270)] hover:text-white',
-        ].join(' ')}
+            : 'bg-transparent border border-brand/50 text-brand hover:bg-brand hover:text-white',
+        )}
         onClick={handleCreate}
         disabled={creating || !canCreate}
       >

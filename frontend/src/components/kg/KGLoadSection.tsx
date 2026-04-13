@@ -1,4 +1,5 @@
 // frontend/src/components/kg/KGLoadSection.tsx
+import clsx from 'clsx';
 import { useCallback, useState } from 'react';
 import { api } from '../../api';
 import { useApp } from '../../context/AppContext';
@@ -90,12 +91,12 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
       <div className="flex gap-2">
         <button
           type="button"
-          className={[
+          className={clsx(
             'btn btn-sm flex-1 shadow-none',
             kgFilter
-              ? 'bg-transparent border border-[color:oklch(62%_0.10_270)]/50 text-[color:oklch(62%_0.10_270)] hover:bg-[color:oklch(62%_0.10_270)] hover:text-white'
+              ? 'bg-transparent border border-brand/50 text-brand hover:bg-brand hover:text-white'
               : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
-          ].join(' ')}
+          )}
           onClick={handleLoadKG}
           disabled={!kgFilter}
         >
@@ -103,12 +104,12 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
         </button>
         <button
           type="button"
-          className={[
+          className={clsx(
             'btn btn-sm flex-1',
             kgFilter || state.currentKGId
               ? 'btn-outline border-error/50 text-error hover:bg-error hover:text-error-content'
               : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
-          ].join(' ')}
+          )}
           onClick={handleDelete}
           disabled={!kgFilter && !state.currentKGId}
         >
