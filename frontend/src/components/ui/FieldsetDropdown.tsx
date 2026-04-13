@@ -1,5 +1,6 @@
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Option {
   value: string;
@@ -27,17 +28,31 @@ export function FieldsetDropdown({
 }: FieldsetDropdownProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLFieldSetElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
     if (!open) return;
+    // Position the fixed dropdown below the fieldset
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+      });
+    }
     function handleClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        // Also check if click is inside the dropdown itself
+        const listbox = document.querySelector(`[aria-label="${label}"][role="listbox"]`);
+        if (listbox && listbox.contains(e.target as Node)) return;
         setOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
+  }, [open, label]);
 
   const handleSelect = useCallback(
     (val: string) => {
@@ -117,11 +132,12 @@ export function FieldsetDropdown({
           className={`size-4 shrink-0 text-base-content/40 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
-      {open && (
+      {open && createPortal(
         <div
           role="listbox"
           aria-label={label}
-          className="absolute left-0 right-0 top-full mt-1 bg-base-100 border border-base-300 rounded-lg shadow-lg z-30 max-h-72 overflow-y-auto"
+          className="bg-base-100 border border-base-300 rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto"
+          style={dropdownStyle}
         >
           {options.length > 0 ? (
             options.map((option) => (
@@ -141,7 +157,8 @@ export function FieldsetDropdown({
           ) : (
             <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </fieldset>
   );
