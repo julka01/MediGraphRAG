@@ -1,4 +1,4 @@
-import { ChevronDownIcon, ChevronRightIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { SparklesIcon } from '@heroicons/react/24/outline';
 import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -13,31 +13,19 @@ interface SectionProps {
 }
 
 function Section({ title, content, defaultExpanded = false, formatter }: SectionProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
   if (!content?.trim()) return null;
 
   const formatted = formatter ? formatter(content) : content;
 
   return (
-    <div className="mt-2">
-      <button
-        type="button"
-        className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
-        onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-      >
-        {expanded ? (
-          <ChevronDownIcon className="size-4 inline" aria-hidden="true" />
-        ) : (
-          <ChevronRightIcon className="size-4 inline" aria-hidden="true" />
-        )}{' '}
+    <div className="collapse collapse-arrow mt-2 bg-transparent">
+      <input type="checkbox" defaultChecked={defaultExpanded} />
+      <div className="collapse-title text-xs font-semibold px-0 min-h-0 py-1 after:text-base-content/40">
         {title}
-      </button>
-      {expanded && (
-        <div className="pl-4 text-sm mt-1">
-          <Markdown remarkPlugins={[remarkGfm]}>{formatted}</Markdown>
-        </div>
-      )}
+      </div>
+      <div className="collapse-content text-sm px-0">
+        <Markdown remarkPlugins={[remarkGfm]}>{formatted}</Markdown>
+      </div>
     </div>
   );
 }
