@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useApp } from '../../context/AppContext';
 
@@ -51,14 +51,25 @@ export function applySearchToNetwork(
 
 export function TopBar() {
   const { state, dispatch, networkRef } = useApp();
-  const matchCountRef = useRef(0);
+  const [matchCount, setMatchCount] = useState(0);
 
   const performSearch = useCallback(
     (term: string) => {
-      matchCountRef.current = applySearchToNetwork(networkRef, term);
+      setMatchCount(applySearchToNetwork(networkRef, term));
     },
     [networkRef],
   );
+
+  // Re-count matches after filters rebuild the graph
+  useEffect(() => {
+    if (state.searchTerm.trim()) {
+      // Defer so the graph has finished rebuilding after filter change
+      const id = requestAnimationFrame(() => {
+        setMatchCount(applySearchToNetwork(networkRef, state.searchTerm));
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [state.currentFilters, networkRef, state.searchTerm]);
 
   const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -74,8 +85,6 @@ export function TopBar() {
   const handleHighlightsClear = () => {
     dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
   };
-
-  const matchCount = state.searchTerm.trim() ? matchCountRef.current : 0;
 
   return (
     <div className="bg-base-200 shrink-0 h-12">
