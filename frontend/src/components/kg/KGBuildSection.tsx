@@ -250,7 +250,7 @@ export function KGBuildSection({
           'btn btn-sm w-full shadow-none',
           creating || !canCreate
             ? 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none'
-            : 'bg-transparent border border-brand/50 text-brand hover:bg-brand hover:text-white',
+            : 'bg-transparent border border-primary/50 text-primary hover:bg-primary hover:text-primary-content',
         )}
         onClick={handleCreate}
         disabled={creating || !canCreate}

@@ -104,7 +104,7 @@ export function ChatDropUp({ options, value, onChange, placeholder }: ChatDropUp
               aria-selected={optVal(option) === value}
               onClick={() => handleSelect(option)}
               className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                optVal(option) === value ? 'text-brand font-semibold' : 'text-base-content'
+                optVal(option) === value ? 'text-primary font-semibold' : 'text-base-content'
               } ${index === focusedIndex ? 'bg-base-200' : ''}`}
             >
               {optLabel(option)}

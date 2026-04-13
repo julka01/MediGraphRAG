@@ -75,7 +75,7 @@ export const PanelToggleIcon = memo(function PanelToggleIcon({ panel, isOpen, on
     <button
       type="button"
       onClick={onClick}
-      className={`p-1 rounded-md transition-colors ${isOpen ? 'text-brand' : 'text-base-content/50 hover:text-base-content/80'}`}
+      className={`p-1 rounded-md transition-colors ${isOpen ? 'text-primary' : 'text-base-content/50 hover:text-base-content/80'}`}
       aria-label={labelMap[panel]}
       aria-pressed={isOpen}
     >

@@ -94,7 +94,7 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
           className={clsx(
             'btn btn-sm flex-1 shadow-none',
             kgFilter
-              ? 'bg-transparent border border-brand/50 text-brand hover:bg-brand hover:text-white'
+              ? 'bg-transparent border border-primary/50 text-primary hover:bg-primary hover:text-primary-content'
               : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
           )}
           onClick={handleLoadKG}

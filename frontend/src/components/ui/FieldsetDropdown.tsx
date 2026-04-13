@@ -132,7 +132,7 @@ export function FieldsetDropdown({
                 aria-selected={option.value === value}
                 onClick={() => handleSelect(option.value)}
                 className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                  option.value === value ? 'text-brand font-semibold' : 'text-base-content'
+                  option.value === value ? 'text-primary font-semibold' : 'text-base-content'
                 }`}
               >
                 {option.label}
