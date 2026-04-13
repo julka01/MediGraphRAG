@@ -86,7 +86,7 @@ export function TopBar() {
             type="text"
             aria-label="Search nodes"
             className="w-full h-8 pl-7 pr-4 rounded-lg border border-base-content/20 bg-transparent text-sm placeholder:text-base-content/30 focus-visible:outline-none focus-visible:border-primary/50 transition-colors"
-            placeholder="Search nodes…"
+            placeholder="Search nodes"
             value={state.searchTerm}
             onChange={handleSearchInput}
             autoComplete="off"
