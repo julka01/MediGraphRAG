@@ -23,9 +23,9 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
       />
 
       <div className="flex items-center gap-3 my-2">
-        <div className="h-px flex-1 bg-gradient-to-r from-transparent to-base-content/20" />
+        <div className="h-px flex-1 bg-linear-to-r from-transparent to-base-content/20" />
         <div className="size-1 rounded-full bg-base-content/20" />
-        <div className="h-px flex-1 bg-gradient-to-l from-transparent to-base-content/20" />
+        <div className="h-px flex-1 bg-linear-to-l from-transparent to-base-content/20" />
       </div>
 
       {/* ── Load Section ──────────────────────────────────── */}
