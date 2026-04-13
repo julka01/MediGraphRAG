@@ -125,4 +125,15 @@ describe('useChat', () => {
     const types = stored.map((m: { type: string }) => m.type);
     expect(types).toEqual(['user', 'ai']);
   });
+
+  it('exportChat reference is stable across messages', () => {
+    const { result } = renderHook(() => useChat());
+    const firstRef = result.current.exportChat;
+
+    act(() => {
+      result.current.addMessage({ type: 'user', message: 'hello', ts: 1 });
+    });
+
+    expect(result.current.exportChat).toBe(firstRef);
+  });
 });
