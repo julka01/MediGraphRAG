@@ -8,6 +8,8 @@ import { FieldsetDropdown } from '../ui/FieldsetDropdown';
 import { showError, showSuccess } from '../ui/Notifications';
 import { ModelSelector } from './ModelSelector';
 
+const EMBEDDING_OPTIONS = ['sentence_transformers', 'openai', 'vertexai', 'titan'];
+
 interface KGPanelProps {
   kgModelHook: UseModelsReturn;
   onLoadKG: (loadMode: string, nodeLimit: number, kgFilter: string) => void;
@@ -33,7 +35,6 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
   const [kgFilter, setKgFilter] = useState('');
 
   // Apply settings from loaded KG
-  const EMBEDDING_OPTIONS = ['sentence_transformers', 'openai', 'vertexai', 'titan'];
   useEffect(() => {
     if (!loadedKGSettings) return;
     if (loadedKGSettings.embeddingModel && EMBEDDING_OPTIONS.includes(loadedKGSettings.embeddingModel)) {
@@ -42,7 +43,7 @@ export function KGPanel({ kgModelHook, onLoadKG, onProgressStart, onProgressStop
     if (loadedKGSettings.maxChunks != null) {
       setMaxChunks(String(loadedKGSettings.maxChunks));
     }
-  }, [loadedKGSettings]); // eslint-disable-line react-hooks/exhaustive-deps -- EMBEDDING_OPTIONS is stable
+  }, [loadedKGSettings]);
 
   // KG name placeholder: show loaded KG name when user hasn't typed anything
   const kgNamePlaceholder = !kgName && state.currentKGName ? state.currentKGName : 'optional';
