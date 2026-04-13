@@ -109,7 +109,7 @@ export const SourcesSection = memo(function SourcesSection({
             type="button"
             className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs transition-colors ${
               isHighlighted
-                ? 'bg-[color:oklch(85%_0.18_85_/_0.15)] text-[color:oklch(85%_0.18_85)]'
+                ? 'bg-graph-highlight/15 text-graph-highlight'
                 : 'text-base-content/40 hover:text-base-content/60'
             }`}
             onClick={onHighlight}

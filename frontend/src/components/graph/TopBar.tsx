@@ -120,7 +120,7 @@ export function TopBar() {
             )}
             {/* Highlighted nodes badge */}
             {state.highlightedCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[color:oklch(85%_0.18_85_/_0.12)] text-[color:oklch(85%_0.18_85)] text-2xs font-semibold">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-graph-highlight/12 text-graph-highlight text-2xs font-semibold">
                 {state.highlightedCount} highlighted
                 <button
                   type="button"
