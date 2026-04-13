@@ -1,11 +1,7 @@
-import {
-  ArrowDownTrayIcon,
-  ArrowPathIcon,
-  MinusIcon,
-  PlusIcon,
-} from '@heroicons/react/20/solid';
+import { ArrowDownTrayIcon, ArrowPathIcon, MinusIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { useApp } from '../../context/AppContext';
 import { showError, showSuccess } from '../ui/Notifications';
+import { ToolbarButton } from './ToolbarButton';
 
 export function GraphControls() {
   const { state, dispatch, networkRef, initialViewRef } = useApp();
@@ -93,8 +89,7 @@ export function GraphControls() {
 
     nodes.update(
       allNodes.map((node: Record<string, unknown>) => {
-        const w =
-          newMetric === 'uniform' ? BASE_WIDTH : ((node._baseWidth as number) ?? BASE_WIDTH);
+        const w = newMetric === 'uniform' ? BASE_WIDTH : ((node._baseWidth as number) ?? BASE_WIDTH);
         return { id: node.id, widthConstraint: { minimum: w, maximum: w } };
       }),
     );
@@ -140,52 +135,49 @@ export function GraphControls() {
 
   // ── Render ──────────────────────────────────────────────────────
 
-  const toggleBtn = (active: boolean) =>
-    `btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 transition-all min-w-[5.5rem] ${active ? 'bg-transparent text-[color:oklch(62%_0.10_270)]' : 'bg-transparent text-base-content/60 hover:text-base-content/80'}`;
-
   return (
     <div className="flex items-center gap-1 px-2 py-1">
       {/* Zoom controls */}
       <div className="join shrink-0">
-        <button type="button" className="btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all bg-transparent text-base-content/60 join-item" onClick={handleZoomIn} aria-label="Zoom in" title="Zoom in">
+        <ToolbarButton className="join-item" onClick={handleZoomIn} aria-label="Zoom in" title="Zoom in">
           <PlusIcon className="size-4" aria-hidden="true" />
-        </button>
-        <button type="button" className="btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all bg-transparent text-base-content/60 join-item" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out">
+        </ToolbarButton>
+        <ToolbarButton className="join-item" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out">
           <MinusIcon className="size-4" aria-hidden="true" />
-        </button>
-        <button type="button" className="btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all bg-transparent text-base-content/60 join-item" onClick={handleResetZoom} aria-label="Reset view" title="Reset view">
+        </ToolbarButton>
+        <ToolbarButton className="join-item" onClick={handleResetZoom} aria-label="Reset view" title="Reset view">
           <ArrowPathIcon className="size-4" aria-hidden="true" />
-        </button>
+        </ToolbarButton>
       </div>
 
       {/* Flexible space */}
       <div className="flex-1" />
 
       {/* Toggles */}
-      <button type="button" className={toggleBtn(state.physicsEnabled)} onClick={handlePhysicsToggle}>
+      <ToolbarButton active={state.physicsEnabled} className="min-w-[5.5rem]" onClick={handlePhysicsToggle}>
         Physics {state.physicsEnabled ? 'ON' : 'OFF'}
-      </button>
+      </ToolbarButton>
 
-      <button type="button" className={toggleBtn(state.showEdgeLabels)} onClick={handleLabelsToggle}>
+      <ToolbarButton active={state.showEdgeLabels} className="min-w-[5.5rem]" onClick={handleLabelsToggle}>
         Labels {state.showEdgeLabels ? 'ON' : 'OFF'}
-      </button>
+      </ToolbarButton>
 
       {/* Uniform / Degree toggle */}
       <div className="flex shrink-0 isolate">
-        <button
-          type="button"
-          className={`btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all min-w-0 px-2 rounded-r-none relative hover:z-10 ${state.nodeSizeMetric !== 'degree' ? 'bg-transparent text-[color:oklch(62%_0.10_270)]' : 'bg-transparent text-base-content/60'}`}
+        <ToolbarButton
+          active={state.nodeSizeMetric !== 'degree'}
+          className="min-w-0 px-2 rounded-r-none relative hover:z-10"
           onClick={() => state.nodeSizeMetric === 'degree' && handleSizeMetricToggle()}
         >
           Uniform
-        </button>
-        <button
-          type="button"
-          className={`btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all min-w-0 px-2 rounded-l-none -ml-px relative hover:z-10 ${state.nodeSizeMetric === 'degree' ? 'bg-transparent text-[color:oklch(62%_0.10_270)]' : 'bg-transparent text-base-content/60'}`}
+        </ToolbarButton>
+        <ToolbarButton
+          active={state.nodeSizeMetric === 'degree'}
+          className="min-w-0 px-2 rounded-l-none -ml-px relative hover:z-10"
           onClick={() => state.nodeSizeMetric !== 'degree' && handleSizeMetricToggle()}
         >
           Degree
-        </button>
+        </ToolbarButton>
       </div>
 
       {/* Flexible space */}
@@ -193,12 +185,22 @@ export function GraphControls() {
 
       {/* Export */}
       <div className="join shrink-0">
-        <button type="button" className="btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all bg-transparent text-base-content/60 join-item w-20" onClick={handleExportPNG} title="Export as PNG" aria-label="Export as PNG">
+        <ToolbarButton
+          className="join-item w-20"
+          onClick={handleExportPNG}
+          title="Export as PNG"
+          aria-label="Export as PNG"
+        >
           <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> PNG
-        </button>
-        <button type="button" className="btn btn-xs shadow-none border border-base-content/20 hover:bg-base-content/5 hover:text-base-content/80 transition-all bg-transparent text-base-content/60 join-item w-20" onClick={handleExportJSON} title="Export as JSON" aria-label="Export as JSON">
+        </ToolbarButton>
+        <ToolbarButton
+          className="join-item w-20"
+          onClick={handleExportJSON}
+          title="Export as JSON"
+          aria-label="Export as JSON"
+        >
           <ArrowDownTrayIcon className="size-3.5 inline" aria-hidden="true" /> JSON
-        </button>
+        </ToolbarButton>
       </div>
     </div>
   );
