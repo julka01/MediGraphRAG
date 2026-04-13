@@ -145,6 +145,7 @@ export interface ChatMessage {
   sections?: ResponseSections;
   reasoningEdges?: ReasoningEdge[];
   sourceEntities?: SourceEntity[];
+  entityNames?: Set<string>;
 }
 
 export interface ResponseSections {

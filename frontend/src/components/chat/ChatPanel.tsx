@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
-import type { ResponseSections as ResponseSectionsType, UseModelsReturn } from '../../types/app';
+import type {
+  AppAction,
+  ChatMessage as ChatMessageType,
+  ResponseSections as ResponseSectionsType,
+  UseModelsReturn,
+} from '../../types/app';
+import { showError } from '../ui/Notifications';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
 import { ResponseSections, SourcesSection } from './ResponseSections';
-import { showError } from '../ui/Notifications';
 
 function parseResponse(text: string): ResponseSectionsType {
   const sections: ResponseSectionsType = {
@@ -49,6 +54,50 @@ function parseResponse(text: string): ResponseSectionsType {
   return sections;
 }
 
+interface AiMessageRowProps {
+  msg: ChatMessageType;
+  msgKey: string;
+  highlightedNodes: Set<string>;
+  dispatch: React.Dispatch<AppAction>;
+}
+
+const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes, dispatch }: AiMessageRowProps) {
+  if (!msg.sections) return null;
+  const entityNames = msg.entityNames ?? new Set<string>();
+  const hasEntities = entityNames.size > 0;
+  const isMsgHighlighted =
+    hasEntities && entityNames.size === highlightedNodes.size && [...entityNames].every((n) => highlightedNodes.has(n));
+
+  const handleHighlight = hasEntities
+    ? () => {
+        if (isMsgHighlighted) {
+          dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
+        } else {
+          dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: entityNames });
+        }
+      }
+    : undefined;
+
+  return (
+    <div key={msgKey} className="chat chat-start">
+      <div className="chat-bubble before:hidden rounded-2xl text-sm">
+        <ResponseSections sections={msg.sections} />
+        <SourcesSection
+          reasoningEdges={msg.reasoningEdges}
+          sourceEntities={msg.sourceEntities}
+          isHighlighted={isMsgHighlighted}
+          onHighlight={handleHighlight}
+        />
+      </div>
+      {msg.ts && (
+        <div className="chat-footer opacity-50 text-xs">
+          {new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+        </div>
+      )}
+    </div>
+  );
+});
+
 interface ChatPanelProps {
   ragModelHook: UseModelsReturn;
 }
@@ -77,51 +126,60 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
         return false;
       }
       void (async () => {
-      try {
-        const result = await sendQuestion(
-          question,
-          state.currentKGName,
-          ragModelHook.vendor,
-          ragModelHook.selectedModel,
-        );
+        try {
+          const result = await sendQuestion(
+            question,
+            state.currentKGName,
+            ragModelHook.vendor,
+            ragModelHook.selectedModel,
+          );
 
-        const usedEntities = result.info?.entities?.used_entities || [];
-        const nodeNames = new Set<string>();
-        usedEntities.forEach((entity) => {
-          const readable = (entity.description || '').toLowerCase().trim();
-          const idKey = (entity.id || '').toLowerCase().trim();
-          if (readable) nodeNames.add(readable);
-          if (idKey) nodeNames.add(idKey);
-        });
-        dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
+          const usedEntities = result.info?.entities?.used_entities || [];
+          const nodeNames = new Set<string>();
+          usedEntities.forEach((entity) => {
+            const readable = (entity.description || '').toLowerCase().trim();
+            const idKey = (entity.id || '').toLowerCase().trim();
+            if (readable) nodeNames.add(readable);
+            if (idKey) nodeNames.add(idKey);
+          });
+          dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
 
-        const responseText = result.response || result.message || 'No response generated';
-        const cleanedText = responseText.replace(/【Source:[^】]*】/g, '').replace(/\[Source:[^\]]*\]/g, '');
-        const sections = parseResponse(cleanedText);
+          const responseText = result.response || result.message || 'No response generated';
+          const cleanedText = responseText.replace(/【Source:[^】]*】/g, '').replace(/\[Source:[^\]]*\]/g, '');
+          const sections = parseResponse(cleanedText);
 
-        const reasoningEdges = result.info?.entities?.reasoning_edges || [];
-        const sourceEntities = result.info?.entities?.used_entities || [];
+          const reasoningEdges = result.info?.entities?.reasoning_edges || [];
+          const sourceEntities = result.info?.entities?.used_entities || [];
 
-        addMessage({
-          type: 'ai',
-          message: cleanedText,
-          ts: Date.now(),
-          sections,
-          reasoningEdges,
-          sourceEntities,
-        });
-      } catch (error) {
-        const err = error as Error;
-        const msg =
-          err.name === 'AbortError'
-            ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
-            : `Error: ${err.message}`;
-        addMessage({ type: 'error', message: msg, ts: Date.now() });
-      }
+          addMessage({
+            type: 'ai',
+            message: cleanedText,
+            ts: Date.now(),
+            sections,
+            reasoningEdges,
+            sourceEntities,
+            entityNames: nodeNames,
+          });
+        } catch (error) {
+          const err = error as Error;
+          const msg =
+            err.name === 'AbortError'
+              ? 'Request timed out — the model took too long. Try a faster model or a shorter question.'
+              : `Error: ${err.message}`;
+          addMessage({ type: 'error', message: msg, ts: Date.now() });
+        }
       })();
       return true;
     },
-    [sendQuestion, state.currentKGId, state.currentKGName, ragModelHook.vendor, ragModelHook.selectedModel, dispatch, addMessage],
+    [
+      sendQuestion,
+      state.currentKGId,
+      state.currentKGName,
+      ragModelHook.vendor,
+      ragModelHook.selectedModel,
+      dispatch,
+      addMessage,
+    ],
   );
 
   const isEmpty = messages.length === 0;
@@ -137,39 +195,14 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             {messages.map((msg, i) => {
               const msgKey = `${msg.ts ?? 0}-${i}`;
               if (msg.type === 'ai' && msg.sections) {
-                const entities = msg.sourceEntities || [];
-                const nodeNames = new Set<string>();
-                entities.forEach((e) => {
-                  const readable = (e.description || '').toLowerCase().trim();
-                  const idKey = (e.id || '').toLowerCase().trim();
-                  if (readable) nodeNames.add(readable);
-                  if (idKey) nodeNames.add(idKey);
-                });
-                const hasEntities = nodeNames.size > 0;
-                const isMsgHighlighted = hasEntities && nodeNames.size === state.highlightedNodes.size
-                  && [...nodeNames].every((n) => state.highlightedNodes.has(n));
-
                 return (
-                  <div key={msgKey} className="chat chat-start">
-                    <div className="chat-bubble before:hidden rounded-2xl text-sm">
-                      <ResponseSections sections={msg.sections} />
-                      <SourcesSection
-                        reasoningEdges={msg.reasoningEdges}
-                        sourceEntities={msg.sourceEntities}
-                        isHighlighted={isMsgHighlighted}
-                        onHighlight={hasEntities ? () => {
-                          if (isMsgHighlighted) {
-                            dispatch({ type: 'CLEAR_HIGHLIGHTED_NODES' });
-                          } else {
-                            dispatch({ type: 'SET_HIGHLIGHTED_NODES', nodes: nodeNames });
-                          }
-                        } : undefined}
-                      />
-                    </div>
-                    {msg.ts && (
-                      <div className="chat-footer opacity-50 text-xs">{new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</div>
-                    )}
-                  </div>
+                  <AiMessageRow
+                    key={msgKey}
+                    msg={msg}
+                    msgKey={msgKey}
+                    highlightedNodes={state.highlightedNodes}
+                    dispatch={dispatch}
+                  />
                 );
               }
               return (
@@ -177,7 +210,11 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
                   key={msgKey}
                   message={msg.message}
                   type={msg.type}
-                  timestamp={msg.ts ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : undefined}
+                  timestamp={
+                    msg.ts
+                      ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+                      : undefined
+                  }
                 />
               );
             })}
@@ -191,10 +228,18 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             {messages.length > 0 && (
               <div className="flex justify-center py-2">
                 <div className="flex bg-base-300/30 rounded-lg p-0.5">
-                  <button type="button" className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors" onClick={handleClearChat}>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors"
+                    onClick={handleClearChat}
+                  >
                     Clear
                   </button>
-                  <button type="button" className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors" onClick={handleExportChat}>
+                  <button
+                    type="button"
+                    className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors"
+                    onClick={handleExportChat}
+                  >
                     Export
                   </button>
                 </div>
