@@ -96,7 +96,7 @@ export function FieldsetDropdown({
     <fieldset
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className={`fieldset relative border rounded-lg px-3 pb-2 pt-0 transition-colors min-w-0 ${open ? 'border-primary/50' : 'border-base-content/20'}`}
+      className={`relative border rounded-lg px-3 pb-2 pt-0 transition-colors min-w-0 ${open ? 'border-primary/50' : 'border-base-content/20'}`}
     >
       <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">{label}</legend>
       <button
