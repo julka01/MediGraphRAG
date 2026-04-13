@@ -20,9 +20,9 @@ const ChatPanel = lazy(() => import('./components/chat/ChatPanel').then((m) => (
 
 function PanelSkeleton() {
   return (
-    <div className="flex flex-col h-full motion-safe:animate-pulse p-4">
-      <div className="h-6 w-40 bg-base-300 rounded mb-4" />
-      <div className="flex-1 bg-base-300/30 rounded" />
+    <div className="flex flex-col h-full p-4 gap-4">
+      <div className="skeleton h-6 w-40" />
+      <div className="skeleton flex-1" />
     </div>
   );
 }
