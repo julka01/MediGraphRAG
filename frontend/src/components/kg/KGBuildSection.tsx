@@ -155,7 +155,7 @@ export function KGBuildSection({
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           file
             ? 'border-file-selected-border text-base-content'
-            : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
+            : 'border-dashed border-base-content/30 text-base-content/50 hover:bg-base-content/5 hover:text-base-content/80',
         )}
         onClick={() => fileRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
@@ -184,7 +184,7 @@ export function KGBuildSection({
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
           ontologyFile
             ? 'border-file-selected-border text-base-content'
-            : 'border-dashed border-base-content/30 text-base-content/50 hover:border-primary/50',
+            : 'border-dashed border-base-content/30 text-base-content/50 hover:bg-base-content/5 hover:text-base-content/80',
         )}
         onClick={() => ontologyRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}

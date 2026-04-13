@@ -17,7 +17,7 @@ export function ChatSuggestions({ onSelect }: ChatSuggestionsProps) {
           <button
             type="button"
             key={text}
-            className="text-center px-4 py-2.5 rounded-2xl border border-base-content/20 text-sm text-base-content/50 hover:border-primary/50 hover:text-base-content/70 transition-colors"
+            className="text-center px-4 py-2.5 rounded-2xl border border-base-content/20 text-sm text-base-content/50 hover:bg-base-content/5 hover:text-base-content/80 transition-colors"
             onClick={() => onSelect(text)}
           >
             {text}
