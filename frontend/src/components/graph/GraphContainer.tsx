@@ -105,7 +105,9 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
       <div ref={containerRef} className="flex-1 min-h-0">
         {!hasGraph && !progressActive && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-base-content/40">
-            <span className="text-5xl mb-2">&#9672;</span>
+            <span className="text-5xl mb-2" aria-hidden="true">
+              &#9672;
+            </span>
             <p className="text-sm">Load or create a knowledge graph to visualize</p>
           </div>
         )}

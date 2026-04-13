@@ -30,7 +30,11 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
     return (
       <div className="chat chat-start">
         <div className="rounded-2xl bg-base-300 px-4 py-2 text-sm max-w-[80%]">
-          <span className="loading loading-dots loading-xs text-base-content" />
+          <span
+            className="loading loading-dots loading-xs text-base-content"
+            aria-label="AI is thinking"
+            role="status"
+          />
         </div>
       </div>
     );
@@ -39,7 +43,7 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
   return (
     <div className={clsx('chat', isUser ? 'chat-end' : 'chat-start')}>
       <div
-        className={clsx('chat-bubble before:hidden rounded-2xl text-sm', {
+        className={clsx('chat-bubble before:hidden rounded-2xl text-sm break-words', {
           'bg-[color:oklch(62%_0.10_270)]/50 text-base-content': isUser,
           'chat-bubble-error': isError,
         })}

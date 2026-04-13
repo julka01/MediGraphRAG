@@ -221,7 +221,11 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             {sending && (
               <div className="chat chat-start">
                 <div className="chat-bubble before:hidden rounded-2xl bg-base-300 text-sm flex items-center justify-center">
-                  <span className="loading loading-dots loading-xs text-base-content" />
+                  <span
+                    className="loading loading-dots loading-xs text-base-content"
+                    aria-label="AI is thinking"
+                    role="status"
+                  />
                 </div>
               </div>
             )}

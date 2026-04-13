@@ -24,6 +24,7 @@ function Section({ title, content, defaultExpanded = false, formatter }: Section
         type="button"
         className="btn btn-ghost btn-xs text-xs font-semibold w-full justify-start"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
       >
         {expanded ? (
           <ChevronDownIcon className="size-4 inline" aria-hidden="true" />
@@ -45,9 +46,7 @@ interface ResponseSectionsProps {
   sections: ResponseSectionsType;
 }
 
-export const ResponseSections = memo(function ResponseSections({
-  sections,
-}: ResponseSectionsProps) {
+export const ResponseSections = memo(function ResponseSections({ sections }: ResponseSectionsProps) {
   const hasAnySections = sections.recommendation || sections.evidence || sections.nextSteps || sections.reasoning;
 
   return (
@@ -77,7 +76,12 @@ interface SourcesSectionProps {
 
 const INITIAL_VISIBLE = 4;
 
-export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sourceEntities, onHighlight, isHighlighted }: SourcesSectionProps) {
+export const SourcesSection = memo(function SourcesSection({
+  reasoningEdges,
+  sourceEntities,
+  onHighlight,
+  isHighlighted,
+}: SourcesSectionProps) {
   const [showAll, setShowAll] = useState(false);
   if (!reasoningEdges?.length && !sourceEntities?.length) return null;
 
@@ -120,7 +124,7 @@ export const SourcesSection = memo(function SourcesSection({ reasoningEdges, sou
           {visibleEdges.map((edge) => (
             <div
               key={`${edge.from_name || edge.from}|${edge.relationship}|${edge.to_name || edge.to}`}
-              className="flex items-center gap-1.5 px-2 py-1 rounded bg-base-content/5 text-xs"
+              className="flex items-center gap-1.5 px-2 py-1 rounded bg-base-content/5 text-xs min-w-0"
             >
               <span className="font-medium truncate">{edge.from_name || edge.from || '?'}</span>
               <span className="text-base-content/40 shrink-0 text-2xs">
