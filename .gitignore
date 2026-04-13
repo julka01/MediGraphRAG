@@ -1,5 +1,11 @@
-# Superpowers brainstorm artifacts
+# Superpowers / agent artifacts
 .superpowers/
+.agents/skills/
+.firecrawl/
+.playwright-mcp/
+.sesskey
+skills-lock.json
+docs/superpowers/
 
 # Python
 __pycache__/
