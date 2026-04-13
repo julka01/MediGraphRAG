@@ -71,14 +71,15 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle, onAll, onNone }
           ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
           onChange={() => (isChecked || isIndeterminate) ? onNone() : onAll()}
           className="checkbox rounded-sm border-base-content/30 [--chkbg:transparent] checked:bg-transparent indeterminate:bg-transparent size-[1.5rem] shrink-0 translate-y-px shadow-none text-base-content/60"
-          title={isChecked ? 'Deselect all' : 'Select all'}
+          aria-label={isChecked ? 'Deselect all' : 'Select all'}
         />
         <div className="relative flex-1 min-w-0">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={placeholder}
+            placeholder={`${placeholder}…`}
+            aria-label={placeholder}
             className="w-full border border-base-content/20 rounded px-2 py-1 text-2xs bg-transparent text-base-content placeholder:text-base-content/30 focus:outline-none focus:border-primary/50"
           />
           {query && (
@@ -169,7 +170,7 @@ export const FilterChips = memo(function FilterChips() {
     <div className="flex items-stretch gap-2 px-2 py-1.5 min-h-0 h-full">
       {/* Nodes column */}
       <ChipColumn
-        placeholder="Filter nodes..."
+        placeholder="Filter nodes"
         entries={nodeTypes}
         activeSet={activeNodes}
         onToggle={toggleNode}
@@ -181,7 +182,7 @@ export const FilterChips = memo(function FilterChips() {
 
       {/* Edges column */}
       <ChipColumn
-        placeholder="Filter edges..."
+        placeholder="Filter edges"
         entries={relTypes}
         activeSet={activeRels}
         onToggle={toggleRel}
