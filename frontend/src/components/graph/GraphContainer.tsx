@@ -122,14 +122,18 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
 
         {/* Row 2: left, theme toggle center, right */}
         <PanelToggleIcon panel="left" isOpen={!leftCollapsed} onClick={() => dispatch({ type: 'TOGGLE_LEFT_PANEL' })} />
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="p-1 rounded-md transition-colors text-base-content/50 hover:text-base-content/80"
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-        >
-          {theme === 'dark' ? <SunIcon className="size-[22px]" /> : <MoonIcon className="size-[22px]" />}
-        </button>
+        <label className="swap swap-rotate p-1 text-base-content/50 hover:text-base-content/80">
+          <input
+            type="checkbox"
+            className="theme-controller"
+            value="light"
+            checked={theme === 'light'}
+            onChange={toggleTheme}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          />
+          <SunIcon className="swap-on size-[22px]" />
+          <MoonIcon className="swap-off size-[22px]" />
+        </label>
         <PanelToggleIcon
           panel="right"
           isOpen={!rightCollapsed}
