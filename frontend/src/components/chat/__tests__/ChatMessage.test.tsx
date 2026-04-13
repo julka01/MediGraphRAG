@@ -33,8 +33,8 @@ describe('ChatMessage', () => {
 
   it('renders thinking state with loading indicator', () => {
     render(<ChatMessage message="" type="thinking" />);
-    const bubble = document.querySelector('.chat-bubble-ghost');
-    expect(bubble).not.toBeNull();
+    const dots = document.querySelector('.loading-dots');
+    expect(dots).not.toBeNull();
   });
 
   it('shows copy button for AI messages', () => {

@@ -15,11 +15,11 @@ describe('useModels', () => {
     vi.clearAllMocks();
   });
 
-  it('initializes with default vendor and empty models', () => {
+  it('initializes with fallback models for known vendor', () => {
     const { result } = renderHook(() => useModels('openai'));
     expect(result.current.vendor).toBe('openai');
-    expect(result.current.models).toEqual([]);
-    expect(result.current.selectedModel).toBe('');
+    expect(result.current.models).toEqual(['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo']);
+    expect(result.current.selectedModel).toBe('gpt-4o');
     expect(result.current.loading).toBe(false);
   });
 
@@ -63,7 +63,7 @@ describe('useModels', () => {
     expect(result.current.selectedModel).toBe('meta/llama-3');
   });
 
-  it('sets selectedModel to empty string on empty model list', async () => {
+  it('falls back to default models on empty API response', async () => {
     mockFetchModels.mockResolvedValue({ models: [] });
     const { result } = renderHook(() => useModels('openai'));
 
@@ -71,11 +71,11 @@ describe('useModels', () => {
       await result.current.fetchModels();
     });
 
-    expect(result.current.models).toEqual([]);
-    expect(result.current.selectedModel).toBe('');
+    expect(result.current.models).toEqual(['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo']);
+    expect(result.current.selectedModel).toBe('gpt-4o');
   });
 
-  it('handles API error gracefully', async () => {
+  it('handles API error by falling back to default models', async () => {
     mockFetchModels.mockRejectedValue(new Error('Network error'));
     const { result } = renderHook(() => useModels('openai'));
 
@@ -83,8 +83,8 @@ describe('useModels', () => {
       await result.current.fetchModels();
     });
 
-    expect(result.current.models).toEqual([]);
-    expect(result.current.selectedModel).toBe('');
+    expect(result.current.models).toEqual(['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo']);
+    expect(result.current.selectedModel).toBe('gpt-4o');
     expect(result.current.loading).toBe(false);
   });
 
