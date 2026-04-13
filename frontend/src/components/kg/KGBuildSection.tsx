@@ -237,7 +237,7 @@ export function KGBuildSection({
           name="kg-name"
           autoComplete="off"
           className="w-full bg-transparent text-sm focus-visible:outline-none"
-          placeholder={`${kgNamePlaceholder}\u2026`}
+          placeholder={kgNamePlaceholder}
           value={kgName}
           onChange={(e) => setKgName(e.target.value)}
         />
