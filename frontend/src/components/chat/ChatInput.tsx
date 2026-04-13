@@ -63,7 +63,7 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
         aria-label="Ask about the knowledge graph"
         name="chat-question"
         autoComplete="off"
-        placeholder="Ask about the knowledge graph\u2026"
+        placeholder="Ask about the knowledge graph"
         onKeyDown={handleKeyDown}
         onInput={handleInput}
         disabled={disabled}
