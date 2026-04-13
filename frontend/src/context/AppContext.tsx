@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useRef } from 'react';
+import { createContext, use, useReducer, useRef } from 'react';
 import type { AppAction, AppContextValue, AppState, Layout, PanelState, ViewState } from '../types/app';
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -188,7 +188,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useApp(): AppContextValue {
-  const ctx = useContext(AppContext);
+  const ctx = use(AppContext);
   if (!ctx) throw new Error('useApp must be used within AppProvider');
   return ctx;
 }
