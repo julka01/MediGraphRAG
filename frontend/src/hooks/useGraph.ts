@@ -92,7 +92,6 @@ export function useGraph({
         });
       }
       const isHighlightMode = referencedOriginalIds.size > 0;
-      dispatch({ type: 'SET_HIGHLIGHTED_COUNT', count: referencedOriginalIds.size });
 
       const nodeIdMap = new Map<string | number, number>();
       const BASE_WIDTH = 60;
@@ -211,6 +210,12 @@ export function useGraph({
             _baseColor: nodeColor,
           };
         });
+
+      // Count highlighted nodes that survived filtering
+      const visibleHighlightedCount = processedNodes.filter(
+        (n: { originalId: string | number }) => referencedOriginalIds.has(n.originalId),
+      ).length;
+      dispatch({ type: 'SET_HIGHLIGHTED_COUNT', count: visibleHighlightedCount });
 
       const processedEdges = (data.relationships || [])
         .filter((rel: GraphRelationship) => {
