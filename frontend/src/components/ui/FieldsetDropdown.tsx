@@ -35,11 +35,13 @@ export function FieldsetDropdown({
     // Position the fixed dropdown below the fieldset
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
       setDropdownStyle({
         position: 'fixed',
         top: rect.bottom + 4,
         left: rect.left,
         width: rect.width,
+        maxHeight: Math.min(288, Math.max(spaceBelow, 0)),
       });
     }
     function handleClick(e: MouseEvent) {
@@ -136,7 +138,7 @@ export function FieldsetDropdown({
         <div
           role="listbox"
           aria-label={label}
-          className="bg-base-100 border border-base-300 rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto"
+          className="bg-base-100 border border-base-300 rounded-lg shadow-lg z-50 overflow-y-auto"
           style={dropdownStyle}
         >
           {options.length > 0 ? (
