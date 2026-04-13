@@ -58,6 +58,8 @@ export default function App() {
 
   const [loadedKGSettings, setLoadedKGSettings] = useState<KGSettings | null>(null);
 
+  const { restoreVendorModel } = kgModelHook;
+
   const handleNeo4jLoaded = useCallback(
     (result: LoadNeo4jResponse, kgFilter: string, stats: Neo4jStats) => {
       dispatch({ type: 'SET_KG', kgId: result.kg_id, kgName: result.kg_name || kgFilter || null });
@@ -70,7 +72,7 @@ export default function App() {
       const settings = result.kg_settings;
       if (settings) {
         if (settings.provider && settings.model) {
-          kgModelHook.restoreVendorModel(settings.provider, settings.model);
+          restoreVendorModel(settings.provider, settings.model);
         }
         setLoadedKGSettings(settings);
       }
@@ -82,7 +84,7 @@ export default function App() {
       else if (stats?.complete_import) msg += ' (Complete Import)';
       showSuccess(dispatch, msg);
     },
-    [dispatch, kgModelHook],
+    [dispatch, restoreVendorModel],
   );
 
   const handleLoadKG = useCallback(
@@ -114,7 +116,7 @@ export default function App() {
           dispatch({ type: 'SET_KG_LIST', kgList: state.kgList.filter((kg) => kg.name !== kgFilter) });
           return;
         }
-        handleNeo4jLoaded(result, kgFilter, result.stats ?? {} as Neo4jStats);
+        handleNeo4jLoaded(result, kgFilter, result.stats ?? ({} as Neo4jStats));
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         showError(dispatch, `Loading failed: ${msg}`);
