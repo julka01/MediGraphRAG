@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 
 interface ChatMessageProps {
   message: string;
-  type: string;
+  type: 'user' | 'ai' | 'thinking' | 'error';
   timestamp?: string;
 }
 
@@ -44,11 +44,7 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
           'chat-bubble-error': isError,
         })}
       >
-        {isUser || isError ? (
-          <span>{message}</span>
-        ) : (
-          <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>
-        )}
+        {isUser || isError ? <span>{message}</span> : <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>}
         {isAI && (
           <button type="button" className="btn btn-ghost btn-xs opacity-50 hover:opacity-100 mt-1" onClick={handleCopy}>
             {copied ? 'copied!' : 'copy'}
