@@ -92,7 +92,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
       <div
         ref={rightSidebarRef}
         className={rightCollapsed ? 'hidden' : 'overflow-hidden'}
-        style={rightCollapsed ? undefined : { width: Math.max(rightWidth, dynamicMinWidth), minWidth: 0 }}
+        style={rightCollapsed ? undefined : { width: Math.max(rightWidth, dynamicMinWidth), minWidth: dynamicMinWidth }}
       >
         {chatPanel}
       </div>
