@@ -101,9 +101,9 @@ export const SourcesSection = memo(function SourcesSection({
   return (
     <div className="mt-3 pt-2 border-t border-base-content/5">
       <div className="flex items-center justify-between mb-1.5">
-        <div className="text-2xs uppercase tracking-wider text-base-content/40">
+        <span className="badge badge-ghost badge-sm text-2xs uppercase tracking-wider text-base-content/40">
           {count} {count === 1 ? 'Source' : 'Sources'}
-        </div>
+        </span>
         {onHighlight && (
           <button
             type="button"

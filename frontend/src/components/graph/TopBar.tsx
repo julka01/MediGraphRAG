@@ -95,7 +95,7 @@ export function TopBar() {
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
             {/* Search match count badge */}
             {state.searchTerm.trim() && matchCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 text-accent text-2xs font-semibold">
+              <span className="badge badge-soft badge-accent badge-sm gap-1 text-2xs">
                 {matchCount} found
                 <button
                   type="button"
@@ -120,7 +120,7 @@ export function TopBar() {
             )}
             {/* Highlighted nodes badge */}
             {state.highlightedCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-graph-highlight/12 text-graph-highlight text-2xs font-semibold">
+              <span className="badge badge-sm gap-1 text-2xs bg-graph-highlight/12 text-graph-highlight">
                 {state.highlightedCount} highlighted
                 <button
                   type="button"

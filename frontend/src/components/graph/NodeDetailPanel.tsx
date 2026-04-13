@@ -41,7 +41,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
           <div className="flex justify-between items-start">
             <div className="pr-6">
               <div className="font-bold text-base leading-tight">{nodeName}</div>
-              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-base-300 text-2xs text-base-content">
+              <span className="badge badge-sm bg-base-300 text-base-content gap-1 mt-1 text-2xs">
                 <span
                   className="size-2 rounded-full shrink-0"
                   style={{ backgroundColor: nodeColor }}
