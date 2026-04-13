@@ -253,8 +253,17 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
         )}
       </div>
       {/* Chat input at bottom */}
-      <div className="shrink-0 px-3 pb-3 pt-1">
+      <div className="shrink-0 px-3 pb-1.5 pt-1">
         <ChatInput onSend={handleSend} disabled={sending} ragModelHook={ragModelHook} />
+        <div className="flex items-center justify-end gap-3 mt-1 text-2xs text-base-content/30">
+          <span className="flex items-center gap-1">
+            <kbd className="kbd kbd-xs">&#x23CE;</kbd> send
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="kbd kbd-xs">&#x21E7;</kbd>
+            <kbd className="kbd kbd-xs">&#x23CE;</kbd> new line
+          </span>
+        </div>
       </div>
     </div>
   );
