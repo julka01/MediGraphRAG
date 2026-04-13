@@ -125,7 +125,7 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
         <label className="swap swap-rotate p-1 text-base-content/50 hover:text-base-content/80">
           <input
             type="checkbox"
-            className="theme-controller"
+            className="hidden"
             value="light"
             checked={theme === 'light'}
             onChange={toggleTheme}
