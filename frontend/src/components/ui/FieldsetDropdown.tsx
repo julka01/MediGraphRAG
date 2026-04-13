@@ -32,17 +32,30 @@ export function FieldsetDropdown({
 
   useEffect(() => {
     if (!open) return;
-    // Position the fixed dropdown below the fieldset
+    // Position the fixed dropdown above or below the fieldset
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom - 12;
-      setDropdownStyle({
-        position: 'fixed',
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
-        maxHeight: Math.min(288, Math.max(spaceBelow, 0)),
-      });
+      const spaceAbove = rect.top - 12;
+      const openUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+
+      if (openUp) {
+        setDropdownStyle({
+          position: 'fixed',
+          bottom: window.innerHeight - rect.top + 4,
+          left: rect.left,
+          width: rect.width,
+          maxHeight: Math.min(288, Math.max(spaceAbove, 0)),
+        });
+      } else {
+        setDropdownStyle({
+          position: 'fixed',
+          top: rect.bottom + 4,
+          left: rect.left,
+          width: rect.width,
+          maxHeight: Math.min(288, Math.max(spaceBelow, 0)),
+        });
+      }
     }
     function handleClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
