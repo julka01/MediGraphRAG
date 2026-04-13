@@ -83,6 +83,8 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
       {!rightCollapsed && (
         <div
           role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize right panel"
           className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
           onPointerDown={rightSnap.onPointerDown}
         />

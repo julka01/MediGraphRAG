@@ -136,7 +136,7 @@ export function useGraph({
           const nodeColor = ntColors[nodeType] || gTheme.highlight;
 
           let displayLabel = (node.properties?.name as string) || getNodeType(node) || String(originalId);
-          if (displayLabel.length > 20) displayLabel = `${displayLabel.substring(0, 17)}...`;
+          if (displayLabel.length > 20) displayLabel = `${displayLabel.substring(0, 17)}\u2026`;
 
           const isReferenced = referencedOriginalIds.has(originalId);
           const degree = nodeDegreeMap.get(originalId) || 0;

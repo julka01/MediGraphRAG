@@ -20,7 +20,7 @@ const ChatPanel = lazy(() => import('./components/chat/ChatPanel').then((m) => (
 
 function PanelSkeleton() {
   return (
-    <div className="flex flex-col h-full animate-pulse p-4">
+    <div className="flex flex-col h-full motion-safe:animate-pulse p-4">
       <div className="h-6 w-40 bg-base-300 rounded mb-4" />
       <div className="flex-1 bg-base-300/30 rounded" />
     </div>
@@ -45,7 +45,7 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        const textarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Ask a question…"]');
+        const textarea = document.querySelector<HTMLTextAreaElement>('textarea[name="chat-question"]');
         if (textarea) {
           textarea.focus();
           textarea.select();
@@ -88,6 +88,8 @@ export default function App() {
       {!state.panels.leftCollapsed && (
         <div
           role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize left panel"
           className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
           onPointerDown={leftSnap.onPointerDown}
         />
