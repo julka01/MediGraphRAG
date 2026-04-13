@@ -32,6 +32,8 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
 
   const handleDelete = async () => {
     const targetName = kgFilter || state.currentKGName;
+    const label = targetName || 'all knowledge graphs';
+    if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
     try {
       const result = await api.clearKG(targetName || undefined);
       const isLoadedKG = !targetName || targetName === state.currentKGName;
