@@ -83,7 +83,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
           <div className="px-4 py-3">
             <div className="text-2xs uppercase tracking-wider text-base-content/40 mb-2">Properties</div>
             {Object.keys(props).length > 0 ? (
-              <table className="w-full text-xs">
+              <table className="table table-xs w-full">
                 <tbody>
                   {Object.entries(props).map(([k, v]) => (
                     <tr key={k} className="border-b border-base-300/30">
