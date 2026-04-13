@@ -20,7 +20,7 @@ export function useDynamicMinWidth(containerRef: React.RefObject<HTMLElement | n
       if (!controlsRow) return;
       const prev = controlsRow.style.width;
       controlsRow.style.width = 'max-content';
-      const natural = controlsRow.scrollWidth + 24;
+      const natural = controlsRow.scrollWidth + 40;
       controlsRow.style.width = prev;
       setMinWidth(Math.max(240, natural));
     }
