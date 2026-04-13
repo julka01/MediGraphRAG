@@ -95,7 +95,7 @@ export const SourcesSection = memo(function SourcesSection({
         {onHighlight && (
           <button
             type="button"
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs transition-colors ${
+            className={`inline-flex items-center gap-1 px-2 py-0.5 mr-2 rounded-full text-2xs transition-colors ${
               isHighlighted
                 ? 'bg-graph-highlight/15 text-graph-highlight'
                 : 'text-base-content/40 hover:text-base-content/60'
