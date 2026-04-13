@@ -215,8 +215,8 @@ export function KGBuildSection({
       />
 
       {/* Max Chunks */}
-      <fieldset className="border border-base-content/20 focus-within:border-primary/50 rounded-lg px-3 pb-2 pt-0 transition-colors">
-        <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">Max Chunks</legend>
+      <fieldset className="fieldset border border-base-content/20 focus-within:border-primary/50 transition-colors">
+        <legend className="fieldset-legend text-2xs text-base-content/50">Max Chunks</legend>
         <input
           type="number"
           name="max-chunks"
@@ -230,8 +230,8 @@ export function KGBuildSection({
       </fieldset>
 
       {/* KG Name */}
-      <fieldset className="border border-base-content/20 focus-within:border-primary/50 rounded-lg px-3 pb-2 pt-0 transition-colors">
-        <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">KG Name</legend>
+      <fieldset className="fieldset border border-base-content/20 focus-within:border-primary/50 transition-colors">
+        <legend className="fieldset-legend text-2xs text-base-content/50">KG Name</legend>
         <input
           type="text"
           name="kg-name"
