@@ -21,17 +21,12 @@ export function Notifications() {
   const isError = notif.type === 'error';
 
   return (
-    <div className="fixed top-3 right-3 z-50" role="status" aria-live="polite">
-      <div
-        className={clsx(
-          'flex items-center gap-2 bg-base-100 border rounded-lg px-3 py-2 shadow-lg max-w-xs',
-          isError ? 'border-error/40 border-l-[3px] border-l-error' : 'border-success/40 border-l-[3px] border-l-success',
-        )}
-      >
-        <span className="flex-1 text-sm text-base-content">{notif.message}</span>
+    <div className="toast toast-top toast-end z-50" role="status" aria-live="polite">
+      <div className={clsx('alert max-w-xs shadow-lg', isError ? 'alert-error' : 'alert-success')}>
+        <span className="flex-1 text-sm">{notif.message}</span>
         <button
           type="button"
-          className="opacity-50 hover:opacity-100 transition-opacity shrink-0"
+          className="btn btn-ghost btn-xs btn-circle opacity-60 hover:opacity-100"
           onClick={() => dispatch({ type: 'CLEAR_NOTIFICATION' })}
           aria-label="Dismiss notification"
         >
