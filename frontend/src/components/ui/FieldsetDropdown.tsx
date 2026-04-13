@@ -37,7 +37,7 @@ export function FieldsetDropdown({
       const rect = containerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom - 12;
       const spaceAbove = rect.top - 12;
-      const openUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+      const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
 
       if (openUp) {
         setDropdownStyle({
