@@ -33,12 +33,7 @@ export function ModelSelector({ vendorLabel, modelLabel, vendorHook }: ModelSele
 
   return (
     <>
-      <FieldsetDropdown
-        label={vendorLabel}
-        options={VENDORS}
-        value={vendor}
-        onChange={changeVendor}
-      />
+      <FieldsetDropdown label={vendorLabel} options={VENDORS} value={vendor} onChange={changeVendor} />
       <FieldsetDropdown
         label={modelLabel}
         options={modelOptions}

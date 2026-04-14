@@ -68,8 +68,10 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle, onAll, onNone }
         <input
           type="checkbox"
           checked={isChecked}
-          ref={(el) => { if (el) el.indeterminate = isIndeterminate; }}
-          onChange={() => (isChecked || isIndeterminate) ? onNone() : onAll()}
+          ref={(el) => {
+            if (el) el.indeterminate = isIndeterminate;
+          }}
+          onChange={() => (isChecked || isIndeterminate ? onNone() : onAll())}
           className="checkbox rounded-sm border-base-content/30 [--chkbg:transparent] checked:bg-transparent indeterminate:bg-transparent size-[1.5rem] shrink-0 translate-y-px shadow-none text-base-content/60"
           aria-label={isChecked ? 'Deselect all' : 'Select all'}
         />
@@ -97,13 +99,7 @@ function ChipColumn({ placeholder, entries, activeSet, onToggle, onAll, onNone }
       {/* Scrollable chips */}
       <div className="flex flex-wrap gap-1 overflow-y-auto min-h-0">
         {filtered.map(([type, color]) => (
-          <Chip
-            key={type}
-            type={type}
-            color={color}
-            active={activeSet.has(type)}
-            onClick={() => onToggle(type)}
-          />
+          <Chip key={type} type={type} color={color} active={activeSet.has(type)} onClick={() => onToggle(type)} />
         ))}
       </div>
     </div>
@@ -130,14 +126,8 @@ export const FilterChips = memo(function FilterChips() {
   const rawActiveRels = state.currentFilters.relationshipTypes;
 
   // null = all selected (uninitialized); materialize for display
-  const activeNodes = useMemo(
-    () => rawActiveNodes ?? new Set(nodeTypes.map(([t]) => t)),
-    [rawActiveNodes, nodeTypes],
-  );
-  const activeRels = useMemo(
-    () => rawActiveRels ?? new Set(relTypes.map(([t]) => t)),
-    [rawActiveRels, relTypes],
-  );
+  const activeNodes = useMemo(() => rawActiveNodes ?? new Set(nodeTypes.map(([t]) => t)), [rawActiveNodes, nodeTypes]);
+  const activeRels = useMemo(() => rawActiveRels ?? new Set(relTypes.map(([t]) => t)), [rawActiveRels, relTypes]);
 
   function selectAllNodes() {
     dispatch({ type: 'SET_FILTERS', nodeTypes: new Set(nodeTypes.map(([t]) => t)) });

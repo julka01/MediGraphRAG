@@ -4,13 +4,14 @@ import type { AppAction, AppContextValue, AppState, Layout, PanelState, ViewStat
 const AppContext = createContext<AppContextValue | null>(null);
 
 const PANEL_STATE_KEY = 'panel-state';
+const DEFAULT_RIGHT_PANEL_WIDTH = 348;
 
 const initialPanelState: PanelState = {
   leftCollapsed: false,
   rightCollapsed: false,
   bottomCollapsed: false,
   topCollapsed: true,
-  rightWidth: 320,
+  rightWidth: DEFAULT_RIGHT_PANEL_WIDTH,
   bottomHeight: 120,
 };
 
@@ -18,7 +19,15 @@ function loadPanelState(): PanelState {
   try {
     const stored = localStorage.getItem(PANEL_STATE_KEY);
     if (stored) {
-      return { ...initialPanelState, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored) as Partial<PanelState>;
+      const parsedRightWidth = Number(parsed.rightWidth);
+      return {
+        ...initialPanelState,
+        ...parsed,
+        rightWidth: Number.isFinite(parsedRightWidth)
+          ? Math.max(DEFAULT_RIGHT_PANEL_WIDTH, parsedRightWidth)
+          : DEFAULT_RIGHT_PANEL_WIDTH,
+      };
     }
   } catch {
     // Ignore parse errors and fall back to defaults
@@ -47,7 +56,8 @@ const initialState: AppState = {
   relationshipTypeColors: {},
   currentFilters: { nodeTypes: null, relationshipTypes: null },
   clusters: {},
-  physicsEnabled: true,
+  physicsEnabled: false,
+  layoutSpacing: 0.52,
   nodeSizeMetric: 'degree',
   showEdgeLabels: true,
   activeView: 'kg',
@@ -82,7 +92,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         currentFilters: {
           nodeTypes: action.nodeTypes !== undefined ? new Set(action.nodeTypes) : state.currentFilters.nodeTypes,
-          relationshipTypes: action.relationshipTypes !== undefined ? new Set(action.relationshipTypes) : state.currentFilters.relationshipTypes,
+          relationshipTypes:
+            action.relationshipTypes !== undefined
+              ? new Set(action.relationshipTypes)
+              : state.currentFilters.relationshipTypes,
         },
       };
     }
@@ -92,6 +105,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, physicsEnabled: !state.physicsEnabled };
     case 'SET_PHYSICS':
       return { ...state, physicsEnabled: action.enabled };
+    case 'SET_LAYOUT_SPACING':
+      return { ...state, layoutSpacing: Math.min(1, Math.max(0, action.spacing)) };
     case 'SET_NODE_SIZE_METRIC':
       return { ...state, nodeSizeMetric: action.metric };
     case 'TOGGLE_EDGE_LABELS':
@@ -133,13 +148,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, panels };
     }
     case 'CLOSE_PANEL': {
-      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const)[action.payload];
+      const key = (
+        { left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const
+      )[action.payload];
       const panels = { ...state.panels, [key]: true };
       savePanelState(panels);
       return { ...state, panels };
     }
     case 'OPEN_PANEL': {
-      const key = ({ left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const)[action.payload];
+      const key = (
+        { left: 'leftCollapsed', right: 'rightCollapsed', bottom: 'bottomCollapsed', top: 'topCollapsed' } as const
+      )[action.payload];
       const panels = { ...state.panels, [key]: false };
       savePanelState(panels);
       return { ...state, panels };

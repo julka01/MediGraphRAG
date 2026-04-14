@@ -152,10 +152,10 @@ export function KGBuildSection({
       <button
         type="button"
         className={clsx(
-          'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+          'flex w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left text-sm transition-all bg-base-100/45',
           file
-            ? 'border-file-selected-border text-base-content'
-            : 'border-dashed border-base-content/30 text-base-content/50 hover:bg-base-content/5 hover:text-base-content/80',
+            ? 'border-file-selected-border text-base-content shadow-sm'
+            : 'border-dashed border-base-content/18 text-base-content/55 hover:border-primary/35 hover:bg-base-100/70 hover:text-base-content',
         )}
         onClick={() => fileRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
@@ -181,10 +181,10 @@ export function KGBuildSection({
       <button
         type="button"
         className={clsx(
-          'flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+          'flex w-full items-center gap-2 rounded-2xl border px-3 py-3 text-left text-sm transition-all bg-base-100/45',
           ontologyFile
-            ? 'border-file-selected-border text-base-content'
-            : 'border-dashed border-base-content/30 text-base-content/50 hover:bg-base-content/5 hover:text-base-content/80',
+            ? 'border-file-selected-border text-base-content shadow-sm'
+            : 'border-dashed border-base-content/18 text-base-content/55 hover:border-primary/35 hover:bg-base-100/70 hover:text-base-content',
         )}
         onClick={() => ontologyRef.current?.click()}
         onDragOver={(e) => e.preventDefault()}
@@ -215,7 +215,7 @@ export function KGBuildSection({
       />
 
       {/* Max Chunks */}
-      <fieldset className="border rounded-lg px-3 pb-2 pt-0 border-base-content/20 focus-within:border-primary/50 transition-colors">
+      <fieldset className="rounded-2xl border border-base-content/12 bg-base-100/45 px-3 pb-2 pt-0 transition-colors focus-within:border-primary/50">
         <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">Max Chunks</legend>
         <input
           type="number"
@@ -230,7 +230,7 @@ export function KGBuildSection({
       </fieldset>
 
       {/* KG Name */}
-      <fieldset className="border rounded-lg px-3 pb-2 pt-0 border-base-content/20 focus-within:border-primary/50 transition-colors">
+      <fieldset className="rounded-2xl border border-base-content/12 bg-base-100/45 px-3 pb-2 pt-0 transition-colors focus-within:border-primary/50">
         <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">KG Name</legend>
         <input
           type="text"
@@ -247,10 +247,10 @@ export function KGBuildSection({
       <button
         type="button"
         className={clsx(
-          'btn btn-sm w-full shadow-none',
+          'btn btn-sm h-10 w-full rounded-2xl shadow-none transition-all',
           creating || !canCreate
-            ? 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none'
-            : 'bg-transparent border border-primary/50 text-primary hover:bg-primary hover:text-primary-content',
+            ? 'bg-transparent border border-base-content/15 text-base-content/30 pointer-events-none'
+            : 'border border-primary/20 bg-primary text-primary-content hover:-translate-y-px hover:brightness-105 hover:shadow-lg hover:shadow-primary/20',
         )}
         onClick={handleCreate}
         disabled={creating || !canCreate}

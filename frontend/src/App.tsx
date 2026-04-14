@@ -90,7 +90,7 @@ export default function App() {
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize left panel"
-          className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+          className="app-divider-v hidden md:block w-1 shrink-0 cursor-col-resize transition-colors"
           onPointerDown={leftSnap.onPointerDown}
         />
       )}

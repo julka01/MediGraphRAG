@@ -51,10 +51,7 @@ describe('api', () => {
     it('calls POST /clear_kg with FormData', async () => {
       mockFetch.mockResolvedValue(okResponse({ message: 'cleared' }));
       await api.clearKG();
-      expect(mockFetch).toHaveBeenCalledWith(
-        '/clear_kg',
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(mockFetch).toHaveBeenCalledWith('/clear_kg', expect.objectContaining({ method: 'POST' }));
     });
 
     it('includes kg_name in FormData when provided', async () => {

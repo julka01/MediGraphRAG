@@ -9,7 +9,7 @@ export interface ThemeContextValue {
 /* Views & metrics */
 export type ActiveView = 'kg' | 'chat';
 export type Layout = 'split' | 'graph-only' | 'chat-only';
-export type NodeSizeMetric = 'fixed' | 'degree' | 'betweenness';
+export type NodeSizeMetric = 'uniform' | 'degree' | 'inDegree' | 'outDegree' | 'pageRank';
 export type NotificationType = 'error' | 'success';
 
 /* Notification */
@@ -74,7 +74,8 @@ export interface AppState {
   currentFilters: Filters;
   clusters: Record<string, unknown>;
   physicsEnabled: boolean;
-  nodeSizeMetric: string;
+  layoutSpacing: number;
+  nodeSizeMetric: NodeSizeMetric;
   showEdgeLabels: boolean;
   activeView: ActiveView;
   layout: Layout;
@@ -103,7 +104,8 @@ export type AppAction =
   | { type: 'CLEAR_FILTERS' }
   | { type: 'TOGGLE_PHYSICS' }
   | { type: 'SET_PHYSICS'; enabled: boolean }
-  | { type: 'SET_NODE_SIZE_METRIC'; metric: string }
+  | { type: 'SET_LAYOUT_SPACING'; spacing: number }
+  | { type: 'SET_NODE_SIZE_METRIC'; metric: NodeSizeMetric }
   | { type: 'TOGGLE_EDGE_LABELS' }
   | { type: 'SET_VIEW'; view: ActiveView }
   | { type: 'TOGGLE_SIDEBAR' }

@@ -25,9 +25,10 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
   const props = (node.properties || {}) as Record<string, unknown>;
 
   const [showAllConnections, setShowAllConnections] = useState(false);
+  const currentNodeId = String(node.id ?? node.originalId);
   const totalConnections = edges.length;
-  const outEdges = edges.filter((e) => e.from === String(node.id ?? node.originalId));
-  const inEdges = edges.filter((e) => e.to === String(node.id ?? node.originalId));
+  const outEdges = edges.filter((e) => e.from === currentNodeId);
+  const inEdges = edges.filter((e) => e.to === currentNodeId);
   const outCount = outEdges.length;
   const inCount = inEdges.length;
 
@@ -35,17 +36,13 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
     <div className="absolute top-0 right-0 w-72 h-full z-20 motion-safe:animate-slide-from-right flex">
       <div className="w-1 shrink-0 bg-base-300" />
       <div className="card bg-base-100 h-full shadow-lg rounded-none overflow-hidden flex flex-col flex-1">
-
         {/* Header */}
         <div className="px-4 py-3 bg-base-200 shrink-0">
           <div className="flex justify-between items-start">
             <div className="pr-6">
               <div className="font-bold text-base leading-tight">{nodeName}</div>
               <span className="badge badge-sm bg-base-300 text-base-content gap-1 mt-1 text-2xs">
-                <span
-                  className="size-2 rounded-full shrink-0"
-                  style={{ backgroundColor: nodeColor }}
-                />
+                <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: nodeColor }} />
                 {nodeType}
               </span>
             </div>
@@ -78,7 +75,6 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1">
-
           {/* Properties table */}
           <div className="px-4 py-3">
             <div className="text-2xs uppercase tracking-wider text-base-content/40 mb-2">Properties</div>
@@ -102,9 +98,7 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
                         ) : (
                           <span
                             className={
-                              /^[a-z0-9_-]+$/i.test(String(v)) && String(v).length > 8
-                                ? 'font-mono text-2xs'
-                                : ''
+                              /^[a-z0-9_-]+$/i.test(String(v)) && String(v).length > 8 ? 'font-mono text-2xs' : ''
                             }
                           >
                             {String(v)}
@@ -126,12 +120,18 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
               <div className="text-2xs uppercase tracking-wider text-base-content/40 mb-2">Connections</div>
               <div className="space-y-1">
                 {(showAllConnections ? edges : edges.slice(0, 5)).map((edge, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded bg-base-300/30 text-xs"
-                  >
-                    <span className="text-base-content/50 shrink-0">{edge.label} →</span>
-                    <span className="truncate">{edge.toLabel || edge.to}</span>
+                  <div key={i} className="flex items-center gap-1.5 rounded bg-base-300/30 px-2 py-1 text-xs">
+                    <span
+                      className={`badge badge-xs shrink-0 ${edge.from === currentNodeId ? 'badge-primary badge-outline' : 'badge-ghost'}`}
+                    >
+                      {edge.from === currentNodeId ? 'OUT' : 'IN'}
+                    </span>
+                    <span className="text-base-content/50 shrink-0">
+                      {edge.from === currentNodeId ? `${edge.label} →` : `← ${edge.label}`}
+                    </span>
+                    <span className="truncate">
+                      {edge.from === currentNodeId ? edge.toLabel || edge.to : edge.fromLabel || edge.from}
+                    </span>
                   </div>
                 ))}
                 {edges.length > 5 && (
@@ -146,7 +146,6 @@ export function NodeDetailPanel({ node, nodeColor, edges, onClose }: NodeDetailP
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>

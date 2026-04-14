@@ -20,9 +20,7 @@ function Section({ title, content, defaultExpanded = false, formatter }: Section
   return (
     <div className="collapse collapse-arrow mt-2 bg-transparent">
       <input type="checkbox" defaultChecked={defaultExpanded} aria-label={`Toggle ${title}`} />
-      <div className="collapse-title text-xs font-semibold px-0 min-h-0 py-1 after:text-base-content/40">
-        {title}
-      </div>
+      <div className="collapse-title text-xs font-semibold px-0 min-h-0 py-1 after:text-base-content/40">{title}</div>
       <div className="collapse-content text-sm px-0">
         <Markdown remarkPlugins={[remarkGfm]}>{formatted}</Markdown>
       </div>

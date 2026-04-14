@@ -234,23 +234,14 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
   return (
     <div className="flex h-full flex-col border-l border-base-content/10 bg-base-200/55 backdrop-blur-xl">
-      <div className="shrink-0 border-b border-base-content/10 bg-base-100/55 px-4 py-3 backdrop-blur-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[0.65rem] font-medium uppercase tracking-[0.22em] text-base-content/45">Chat</p>
-            <h2 className="mt-1 text-sm font-semibold text-base-content">Evidence-aware RAG assistant</h2>
-            <p className="mt-1 text-xs leading-5 text-base-content/58">
-              Ask for grounded answers, trace graph support, and inspect supporting evidence.
-            </p>
-          </div>
-          <div className="flex max-w-[14rem] flex-wrap justify-end gap-2 text-2xs">
-            <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
-              {state.currentKGName ? `KG · ${state.currentKGName}` : 'No KG loaded'}
-            </span>
-            <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
-              {ragModelHook.vendor.toUpperCase()} · {modelLabel}
-            </span>
-          </div>
+      <div className="shrink-0 border-b border-base-content/10 bg-base-100/45 px-4 py-2 backdrop-blur-sm">
+        <div className="flex flex-wrap justify-end gap-2 text-2xs">
+          <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
+            {state.currentKGName ? `KG · ${state.currentKGName}` : 'No KG loaded'}
+          </span>
+          <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
+            {ragModelHook.vendor.toUpperCase()} · {modelLabel}
+          </span>
         </div>
       </div>
 

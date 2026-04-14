@@ -54,10 +54,12 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
   }, [autoResize]);
 
   // Resize on mount in case of pre-filled content
-  useEffect(() => { autoResize(); }, [autoResize]);
+  useEffect(() => {
+    autoResize();
+  }, [autoResize]);
 
   return (
-    <div className="border border-base-content/20 rounded-xl p-2 focus-within:border-primary/50 transition-colors">
+    <div className="rounded-2xl border border-base-content/12 bg-base-100/70 p-2.5 shadow-sm transition-all focus-within:border-primary/50 focus-within:shadow-lg focus-within:shadow-primary/8">
       <textarea
         ref={inputRef}
         aria-label="Ask about the knowledge graph"
@@ -67,16 +69,12 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
         onKeyDown={handleKeyDown}
         onInput={handleInput}
         disabled={disabled}
-        className="w-full bg-transparent text-sm resize-none focus-visible:outline-none min-h-6 max-h-[33vh] overflow-y-auto"
+        className="min-h-6 max-h-[33vh] w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 focus-visible:outline-none"
         rows={1}
       />
-      <div data-chat-controls className="flex items-center gap-2 mt-1.5">
-        <div className="flex items-center gap-3 min-w-0">
-          <ChatDropUp
-            options={VENDORS}
-            value={ragModelHook.vendor}
-            onChange={(v) => ragModelHook.changeVendor(v)}
-          />
+      <div data-chat-controls className="mt-2 flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <ChatDropUp options={VENDORS} value={ragModelHook.vendor} onChange={(v) => ragModelHook.changeVendor(v)} />
           <ChatDropUp
             options={ragModelHook.models}
             value={ragModelHook.selectedModel}
@@ -88,14 +86,10 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
           type="button"
           onClick={handleSend}
           disabled={disabled}
-          className="size-7 shrink-0 ml-auto rounded-full bg-primary text-primary-content flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-40"
+          className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-content shadow-lg shadow-primary/15 transition-all hover:-translate-y-px hover:brightness-105 disabled:opacity-40"
           aria-label="Send message"
         >
-          {disabled ? (
-            <span className="loading loading-spinner loading-xs" />
-          ) : (
-            <ArrowUpIcon className="size-4" />
-          )}
+          {disabled ? <span className="loading loading-spinner loading-xs" /> : <ArrowUpIcon className="size-4" />}
         </button>
       </div>
     </div>

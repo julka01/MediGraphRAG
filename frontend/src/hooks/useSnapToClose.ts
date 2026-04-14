@@ -16,7 +16,14 @@ interface UseSnapToCloseOptions {
  * resize-handle element being unmounted mid-drag (which happens when the
  * panel snaps closed and React removes it from the tree).
  */
-export function useSnapToClose({ edge, minSize, onClose, onOpen, onResize, snapThreshold = 40 }: UseSnapToCloseOptions) {
+export function useSnapToClose({
+  edge,
+  minSize,
+  onClose,
+  onOpen,
+  onResize,
+  snapThreshold = 40,
+}: UseSnapToCloseOptions) {
   const dragging = useRef(false);
   const snapped = useRef(false);
 
@@ -65,7 +72,7 @@ export function useSnapToClose({ edge, minSize, onClose, onOpen, onResize, snapT
     }
 
     if (!snapped.current) {
-      const maxSize = (ed === 'bottom' || ed === 'top') ? windowHeight / 2 : windowWidth / 2;
+      const maxSize = ed === 'bottom' || ed === 'top' ? windowHeight / 2 : windowWidth / 2;
       const clamped = Math.max(min, Math.min(maxSize, newSize));
       cbRef.current.onResize(clamped);
     }

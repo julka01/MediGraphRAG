@@ -14,6 +14,139 @@ interface UseGraphOptions {
   applySearch?: (term: string) => void;
 }
 
+function parseColor(color: string) {
+  const value = color.trim();
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (hex) {
+    const raw = hex[1];
+    const expanded =
+      raw.length === 3
+        ? raw
+            .split('')
+            .map((char) => char + char)
+            .join('')
+        : raw;
+    return {
+      r: Number.parseInt(expanded.slice(0, 2), 16),
+      g: Number.parseInt(expanded.slice(2, 4), 16),
+      b: Number.parseInt(expanded.slice(4, 6), 16),
+    };
+  }
+
+  const rgb = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (rgb) {
+    return {
+      r: Number.parseInt(rgb[1], 10),
+      g: Number.parseInt(rgb[2], 10),
+      b: Number.parseInt(rgb[3], 10),
+    };
+  }
+
+  return null;
+}
+
+function blendColors(from: string, to: string, weight: number) {
+  const source = parseColor(from);
+  const target = parseColor(to);
+  if (!source || !target) return to;
+
+  const clamped = Math.min(1, Math.max(0, weight));
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * clamped);
+  return `rgb(${mix(source.r, target.r)}, ${mix(source.g, target.g)}, ${mix(source.b, target.b)})`;
+}
+
+function withAlpha(color: string, alpha: number) {
+  const parsed = parseColor(color);
+  if (!parsed) return color;
+  const clamped = Math.min(1, Math.max(0, alpha));
+  return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${clamped})`;
+}
+
+function scaleNodeWidth(baseWidth: number, value: number, maxValue: number) {
+  if (maxValue <= 0 || value <= 0) return baseWidth;
+  const normalized = Math.min(1, value / maxValue);
+  return Math.round(baseWidth * (1 + 2.6 * Math.sqrt(normalized)));
+}
+
+function computePageRank(nodeIds: Array<string | number>, relationships: GraphRelationship[], damping = 0.85, iterations = 24) {
+  const pageRank = new Map<string | number, number>();
+  const outbound = new Map<string | number, Array<string | number>>();
+  const nodeSet = new Set(nodeIds);
+  const count = nodeIds.length;
+  if (count === 0) return pageRank;
+
+  const initialScore = 1 / count;
+  nodeIds.forEach((nodeId) => {
+    pageRank.set(nodeId, initialScore);
+    outbound.set(nodeId, []);
+  });
+
+  relationships.forEach((rel) => {
+    const fromId = rel.from || rel.start || rel.source;
+    const toId = rel.to || rel.end || rel.target;
+    if (fromId == null || toId == null) return;
+    if (!nodeSet.has(fromId) || !nodeSet.has(toId)) return;
+    outbound.get(fromId)?.push(toId);
+  });
+
+  for (let step = 0; step < iterations; step += 1) {
+    const next = new Map<string | number, number>();
+    nodeIds.forEach((nodeId) => {
+      next.set(nodeId, (1 - damping) / count);
+    });
+
+    let danglingMass = 0;
+    nodeIds.forEach((nodeId) => {
+      const score = pageRank.get(nodeId) ?? 0;
+      const targets = outbound.get(nodeId) ?? [];
+      if (targets.length === 0) {
+        danglingMass += score;
+        return;
+      }
+      const share = (damping * score) / targets.length;
+      targets.forEach((targetId) => {
+        next.set(targetId, (next.get(targetId) ?? 0) + share);
+      });
+    });
+
+    const danglingShare = (damping * danglingMass) / count;
+    nodeIds.forEach((nodeId) => {
+      next.set(nodeId, (next.get(nodeId) ?? 0) + danglingShare);
+    });
+
+    pageRank.clear();
+    next.forEach((value, key) => pageRank.set(key, value));
+  }
+
+  return pageRank;
+}
+
+function getPhysicsSettings(isLargeGraph: boolean, spacing: number) {
+  const clamped = Math.min(1, Math.max(0, spacing));
+  const spacingFactor = 0.72 + clamped * 1.28;
+
+  return {
+    enabled: true,
+    stabilization: {
+      enabled: true,
+      iterations: Math.round((isLargeGraph ? 360 : 280) + clamped * (isLargeGraph ? 220 : 180)),
+      updateInterval: 25,
+    },
+    barnesHut: {
+      gravitationalConstant: Math.round((isLargeGraph ? -2300 : -1550) * (0.84 + clamped * 1.06)),
+      centralGravity: Math.max(0.08, (isLargeGraph ? 0.34 : 0.42) - clamped * 0.22),
+      springLength: Math.round((isLargeGraph ? 94 : 118) * spacingFactor),
+      springConstant: Math.max(0.018, (isLargeGraph ? 0.06 : 0.072) - clamped * 0.036),
+      damping: Math.max(0.16, (isLargeGraph ? 0.5 : 0.56) - clamped * 0.22),
+      avoidOverlap: (isLargeGraph ? 0.12 : 0.18) + clamped * (isLargeGraph ? 0.12 : 0.18),
+    },
+    solver: 'barnesHut',
+    minVelocity: Math.max(0.45, 1.15 - clamped * 0.55),
+    maxVelocity: Math.round((isLargeGraph ? 22 : 28) + clamped * (isLargeGraph ? 26 : 36)),
+    timestep: 0.32 + clamped * 0.08,
+  };
+}
+
 export function useGraph({
   containerRef,
   appState,
@@ -24,14 +157,16 @@ export function useGraph({
   onNodeClick,
   applySearch,
 }: UseGraphOptions) {
-  const { graphData, highlightedNodes, currentFilters, searchTerm, physicsEnabled, showEdgeLabels, nodeSizeMetric } =
+  const { graphData, highlightedNodes, currentFilters, searchTerm, physicsEnabled, layoutSpacing, showEdgeLabels, nodeSizeMetric } =
     appState;
 
   // Refs for toggle state so initializeGraph reads latest values without re-creating
-  const physicsRef = useRef(physicsEnabled);
+  const physicsEnabledRef = useRef(physicsEnabled);
+  const spacingRef = useRef(layoutSpacing);
   const labelsRef = useRef(showEdgeLabels);
   const sizeMetricRef = useRef(nodeSizeMetric);
-  physicsRef.current = physicsEnabled;
+  physicsEnabledRef.current = physicsEnabled;
+  spacingRef.current = layoutSpacing;
   labelsRef.current = showEdgeLabels;
   sizeMetricRef.current = nodeSizeMetric;
 
@@ -41,14 +176,8 @@ export function useGraph({
       if (!containerRef.current) return;
 
       const gTheme = getGraphTheme();
-
-      const nodeDegreeMap = new Map<string | number, number>();
-      (data.relationships || []).forEach((rel: GraphRelationship) => {
-        const f = rel.from || rel.start || rel.source;
-        const t = rel.to || rel.end || rel.target;
-        if (f != null) nodeDegreeMap.set(f, (nodeDegreeMap.get(f) || 0) + 1);
-        if (t != null) nodeDegreeMap.set(t, (nodeDegreeMap.get(t) || 0) + 1);
-      });
+      const allNodes = data.nodes || [];
+      const allRelationships = data.relationships || [];
 
       if (networkRef.current) {
         try {
@@ -84,7 +213,7 @@ export function useGraph({
       const normHighlighted = new Set([...highlightedNodes].map(normName));
       const referencedOriginalIds = new Set<string | number>();
       if (normHighlighted.size > 0) {
-        (data.nodes || []).forEach((node: GraphNode) => {
+        allNodes.forEach((node: GraphNode) => {
           const p = node.properties || {};
           const candidates = [p.name as string, p.id as string, p.title as string].filter(Boolean);
           if (candidates.some((c) => normHighlighted.has(normName(c)))) {
@@ -96,9 +225,7 @@ export function useGraph({
 
       const nodeIdMap = new Map<string | number, number>();
       const BASE_WIDTH = 60;
-      const maxDegree = Math.max(...Array.from(nodeDegreeMap.values()), 1);
-
-      const processedNodes = (data.nodes || [])
+      const filteredNodes = allNodes
         .filter((node: GraphNode) => {
           const nodeFilter = currentFilters.nodeTypes;
           const relFilter = currentFilters.relationshipTypes;
@@ -113,14 +240,47 @@ export function useGraph({
             return nodeFilter.has(getNodeType(node));
           }
           if (relFilter !== null && relFilter.size > 0) {
-            return data.relationships.some(
+            return allRelationships.some(
               (rel: GraphRelationship) =>
                 relFilter.has(rel.type || 'Unknown') &&
                 ((rel.from || rel.start || rel.source) === node.id || (rel.to || rel.end || rel.target) === node.id),
             );
           }
           return true;
-        })
+        });
+
+      const visibleOriginalIds = new Set(filteredNodes.map((node) => node.id));
+      const filteredRelationships = allRelationships.filter((rel: GraphRelationship) => {
+        const relFilter = currentFilters.relationshipTypes;
+        if (relFilter !== null && relFilter.size === 0) return false;
+        if (relFilter !== null && relFilter.size > 0 && !relFilter.has(rel.type || 'Unknown')) return false;
+
+        const fromOrigId = rel.from || rel.start || rel.source;
+        const toOrigId = rel.to || rel.end || rel.target;
+        if (fromOrigId == null || toOrigId == null) return false;
+        return visibleOriginalIds.has(fromOrigId) && visibleOriginalIds.has(toOrigId);
+      });
+
+      const totalDegreeMap = new Map<string | number, number>();
+      const inDegreeMap = new Map<string | number, number>();
+      const outDegreeMap = new Map<string | number, number>();
+      filteredRelationships.forEach((rel: GraphRelationship) => {
+        const fromOrigId = rel.from || rel.start || rel.source;
+        const toOrigId = rel.to || rel.end || rel.target;
+        if (fromOrigId == null || toOrigId == null) return;
+        outDegreeMap.set(fromOrigId, (outDegreeMap.get(fromOrigId) || 0) + 1);
+        inDegreeMap.set(toOrigId, (inDegreeMap.get(toOrigId) || 0) + 1);
+        totalDegreeMap.set(fromOrigId, (totalDegreeMap.get(fromOrigId) || 0) + 1);
+        totalDegreeMap.set(toOrigId, (totalDegreeMap.get(toOrigId) || 0) + 1);
+      });
+
+      const pageRankMap = computePageRank(Array.from(visibleOriginalIds), filteredRelationships);
+      const maxDegree = Math.max(...Array.from(totalDegreeMap.values()), 1);
+      const maxInDegree = Math.max(...Array.from(inDegreeMap.values()), 1);
+      const maxOutDegree = Math.max(...Array.from(outDegreeMap.values()), 1);
+      const maxPageRank = Math.max(...Array.from(pageRankMap.values()), 1e-6);
+
+      const processedNodes = filteredNodes
         .map((node: GraphNode) => {
           const originalId = node.id;
           let newId: number;
@@ -139,9 +299,21 @@ export function useGraph({
           if (displayLabel.length > 20) displayLabel = `${displayLabel.substring(0, 17)}\u2026`;
 
           const isReferenced = referencedOriginalIds.has(originalId);
-          const degree = nodeDegreeMap.get(originalId) || 0;
-          const degreeWidth = Math.round(BASE_WIDTH * (1 + 2.5 * (degree / maxDegree)));
-          const nodeWidth = sizeMetricRef.current === 'uniform' ? BASE_WIDTH : degreeWidth;
+          const degree = totalDegreeMap.get(originalId) || 0;
+          const inDegree = inDegreeMap.get(originalId) || 0;
+          const outDegree = outDegreeMap.get(originalId) || 0;
+          const pageRank = pageRankMap.get(originalId) || 0;
+          const pageRankNorm = maxPageRank > 0 ? Math.min(1, pageRank / maxPageRank) : 0;
+          const pageRankHeatEnabled = sizeMetricRef.current === 'pageRank';
+          const metricWidths = {
+            uniform: BASE_WIDTH,
+            degree: scaleNodeWidth(BASE_WIDTH, degree, maxDegree),
+            inDegree: scaleNodeWidth(BASE_WIDTH, inDegree, maxInDegree),
+            outDegree: scaleNodeWidth(BASE_WIDTH, outDegree, maxOutDegree),
+            pageRank: scaleNodeWidth(BASE_WIDTH, pageRank, maxPageRank),
+          };
+          const nodeWidth = metricWidths[sizeMetricRef.current];
+          const nodeMass = isReferenced ? 2.8 : 1.05 + 1.5 * (degree / maxDegree);
 
           let finalColor: {
             background: string;
@@ -150,15 +322,34 @@ export function useGraph({
             hover: { background: string; border: string };
           };
           let borderWidth: number, opacity: number;
+          let shadow: boolean | Record<string, unknown> = false;
           if (!isHighlightMode) {
+            const heatedBackground = pageRankHeatEnabled
+              ? blendColors(gTheme.dimmedNodeBg, nodeColor, 0.24 + pageRankNorm * 0.76)
+              : nodeColor;
+            const heatedBorder = pageRankHeatEnabled
+              ? blendColors('rgba(255,255,255,0.18)', gTheme.highlight, 0.12 + pageRankNorm * 0.6)
+              : 'rgba(255,255,255,0.25)';
             finalColor = {
-              background: nodeColor,
-              border: 'rgba(255,255,255,0.25)',
-              highlight: { background: nodeColor, border: gTheme.highlight },
-              hover: { background: nodeColor, border: 'rgba(255,255,255,0.6)' },
+              background: heatedBackground,
+              border: heatedBorder,
+              highlight: { background: heatedBackground, border: gTheme.highlight },
+              hover: {
+                background: heatedBackground,
+                border: pageRankHeatEnabled ? blendColors(heatedBorder, gTheme.highlight, 0.4) : 'rgba(255,255,255,0.6)',
+              },
             };
-            borderWidth = 2;
+            borderWidth = pageRankHeatEnabled ? 2 + pageRankNorm * 2.2 : 2;
             opacity = 1;
+            if (pageRankHeatEnabled && pageRankNorm > 0.35) {
+              shadow = {
+                enabled: true,
+                color: withAlpha(gTheme.highlight, 0.08 + pageRankNorm * 0.16),
+                size: 10 + pageRankNorm * 18,
+                x: 0,
+                y: 0,
+              };
+            }
           } else if (isReferenced) {
             finalColor = {
               background: nodeColor,
@@ -185,7 +376,7 @@ export function useGraph({
             originalId,
             labels: node.labels,
             properties: node.properties,
-            title: `${nodeType}: ${displayLabel}\n\nLabels: ${node.labels?.join(', ') || 'Unknown'}\nID: ${originalId}\n\n${
+            title: `${nodeType}: ${displayLabel}\n\nLabels: ${node.labels?.join(', ') || 'Unknown'}\nID: ${originalId}\nConnections: ${degree} (in ${inDegree} / out ${outDegree})\nPageRank: ${pageRank.toFixed(4)}\n\n${
               node.properties
                 ? Object.entries(node.properties)
                     .map(([k, v]) => `${k}: ${v}`)
@@ -206,8 +397,13 @@ export function useGraph({
               vadjust: 0,
             },
             shape: 'circle',
-            shadow: false,
-            _baseWidth: degreeWidth,
+            shadow,
+            mass: nodeMass,
+            _uniformWidth: metricWidths.uniform,
+            _degreeWidth: metricWidths.degree,
+            _inDegreeWidth: metricWidths.inDegree,
+            _outDegreeWidth: metricWidths.outDegree,
+            _pageRankWidth: metricWidths.pageRank,
             _baseColor: nodeColor,
           };
         });
@@ -218,13 +414,7 @@ export function useGraph({
       ).length;
       dispatch({ type: 'SET_HIGHLIGHTED_COUNT', count: visibleHighlightedCount });
 
-      const processedEdges = (data.relationships || [])
-        .filter((rel: GraphRelationship) => {
-          const relFilter = currentFilters.relationshipTypes;
-          if (relFilter === null) return true;
-          if (relFilter.size === 0) return false;
-          return relFilter.has(rel.type || 'Unknown');
-        })
+      const processedEdges = filteredRelationships
         .map((rel: GraphRelationship) => {
           const fromOrigId = rel.from || rel.start || rel.source;
           const toOrigId = rel.to || rel.end || rel.target;
@@ -241,6 +431,11 @@ export function useGraph({
           const isHighlightedEdge = sourceReferenced && targetReferenced;
           const isDimmed = isHighlightMode && !isHighlightedEdge;
           const confWidth = confidence != null ? 0.8 + confidence * 2.2 : 1;
+          const spacingScale = 0.72 + spacingRef.current * 1.28;
+          const confSpringLength =
+            confidence != null
+              ? Math.round((210 - Math.min(Math.max(confidence, 0), 1) * 90) * spacingScale)
+              : Math.round(180 * spacingScale);
           const confLabel = confidence != null ? `\nConfidence: ${(confidence * 100).toFixed(0)}%` : '';
 
           return {
@@ -267,6 +462,7 @@ export function useGraph({
             },
             title: `${relType}\nFrom: ${fromOrigId}\nTo: ${toOrigId}${confLabel}`,
             width: isHighlightedEdge ? 3 : confWidth,
+            length: isHighlightedEdge ? Math.max(120, confSpringLength - 20) : confSpringLength,
             _baseColor: edgeColor,
             _baseWidth: confWidth,
             smooth: { enabled: true, type: 'straightCross', forceDirection: false },
@@ -282,43 +478,7 @@ export function useGraph({
 
       const graphSize = processedNodes.length;
       const isLargeGraph = graphSize > 500;
-
-      let physicsSettings: Record<string, unknown>;
-      if (isLargeGraph) {
-        physicsSettings = {
-          enabled: physicsRef.current,
-          stabilization: { enabled: true, iterations: 500, updateInterval: 25 },
-          barnesHut: {
-            gravitationalConstant: -3000,
-            centralGravity: 0.3,
-            springLength: 120,
-            springConstant: 0.04,
-            damping: 0.3,
-            avoidOverlap: 0.1,
-          },
-          solver: 'barnesHut',
-          minVelocity: 0.75,
-          maxVelocity: 50,
-          timestep: 0.4,
-        };
-      } else {
-        physicsSettings = {
-          enabled: physicsRef.current,
-          stabilization: { enabled: true, iterations: 500, updateInterval: 25 },
-          barnesHut: {
-            gravitationalConstant: -2000,
-            centralGravity: 0.3,
-            springLength: 150,
-            springConstant: 0.04,
-            damping: 0.2,
-            avoidOverlap: 0.2,
-          },
-          solver: 'barnesHut',
-          minVelocity: 0.75,
-          maxVelocity: 100,
-          timestep: 0.35,
-        };
-      }
+      const physicsSettings = getPhysicsSettings(isLargeGraph, spacingRef.current);
 
       const labelSize = labelsRef.current && !isLargeGraph;
       const options = {
@@ -373,7 +533,9 @@ export function useGraph({
         networkRef.current = new vis.Network(containerRef.current, { nodes, edges }, options);
 
         networkRef.current.on('stabilizationIterationsDone', () => {
-          networkRef.current?.setOptions({ physics: { enabled: true, stabilization: false } });
+          networkRef.current?.setOptions({
+            physics: { enabled: physicsEnabledRef.current, stabilization: false },
+          });
           setTimeout(() => {
             try {
               if (networkRef.current) {
@@ -402,7 +564,18 @@ export function useGraph({
         console.error('Error creating network:', error);
       }
     },
-    [containerRef, networkRef, idCounterRef, initialViewRef, dispatch, onNodeClick, highlightedNodes, currentFilters],
+    [
+      containerRef,
+      networkRef,
+      idCounterRef,
+      initialViewRef,
+      dispatch,
+      onNodeClick,
+      highlightedNodes,
+      currentFilters,
+      physicsEnabled,
+      layoutSpacing,
+    ],
   );
 
   useEffect(() => {

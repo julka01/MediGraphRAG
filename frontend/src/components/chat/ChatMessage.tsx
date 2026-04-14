@@ -44,8 +44,9 @@ export const ChatMessage = memo(function ChatMessage({ message, type, timestamp 
     <div className={clsx('chat', isUser ? 'chat-end' : 'chat-start')}>
       <div
         className={clsx('chat-bubble rounded-2xl text-sm break-words', {
-          'bg-primary/50 text-base-content': isUser,
-          'chat-bubble-error': isError,
+          'border border-primary/15 bg-primary/16 text-base-content shadow-sm': isUser,
+          'chat-bubble-error border border-error/30 bg-error/12 text-error': isError,
+          'border border-base-content/10 bg-base-100/80 shadow-sm': isAI,
         })}
       >
         {isUser || isError ? <span>{message}</span> : <Markdown remarkPlugins={[remarkGfm]}>{message}</Markdown>}

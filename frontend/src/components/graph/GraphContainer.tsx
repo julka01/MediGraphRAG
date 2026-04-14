@@ -39,14 +39,14 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
       return allEdges
         .filter((e) => e.from === nodeId || e.to === nodeId)
         .map((e) => {
-          const targetId = e.from === nodeId ? e.to : e.from;
-          const targetNode = nodeDS.get(targetId as number);
+          const fromNode = nodeDS.get(e.from as number);
+          const toNode = nodeDS.get(e.to as number);
           return {
             from: String(e.from),
             to: String(e.to),
             label: String(e.label ?? e.title ?? ''),
-            toLabel: targetNode ? String(targetNode.label ?? '') : '',
-            fromLabel: '',
+            toLabel: toNode ? String(toNode.label ?? '') : '',
+            fromLabel: fromNode ? String(fromNode.label ?? '') : '',
           };
         });
     },
@@ -100,21 +100,29 @@ export function GraphContainer({ progressActive, onProgressClose }: GraphContain
     : fallbackColor;
 
   return (
-    <div className="relative flex flex-col h-full bg-base-100 min-w-[300px]">
+    <div className="relative flex h-full min-w-[300px] flex-col bg-base-100">
       {/* Graph canvas */}
       <div ref={containerRef} className="flex-1 min-h-0">
         {!hasGraph && !progressActive && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-base-content/40">
-            <span className="text-5xl mb-2" aria-hidden="true">
-              &#9672;
-            </span>
-            <p className="text-sm">Load or create a knowledge graph to visualize</p>
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <div className="panel-glass max-w-md rounded-3xl px-6 py-7 text-center">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-xl text-primary">
+                ◇
+              </div>
+              <p className="text-[0.65rem] font-medium uppercase tracking-[0.22em] text-base-content/45">
+                Graph canvas
+              </p>
+              <h3 className="mt-2 text-lg font-semibold text-base-content">Load or create a knowledge graph</h3>
+              <p className="mt-2 text-sm leading-6 text-base-content/58">
+                Build a graph from the workspace panel, then search, inspect, and trace evidence here.
+              </p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Panel toggles — top left, cross layout with theme toggle in center */}
-      <div className="absolute top-2 left-2 z-10 grid grid-cols-3 grid-rows-3 bg-base-200/80 backdrop-blur rounded-lg p-0.5">
+      <div className="panel-glass absolute left-3 top-3 z-10 grid grid-cols-3 grid-rows-3 rounded-2xl p-1">
         {/* Row 1: top toggle centered */}
         <div />
         <PanelToggleIcon panel="top" isOpen={!topCollapsed} onClick={() => dispatch({ type: 'TOGGLE_TOP_PANEL' })} />

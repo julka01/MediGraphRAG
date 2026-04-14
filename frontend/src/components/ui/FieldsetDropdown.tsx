@@ -126,7 +126,9 @@ export function FieldsetDropdown({
     <fieldset
       ref={containerRef}
       onKeyDown={handleKeyDown}
-      className={`relative border rounded-lg px-3 pb-2 pt-0 transition-colors min-w-0 ${open ? 'border-primary/50' : 'border-base-content/20'}`}
+      className={`relative min-w-0 rounded-2xl border bg-base-100/45 px-3 pb-2 pt-0 transition-colors ${
+        open ? 'border-primary/50' : 'border-base-content/12'
+      }`}
     >
       <legend className="text-2xs text-base-content/50 px-1 ml-auto mr-2">{label}</legend>
       <button
@@ -139,7 +141,7 @@ export function FieldsetDropdown({
           setOpen(!open);
         }}
         disabled={disabled}
-        className="flex w-full items-center justify-between text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded text-left disabled:opacity-50"
+        className="flex w-full items-center justify-between rounded-lg text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50"
       >
         <span className="truncate">{displayLabel}</span>
         <ChevronDownIcon
@@ -147,39 +149,40 @@ export function FieldsetDropdown({
           className={`size-4 shrink-0 text-base-content/40 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
-      {open && createPortal(
-        <div
-          className="rounded-lg overflow-hidden border border-base-300 shadow-lg z-50"
-          style={dropdownStyle}
-        >
+      {open &&
+        createPortal(
           <div
-            role="listbox"
-            aria-label={label}
-            className="bg-base-100 overflow-y-auto"
-            style={{ maxHeight: 'inherit' }}
+            className="z-50 overflow-hidden rounded-2xl border border-base-content/10 bg-base-100/92 shadow-2xl shadow-black/20 backdrop-blur-xl"
+            style={dropdownStyle}
           >
-            {options.length > 0 ? (
-              options.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={option.value === value}
-                  onClick={() => handleSelect(option.value)}
-                  className={`block w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 transition-colors ${
-                    option.value === value ? 'text-primary font-semibold' : 'text-base-content'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))
-            ) : (
-              <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
-            )}
-          </div>
-        </div>,
-        document.body,
-      )}
+            <div
+              role="listbox"
+              aria-label={label}
+              className="overflow-y-auto bg-transparent"
+              style={{ maxHeight: 'inherit' }}
+            >
+              {options.length > 0 ? (
+                options.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="option"
+                    aria-selected={option.value === value}
+                    onClick={() => handleSelect(option.value)}
+                    className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-base-content/6 ${
+                      option.value === value ? 'font-semibold text-primary' : 'text-base-content'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))
+              ) : (
+                <span className="block px-3 py-1.5 text-sm text-base-content/50">No KGs available</span>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </fieldset>
   );
 }

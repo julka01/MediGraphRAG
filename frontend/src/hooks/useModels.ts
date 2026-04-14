@@ -76,26 +76,23 @@ export function useModels(defaultVendor: string, initialModels?: string[]): UseM
     [vendor, fetchModels],
   );
 
-  const restoreVendorModel = useCallback(
-    async (targetVendor: string, targetModel: string) => {
-      if (!Object.keys(FALLBACK_MODELS).includes(targetVendor)) return;
-      setVendor(targetVendor);
-      setLoading(true);
-      try {
-        const data = await api.fetchModels(targetVendor);
-        const modelList = data.models?.length ? data.models : (FALLBACK_MODELS[targetVendor] ?? []);
-        setModels(modelList);
-        setSelectedModel(modelList.includes(targetModel) ? targetModel : selectDefault(targetVendor, modelList));
-      } catch {
-        const fallback = FALLBACK_MODELS[targetVendor] ?? [];
-        setModels(fallback);
-        setSelectedModel(fallback.includes(targetModel) ? targetModel : selectDefault(targetVendor, fallback));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const restoreVendorModel = useCallback(async (targetVendor: string, targetModel: string) => {
+    if (!Object.keys(FALLBACK_MODELS).includes(targetVendor)) return;
+    setVendor(targetVendor);
+    setLoading(true);
+    try {
+      const data = await api.fetchModels(targetVendor);
+      const modelList = data.models?.length ? data.models : (FALLBACK_MODELS[targetVendor] ?? []);
+      setModels(modelList);
+      setSelectedModel(modelList.includes(targetModel) ? targetModel : selectDefault(targetVendor, modelList));
+    } catch {
+      const fallback = FALLBACK_MODELS[targetVendor] ?? [];
+      setModels(fallback);
+      setSelectedModel(fallback.includes(targetModel) ? targetModel : selectDefault(targetVendor, fallback));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   return { vendor, models, selectedModel, loading, setSelectedModel, changeVendor, fetchModels, restoreVendorModel };
 }

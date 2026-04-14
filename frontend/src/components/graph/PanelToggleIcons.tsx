@@ -67,7 +67,12 @@ function RightPanelSvg({ filled }: { filled: boolean }) {
 }
 
 const svgMap = { left: LeftPanelSvg, bottom: BottomPanelSvg, right: RightPanelSvg, top: TopPanelSvg };
-const labelMap = { left: 'Toggle left panel', bottom: 'Toggle bottom panel', right: 'Toggle right panel', top: 'Toggle top panel' };
+const labelMap = {
+  left: 'Toggle left panel',
+  bottom: 'Toggle bottom panel',
+  right: 'Toggle right panel',
+  top: 'Toggle top panel',
+};
 
 export const PanelToggleIcon = memo(function PanelToggleIcon({ panel, isOpen, onClick }: PanelToggleIconProps) {
   const SvgComponent = svgMap[panel];

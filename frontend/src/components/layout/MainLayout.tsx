@@ -53,16 +53,14 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
               role="separator"
               aria-orientation="horizontal"
               aria-label="Drag to close top panel"
-              className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
+              className="app-divider-h h-1 shrink-0 cursor-row-resize transition-colors"
               onPointerDown={topSnap.onPointerDown}
             />
           </>
         )}
 
         {/* Graph view */}
-        <div className="flex-1 min-h-0">
-          {graphPanel}
-        </div>
+        <div className="flex-1 min-h-0">{graphPanel}</div>
 
         {/* Bottom resize handle + bottom bar — always mounted to preserve filter state */}
         {!bottomCollapsed && (
@@ -70,13 +68,11 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
             role="separator"
             aria-orientation="horizontal"
             aria-label="Resize bottom panel"
-            className="h-1 shrink-0 cursor-row-resize transition-colors bg-base-300 hover:bg-primary/50"
+            className="app-divider-h h-1 shrink-0 cursor-row-resize transition-colors"
             onPointerDown={bottomSnap.onPointerDown}
           />
         )}
-        <div className={bottomCollapsed ? 'hidden' : ''}>
-          {bottomBar}
-        </div>
+        <div className={bottomCollapsed ? 'hidden' : ''}>{bottomBar}</div>
       </div>
 
       {/* Right sidebar resize handle + chat panel — always mounted to preserve chat state */}
@@ -85,7 +81,7 @@ export function MainLayout({ graphPanel, chatPanel, bottomBar, topBar }: MainLay
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize right panel"
-          className="hidden md:block w-1 shrink-0 cursor-col-resize transition-colors bg-base-300 hover:bg-primary/50"
+          className="app-divider-v hidden md:block w-1 shrink-0 cursor-col-resize transition-colors"
           onPointerDown={rightSnap.onPointerDown}
         />
       )}
