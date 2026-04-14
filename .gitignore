@@ -54,6 +54,7 @@ chroma_db/
 vector_stores/
 kg_storage/
 *.sqlite3
+neo4j_data/
 
 # ── Generated test/output artefacts ─────────────────────────────────────────
 test_*.txt
@@ -62,9 +63,21 @@ test_*.pdf
 kg_test.txt
 *_output.json
 
+# ── Slides, presentations, bibliography ──────────────────────────────────────
+slides/
+references.bib
+
+# ── Stray directories ─────────────────────────────────────────────────────────
+Users/
+
 # ── Internal / generated docs ────────────────────────────────────────────────
 code_review.md
 KG_GENERATION_PIPELINE.md
+
+# Ignore all Markdown docs except README files
+*.md
+!README.md
+!**/README.md
 
 # ── Nested repos / vendored libraries ────────────────────────────────────────
 semantic_uncertainty/
@@ -73,6 +86,26 @@ semantic_uncertainty/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# ── Downloaded reference PDFs ────────────────────────────────────────────────
+paper/pdfs/
+
+# ── LaTeX source and build artefacts ─────────────────────────────────────────
+paper/
+*.tex
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 node_modules/

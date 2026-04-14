@@ -11,7 +11,7 @@ def load_embedding_model(embedding_model_name: str = None):
     If no name provided, uses environment variable EMBEDDING_PROVIDER.
     Returns a tuple of (embedding_function, embedding_dimension)
     """
-    from medigraphrag_x.providers.model_providers import get_embedding_method
+    from ontographrag.providers.model_providers import get_embedding_method
 
     provider_name, embedding_function = get_embedding_method(embedding_model_name)
 

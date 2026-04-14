@@ -1,4 +1,4 @@
-from langchain_text_splitters import TokenTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain_neo4j import Neo4jGraph
 import logging
@@ -27,7 +27,9 @@ class CreateChunksofDocument:
             A list of chunks each of which is a langchain Document.
         """
         logging.info("Split file into smaller chunks")
-        text_splitter = TokenTextSplitter(chunk_size=token_chunk_size, chunk_overlap=chunk_overlap)
+        text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=token_chunk_size, chunk_overlap=chunk_overlap
+        )
         # Fix: Use consistent MAX_TOKEN_CHUNK_SIZE instead of environment-dependent value
         MAX_TOKEN_CHUNK_SIZE = 8000  # Fixed value for determinism
         chunk_to_be_created = int(MAX_TOKEN_CHUNK_SIZE / token_chunk_size)

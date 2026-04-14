@@ -31,11 +31,11 @@ RUN for i in {1..3}; do \
     fi
 
 # Copy requirements first for better caching
-COPY requirements-prod.txt .
+COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements-prod.txt \
+    && pip install --no-cache-dir -r requirements.txt \
     && pip cache purge
 
 # Copy application files
@@ -63,7 +63,7 @@ OLLAMA_PID=$!\n\
 echo "Waiting for Ollama to be ready..."\n\
 sleep 5\n\
 echo "Starting FastAPI application..."\n\
-uvicorn app:app --host 0.0.0.0 --port 8004 --workers 1\n\
+uvicorn ontographrag.api.app:app --host 0.0.0.0 --port 8004 --workers 1\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # Command to run the application

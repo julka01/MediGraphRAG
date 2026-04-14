@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "medigraphrag"
+name = "ontographrag"
 version = "1.0.0-rc1"
-description = "AI-Powered Knowledge Graph for Medical Decision Support"
+description = "Ontology-guided knowledge graphs and graph-grounded RAG for document intelligence"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -40,6 +40,7 @@ dependencies = [
     # Core FastAPI and web framework
     "fastapi==0.115.9",
     "uvicorn==0.34.2",
+    "slowapi==0.1.9",
     "gunicorn==23.0.0",
     "starlette==0.45.3",
     "python-multipart==0.0.20",
@@ -178,13 +179,24 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/julka01/MediGraphRAG"
-Repository = "https://github.com/julka01/MediGraphRAG.git"
-Issues = "https://github.com/julka01/MediGraphRAG/issues"
-Documentation = "https://github.com/julka01/MediGraphRAG#readme"
+Homepage = "https://github.com/julka01/OntographRAG"
+Repository = "https://github.com/julka01/OntographRAG.git"
+Issues = "https://github.com/julka01/OntographRAG/issues"
+Documentation = "https://github.com/julka01/OntographRAG#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["medigraphrag_x"]
+packages = ["ontographrag", "experiments"]
 
 [project.scripts]
-medigraph = "medigraphrag_x.api.app:main"
+ontograph = "ontographrag.cli:main"
+ontographrag = "ontographrag.cli:main"
+
+[tool.hatch.build]
+include = [
+    "ontographrag/**/*.py",
+    "ontographrag/api/static/index.html",
+    "experiments/**/*.py",
+    "experiments/*.json",
+    "experiments/README.md",
+    "README.md",
+]

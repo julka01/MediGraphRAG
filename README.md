@@ -5,50 +5,177 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/neo4j-5.0+-brightgreen.svg)](https://neo4j.com/)
 
-**Turn unstructured documents into schema-consistent knowledge graphs. Query them with RAG. Measure how much to trust the answers.**
+**Turn unstructured documents into schema-consistent knowledge graphs. Explore them visually. Ask grounded questions. Evaluate what to trust.**
 
-OntographRAG extracts entities and relationships from raw text guided by a custom ontology, stores the result in Neo4j, and answers natural-language questions using hybrid vector + graph retrieval. A built-in uncertainty pipeline flags answers the model isn't confident in before they reach users.
+OntographRAG is an ontology-guided KG-RAG system for document intelligence. It builds Neo4j-backed knowledge graphs from raw text, retrieves over both graph structure and chunk vectors, and exposes answer-grounding and uncertainty signals for downstream use.
 
-Works for any domain — research literature, legal documents, financial reports, technical manuals. Particularly powerful for **clinical and biomedical data**, where ontology-constrained extraction enables population-level evidence generation from patient records at scale.
+The project is organized around **three interactive workflows plus one evaluation pipeline**:
+
+1. **Ingest**: turn documents or benchmark corpora into named knowledge graphs.
+2. **Explore**: inspect entities, relationships, provenance, and graph structure.
+3. **Ask**: query the active graph with grounded RAG.
+4. **Evaluate**: benchmark KG-RAG against vanilla RAG and compare uncertainty measures from the CLI.
+
+Works across domains such as biomedical literature, legal documents, financial reports, and technical manuals. It is especially useful when schema consistency matters across many documents.
+
+---
+
+## Quick Start
+
+### App users: ingest, explore, ask
+
+From a source checkout, the most reliable form is:
+- `.venv/bin/python -m ontographrag.cli ...`
+
+If you want the shorter `ontograph ...` command, run `uv sync` after pulling the latest changes so the console script is installed into your virtualenv.
+
+```bash
+# 1. Clone and install
+git clone https://github.com/julka01/OntographRAG.git
+cd OntographRAG
+uv sync
+source .venv/bin/activate
+
+# 2. Build the React frontend (required once after clone or after frontend changes)
+cd frontend && npm install && npm run build && cd ..
+
+# 3. Start Neo4j
+docker compose up -d neo4j
+
+# 4. Check readiness
+.venv/bin/python -m ontographrag.cli doctor
+
+# 5. Start the app
+.venv/bin/python -m ontographrag.cli serve
+# or directly:
+.venv/bin/uvicorn ontographrag.api.app:app --host 0.0.0.0 --port 8000
+
+# 6. Open the GUI
+# → http://localhost:8000
+```
+
+Happy path in the app:
+- select a file
+- optionally attach an ontology
+- create a named KG
+- inspect the graph
+- ask questions against the active KG
+
+### Benchmark users: evaluate
+
+```bash
+# 1. Clone and install
+git clone https://github.com/julka01/OntographRAG.git
+cd OntographRAG
+uv sync
+source .venv/bin/activate
+docker compose up -d neo4j
+
+# 2. Download benchmark datasets (see exact paths below)
+mkdir -p MIRAGE/rawdata/{pubmedqa/data,hotpotqa,2wikimultihopqa,musique,multihoprag,realmedqa,bioasq/Task10BGoldenEnriched}
+
+# PubMedQA — https://github.com/pubmedqa/pubmedqa
+# Download test_set.json from the repo and place at:
+# MIRAGE/rawdata/pubmedqa/data/test_set.json
+
+# HotpotQA — https://hotpotqa.github.io/
+wget http://curtis.ml.cmu.edu/datasets/hotpot/hotpot_dev_fullwiki_v1.json \
+  -O MIRAGE/rawdata/hotpotqa/hotpot_dev_fullwiki_v1.json
+
+# 2WikiMultiHopQA — https://github.com/Alab-NII/2wikimultihop
+# Download dev.json from the GitHub release and place at:
+# MIRAGE/rawdata/2wikimultihopqa/dev.json
+
+# MuSiQue — https://github.com/StonyBrookNLP/musique
+# Download musique_ans_v1.0_dev.jsonl from the GitHub release and place at:
+# MIRAGE/rawdata/musique/musique_ans_v1.0_dev.jsonl
+
+# MultiHopRAG — https://github.com/yixuantt/MultiHop-RAG
+# Download MultiHopRAG.json and corpus.json and place at:
+# MIRAGE/rawdata/multihoprag/MultiHopRAG.json
+# MIRAGE/rawdata/multihoprag/corpus.json
+
+# RealMedQA — https://huggingface.co/datasets/k2141255/RealMedQA
+# Download and place at: MIRAGE/rawdata/realmedqa/RealMedQA.json
+
+# BioASQ — http://bioasq.org/participate/challenges (free registration required)
+# Download Task10BGoldenEnriched and place at:
+# MIRAGE/rawdata/bioasq/Task10BGoldenEnriched/10B1_golden.json
+# Then build the shared PubMed abstract corpus:
+python experiments/prepare_bioasq_corpus.py \
+  --bioasq-path MIRAGE/rawdata/bioasq/Task10BGoldenEnriched/10B1_golden.json \
+  --output MIRAGE/rawdata/bioasq/pubmed_abstracts.jsonl \
+  --email you@example.com \
+  --verbose
+
+# 3. Run a cheap smoke test
+python experiments/experiment.py \
+  --datasets hotpotqa --num-samples 30 --subset-seed 0 --rebuild-kg --evaluation-mode accuracy_only
+
+# 4. Run a full metric pass (paper configuration: seed 42, n=100)
+python experiments/experiment.py \
+  --datasets hotpotqa 2wikimultihopqa musique pubmedqa multihoprag \
+  --num-samples 100 --subset-seed 42 --rebuild-kg --evaluation-mode full_metrics \
+  --llm-provider openrouter --llm-model openai/gpt-4o-mini \
+  --retrieval-temperature-values 0.0
+
+# 5. Add BioASQ
+python experiments/experiment.py \
+  --datasets bioasq --num-samples 100 --subset-seed 42 --rebuild-kg --evaluation-mode full_metrics
+```
+
+---
+
+## Why OntographRAG
+
+Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microsoft/graphrag)) let an LLM freely decide what to extract, which often leads to type drift, duplicate entities, and schema inconsistency across documents. OntographRAG takes the opposite approach: **you define the schema, the system respects it.**
+
+| | OntographRAG | Microsoft GraphRAG |
+|---|---|---|
+| **Schema control** | Bring your own OWL/RDF/JSON ontology; extraction is constrained to your types | LLM decides freely; no schema enforcement |
+| **Graph storage** | Neo4j with named KGs, Cypher, vector indexes, and provenance | Parquet files in a local directory |
+| **Retrieval** | Routed hybrid: entity-first linking, retriever-first graph expansion, vector fallback, and evidence organization | Community summarisation or entity search |
+| **Trust signals** | App surfaces Structural and Grounding support; evaluation computes the full uncertainty suite | None by default |
+| **Interfaces** | Web UI, REST API, CLI, experiments | CLI + Python library |
+
+---
+
+## Workflow Cheatsheet
+
+```bash
+# Ingest a document into a running server
+.venv/bin/python -m ontographrag.cli ingest report.pdf --kg-name demo-kg
+
+# Explore the available graphs
+.venv/bin/python -m ontographrag.cli explore list
+.venv/bin/python -m ontographrag.cli explore show demo-kg
+
+# Ask a grounded question
+.venv/bin/python -m ontographrag.cli ask "What are the main findings?" --kg-name demo-kg
+
+# Evaluate benchmark runs
+.venv/bin/python -m ontographrag.cli evaluate --datasets hotpotqa --num-samples 30 --subset-seed 0
+```
 
 ---
 
 ## Use cases
 
 ### Clinical intelligence and population-level evidence
-Supply a clinical ontology (SNOMED CT, ICD-10, HPO) and process patient notes, discharge summaries, or EHR exports in bulk. Because every patient's data is extracted into the *same schema*, the entire population becomes queryable as a single graph:
+Supply a clinical ontology (SNOMED CT, ICD-10, HPO) and process patient notes, discharge summaries, or EHR exports in bulk. Because every patient's data is extracted into the *same schema*, the whole population becomes queryable as a single graph:
 
 ```cypher
--- Which comorbidities most frequently co-occur with hypertension in patients over 60?
 MATCH (p:Patient)-[:HAS_DIAGNOSIS]->(d:Diagnosis {name: "Hypertension"})
       -[:CO_OCCURS_WITH]->(c:Diagnosis)
 WHERE p.age > 60
 RETURN c.name, count(*) AS frequency ORDER BY frequency DESC
 ```
 
-Ask the same question in plain English via the RAG layer. The ontology is what makes this possible — without schema enforcement, "T2DM", "type 2 diabetes", and "DM2" land as different nodes and aggregation breaks.
-
 ### Research and knowledge synthesis
-Process a corpus of papers, extract entities and relationships consistently across all documents, then ask cross-paper questions the individual documents couldn't answer alone.
+Process a corpus of papers, extract entities and relationships consistently across documents, and ask cross-paper questions that single documents cannot answer alone.
 
 ### Any domain with structured knowledge requirements
 Legal (case law entities), finance (company relationships), engineering (component hierarchies). Supply the domain ontology; OntographRAG handles the rest.
-
----
-
-## What makes this different
-
-Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microsoft/graphrag)) let an LLM freely decide what to extract — producing inconsistent entity types, duplicate concepts, and graphs that drift between documents. OntographRAG takes the opposite approach: **you define the schema, the system respects it.**
-
-| | OntographRAG | Microsoft GraphRAG |
-|---|---|---|
-| **Schema control** | Bring your own OWL/RDF ontology — entities and relationships are constrained to your types | LLM decides freely; no schema enforcement |
-| **Graph storage** | Neo4j — production graph DB with Cypher, vector indexes, persistent named KGs | Parquet files in a local directory |
-| **Hallucination detection** | 8 uncertainty metrics including RS-UQ (novel) and semantic entropy | None |
-| **LLM providers** | OpenRouter, OpenAI, Gemini, Ollama, DeepSeek, HuggingFace | OpenAI / Azure OpenAI only |
-| **Retrieval** | Hybrid: vector similarity + graph traversal in one query | Community summarisation (global) or entity search (local) |
-| **Interface** | Web UI + REST API + Python library | CLI + Python library |
-| **Domain** | Any domain; ontology is user-supplied | General purpose but tuned for summarisation |
 
 ---
 
@@ -67,55 +194,57 @@ Graphs are persisted in Neo4j with:
 - **Named KGs** — multiple independent graphs in one database, scoped by name tag
 - **Full Cypher access** — query or extend the graph with any Cypher statement
 
-### 3. Hybrid retrieval
-Queries run vector similarity search over chunk embeddings *and* graph traversal over entity neighborhoods simultaneously. The combined context is richer than either alone — the vector index finds relevant passages, the graph finds related concepts those passages didn't mention.
+### 3. Routed hybrid retrieval
+Queries do not rely on one brittle retrieval path. OntographRAG now uses a routed KG-RAG stack:
+- **Entity-first retrieval**: symbolic matching plus per-entity ANN over entity embeddings
+- **Graph expansion**: question-local traversal with provenance-aware edges
+- **PPR-style scoring**: chunks are ranked by support flowing through the local entity subgraph, not only by hop count
+- **Retriever-first graph expansion**: when entity anchoring is weak, dense passage retrieval seeds the graph instead
+- **Vector fallback**: if graph signal is weak, the system falls back cleanly to vector retrieval rather than forcing a bad subgraph
 
-### 4. Uncertainty quantification and hallucination detection
-A dedicated pipeline computes 8 metrics per answer to flag low-confidence responses:
+This makes the retriever much closer to recent strong GraphRAG systems while preserving a single shared interface for vanilla RAG and KG-RAG.
+
+### 4. Evidence organization for answer generation
+Retrieved graph paths and supporting passages are organized into explicit reasoning chains before generation. In the app, the chat view surfaces two trust signals that are easy to interpret in practice:
+- **Structural**: whether the answer is supported by graph paths
+- **Grounding**: whether the retrieved evidence actually grounded the question
+
+The live UI deliberately keeps these signals simple. The full uncertainty suite remains available in the evaluation pipeline.
+
+### 5. Uncertainty quantification and hallucination detection
+A dedicated evaluation pipeline computes the current 15-metric suite per answer, grouped into output-side, structural, and grounding uncertainty:
 
 | Metric | What it measures |
 |--------|-----------------|
 | `semantic_entropy` | Shannon entropy over meaning-clusters of N sampled responses (Farquhar et al., *Nature* 2023) |
 | `discrete_semantic_entropy` | Same with hard cluster boundaries |
-| `token_entropy` | Surface-level diversity across responses |
 | `p_true` | NLI-based probability responses are supported by context |
-| `embedding_consistency` | Pairwise NLI contradiction rate between response pairs |
-| `spuq` | Semantic entropy weighted by variance under probability perturbation |
-| `rs_uq` ⭐ | **Novel.** Cosine dissimilarity between the LLM's last-layer hidden state for the prompt alone vs. prompt + response. A large shift signals the model's answer diverges from its internal encoding of the question — no multiple samples needed. |
+| `selfcheckgpt` | Cross-sample self-consistency / contradiction-style uncertainty signal |
+| `vn_entropy` | Geometric uncertainty from the sampled-response embedding cloud |
+| `sre_uq` | **SRE-UQ** (Vipulanandan et al., ICLR 2026). Treats the response distribution as an RKHS wave function via kernel mean embedding and applies first-order quantum perturbation theory to measure local sensitivity of that wave function. High sensitivity = high uncertainty. |
+| `sd_uq` ⭐ | **SD-UQ — novel (this work).** Estimates the differential entropy of the response distribution in the question-orthogonal embedding subspace — the complement of the mutual information between question and response. Projects out the question direction from each response embedding (Gram-Schmidt), fits a Gaussian to the residuals, and returns the entropy power (geometric mean of top-$k$ covariance eigenvalues). High entropy = responses drift inconsistently beyond the question = hallucination risk. |
+| `graph_path_support` | Whether the KG exposes supporting paths from the question to the answer |
+| `graph_path_disagreement` | Structural disagreement across answer-supporting graph neighborhoods |
+| `competing_answer_alternatives` | KG evidence for rival answer candidates |
+| `evidence_vn_entropy` | Entropy-like concentration of evidence in the local graph |
+| `subgraph_informativeness` | How concentrated / informative the answer-supporting subgraph is before generation |
+| `subgraph_perturbation_stability` | How fragile support is under graph perturbations |
+| `support_entailment_uncertainty` | Whether retrieved evidence actually entails the answer |
+| `evidence_conflict_uncertainty` | Whether retrieved evidence chunks conflict with each other about the answer |
 
-**Hypothesis:** ontology-constrained, deduplicated graph context lowers semantic entropy compared to vanilla RAG because the model receives less contradictory evidence.
+The runner also computes `AUROC` and `AUREC` over these uncertainty scores in experiment mode to measure error prediction and abstention utility.
 
-### 5. Provider-agnostic LLM support
+Older run artifacts in `results/` may still contain legacy metric names from earlier iterations. The table above reflects the current maintained 15-metric suite used by the live experiment runner.
+
+### 6. Provider-agnostic LLM support
 Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRouter (free tier available), OpenAI, Google Gemini, Ollama (local), DeepSeek, HuggingFace. Switch model per request with no code changes.
-
----
-
-## Quick start
-
-```bash
-# 1. Clone and install
-git clone https://github.com/julka01/OntographRAG.git
-cd OntographRAG
-uv sync          # creates .venv and installs all dependencies
-source .venv/bin/activate
-
-# 2. Start Neo4j
-docker compose up -d neo4j
-
-# 3. Configure
-cp .env.example .env
-# Edit .env — set NEO4J_PASSWORD and at least one LLM provider key
-
-# 4. Start server
-python start_server.py
-# → Web UI at http://localhost:8004
-# → API docs at http://localhost:8004/docs
-```
 
 ---
 
 ## Table of contents
 
+- [Quick Start](#quick-start)
+- [Workflow Cheatsheet](#workflow-cheatsheet)
 - [Setup](#setup)
 - [Web UI](#web-ui)
 - [API Reference](#api-reference)
@@ -132,15 +261,20 @@ python start_server.py
 ### Requirements
 
 - Python 3.11+
+- Node.js 18+ and npm (for the React frontend)
 - Neo4j 5.0+ (via Docker or local install)
 - 8 GB RAM minimum (16 GB recommended for large documents)
 
 ### Installation
 
 ```bash
+# Python dependencies
 uv sync          # recommended
 # or
 pip install -r requirements.txt
+
+# React frontend (required — the backend serves the built assets)
+cd frontend && npm install && npm run build && cd ..
 ```
 
 ### Environment variables
@@ -163,15 +297,7 @@ HF_API_TOKEN=...
 OLLAMA_HOST=http://localhost:11434
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
-EMBEDDING_PROVIDER=huggingface   # huggingface | openai | vertexai
-
-# ── Document processing ──────────────────────────────────────────────────────
-CHUNK_SIZE=1500
-CHUNK_OVERLAP=200
-MAX_CHUNKS=50
-
-# ── Retrieval ────────────────────────────────────────────────────────────────
-VECTOR_SIMILARITY_THRESHOLD=0.1
+EMBEDDING_PROVIDER=sentence_transformers   # recommended runtime default; or openai
 
 # ── Security (production) ────────────────────────────────────────────────────
 APP_API_KEY=               # set to enforce API key auth on all endpoints
@@ -179,20 +305,21 @@ ALLOWED_ORIGINS=*          # comma-separated origins for CORS
 
 # ── Server ───────────────────────────────────────────────────────────────────
 LOG_LEVEL=INFO
-MAX_WORKERS=4
 LLM_TIMEOUT_SECONDS=120
 ```
+
+Chunking, retrieval thresholds, and benchmark sweeps are now controlled primarily by constructor defaults and CLI flags rather than by top-level environment variables. For the live benchmark flags, use [experiments/README.md](experiments/README.md) as the source of truth.
 
 ---
 
 ## Web UI
 
-The web interface is served at `http://localhost:8004`.
+The web interface is served at `http://localhost:8000`. It is a React + TypeScript single-page app (`frontend/`) built with Vite. Run `cd frontend && npm install && npm run build` once after clone (or after any frontend changes) — the backend serves the built assets from `frontend/dist/`.
 
 ### Knowledge graph panel
 
 - **Build KG** — upload a document (PDF, TXT, CSV, JSON, XML ≤ 50 MB), choose provider/model, optionally attach an ontology file. Extraction progress streams to the UI in real time via SSE and the graph loads automatically on completion.
-- **Graph visualisation** — interactive vis.js network. Node size scales with degree. Click a node to open its detail panel (type, properties, connected nodes).
+- **Graph visualisation** — interactive force-directed network. Node size scales with degree. Click a node to open its detail panel (type, properties, connected nodes).
 - **Search** — dims non-matching nodes rather than hiding them; shows match count.
 - **Filter** — per-type checkboxes with node/edge counts.
 - **Named KG management** — create, list, and switch between multiple saved graphs.
@@ -200,6 +327,9 @@ The web interface is served at `http://localhost:8004`.
 ### Chat panel
 
 - Ask questions against the active knowledge graph; answers cite source chunks.
+- **Trust pills** — the chat surface exposes two lightweight support signals inline with each response:
+  - **Structural**: graph-path support for the answer
+  - **Grounding**: how well the retrieved evidence supports the question
 - Chat history persisted in `localStorage`.
 - Highlighted nodes — entities used in the answer are highlighted in the graph.
 - Thinking indicator while waiting for the LLM response.
@@ -208,7 +338,7 @@ The web interface is served at `http://localhost:8004`.
 
 ## API Reference
 
-Server runs on **port 8004**. Interactive docs at `http://localhost:8004/docs`.
+Server runs on **port 8000**. Interactive docs at `http://localhost:8000/docs`.
 
 > **Authentication**: set `APP_API_KEY` in `.env` to require `X-API-Key: <key>` on all requests. Unset = open (development mode).
 
@@ -230,9 +360,11 @@ Multipart form:
 | `file` | file | required | Document (PDF/TXT/CSV/JSON/XML, ≤ 50 MB) |
 | `provider` | string | `openai` | LLM provider |
 | `model` | string | `gpt-3.5-turbo` | Model name |
+| `embedding_model` | string | `sentence_transformers` | Embedding backend for chunks and entities |
 | `ontology_file` | file | optional | Custom ontology (.owl/.rdf/.ttl/.xml) |
-| `max_chunks` | int | `50` | Max text chunks to process |
+| `max_chunks` | int | optional | Max text chunks to process (`1..500`) |
 | `kg_name` | string | optional | Name tag for the resulting KG |
+| `enable_coreference_resolution` | bool | `false` | Optional build-time coreference pass |
 
 Response:
 ```json
@@ -302,14 +434,20 @@ Response:
   "info": {
     "sources": ["chunk_id_1"],
     "model": "openai/gpt-oss-120b:free",
-    "confidence": 0.87,
     "chunk_count": 5,
     "entity_count": 12,
     "relationship_count": 8,
+    "confidence": 0.87,
+    "kg_confidence": 0.74,
+    "structural_support": 0.74,
+    "grounding_support": 0.81,
+    "guardrail": {},
     "entities": { "used_entities": [...] }
   }
 }
 ```
+
+The UI uses `structural_support` and `grounding_support` as the main trust signals. The older `confidence` field is still returned for compatibility, but it is not the primary app-facing summary anymore.
 
 ---
 
@@ -344,7 +482,7 @@ Response:
 
 ```bash
 # Build a KG with ontology
-curl -X POST http://localhost:8004/create_ontology_guided_kg \
+curl -X POST http://localhost:8000/create_ontology_guided_kg \
   -F "file=@document.pdf" \
   -F "provider=openrouter" \
   -F "model=openai/gpt-4o-mini" \
@@ -352,44 +490,55 @@ curl -X POST http://localhost:8004/create_ontology_guided_kg \
   -F "kg_name=my-kg"
 
 # Ask a question
-curl -X POST http://localhost:8004/chat \
+curl -X POST http://localhost:8000/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "What are the main concepts?", "kg_name": "my-kg", "provider_rag": "openrouter", "model_rag": "openai/gpt-4o-mini"}'
 
 # Stream build progress
-curl -N http://localhost:8004/kg_progress_stream
+curl -N http://localhost:8000/kg_progress_stream
 
 # List KGs
-curl http://localhost:8004/kg/list
+curl http://localhost:8000/kg/list
 
 # Health check
-curl http://localhost:8004/health/neo4j
+curl http://localhost:8000/health/neo4j
 ```
 
 ---
 
 ## Experiments
 
-The `experiments/` directory evaluates KG-RAG vs Vanilla RAG on biomedical QA benchmarks, measuring answer quality and hallucination via semantic uncertainty. See [experiments/README.md](experiments/README.md) for full details.
+The `experiments/` directory runs the current benchmark pipeline for vanilla RAG vs KG-RAG across biomedical and multi-hop QA datasets. It now uses seeded deterministic subsets, dataset-scoped KGs, official-style answer `EM/F1` where supported, and the current 15-metric uncertainty suite. See [experiments/README.md](experiments/README.md) for the live flag list and dataset caveats.
 
 ```bash
-# 5-question smoke test
-python experiments/experiment.py --num-samples 5 --entropy-samples 3 --datasets pubmedqa
-
-# Sweep thresholds and chunk sizes
+# 30-question smoke test
 python experiments/experiment.py \
-  --num-samples 50 --entropy-samples 4 \
-  --similarity-thresholds 0.1 0.15 0.2 \
-  --max-chunks-values 5 10 15 \
-  --datasets pubmedqa bioasq
+  --datasets hotpotqa \
+  --num-samples 30 \
+  --subset-seed 0 \
+  --rebuild-kg \
+  --evaluation-mode accuracy_only
+
+# Full uncertainty pass on recommended retrieval benchmarks
+python experiments/experiment.py \
+  --datasets hotpotqa 2wikimultihopqa musique pubmedqa multihoprag \
+  --num-samples 100 \
+  --subset-seed 0 \
+  --rebuild-kg \
+  --evaluation-mode full_metrics
 ```
 
 ### Supported datasets
 
 | Dataset | Task | Download |
 |---------|------|----------|
-| `pubmedqa` | Yes/no QA from PubMed abstracts | [pubmedqa/pubmedqa](https://github.com/pubmedqa/pubmedqa) |
-| `bioasq` | Biomedical factoid QA | [bioasq.org](http://bioasq.org/participate/challenges) (free registration) |
+| `pubmedqa` | Biomedical yes/no/maybe over source abstracts | [pubmedqa/pubmedqa](https://github.com/pubmedqa/pubmedqa) |
+| `realmedqa` | Clinical recommendation QA over NICE guidance | [RealMedQA on Hugging Face](https://huggingface.co/datasets/k2141255/RealMedQA) |
+| `hotpotqa` | Multi-hop Wikipedia QA | [HotpotQA](https://hotpotqa.github.io/) |
+| `2wikimultihopqa` | Multi-hop Wikipedia QA | [2WikiMultiHopQA](https://github.com/Alab-NII/2wikimultihop) |
+| `musique` | Compositional multi-hop QA | [MuSiQue](https://github.com/StonyBrookNLP/musique) |
+| `multihoprag` | Multi-hop RAG benchmark with shared corpus | [MultiHop-RAG](https://github.com/yixuantt/MultiHop-RAG) |
+| `bioasq` | Biomedical factoid / yes-no QA | [bioasq.org](http://bioasq.org/participate/challenges) (free registration; needs shared-corpus prep) |
 
 Place downloaded files under `MIRAGE/rawdata/` — see [experiments/README.md](experiments/README.md) for exact paths.
 
@@ -398,15 +547,45 @@ Place downloaded files under `MIRAGE/rawdata/` — see [experiments/README.md](e
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--num-samples` | all | Questions per dataset |
-| `--entropy-samples` | `3` | Responses per question for uncertainty metrics |
+| `--subset-seed` | `42` | Deterministic question-subset seed |
+| `--entropy-samples` | `5` | Responses per question for uncertainty metrics |
 | `--similarity-thresholds` | `[0.1]` | Cosine similarity cutoffs to sweep |
 | `--max-chunks-values` | `[10]` | Retrieved chunk counts to sweep |
-| `--llm-provider` | `openrouter` | LLM provider |
-| `--llm-model` | `openai/gpt-oss-120b:free` | Model |
+| `--llm-provider` | `openai` | LLM provider |
+| `--llm-model` | `gpt-4o-mini` | Model |
 | `--datasets` | `pubmedqa bioasq` | Datasets to run |
-| `--skip-kg-build` | `False` | Reuse existing Neo4j graph |
+| `--rebuild-kg` | `False` | Rebuild the dataset KG |
+| `--max-kg-contexts` | unset | Cap the passages indexed into the KG build |
+| `--dataset-kg-scope` | `evaluation_subset` | Build KG from the selected subset or the full normalized dataset |
+| `--allow-gold-evidence-contexts` | `False` | Controlled-evidence mode only; bypass corpus-safety guardrails |
+| `--no-llm-judge` | `False` | Disable LLM-as-judge and use heuristic matching only |
+| `--judge-provider` | generation provider | Separate provider for the correctness judge |
+| `--judge-model` | generation model | Separate model for the correctness judge |
+| `--temperature` | `1.0` | Generation temperature for uncertainty sampling |
+| `--retrieval-temperature-values` | `[0.0]` | Final-stage retrieval sampling temperature sweep |
+| `--retrieval-shortlist-factor` | `4` | Overfetch factor for retrieval-temperature sampling |
+| `--multi-temperature` | `False` | Also run T=0, 0.5, 1.0 output-side sweeps |
+| `--evaluation-mode` | `full_metrics` | `accuracy_only` or `full_metrics` |
 
-Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced to Weights & Biases.
+Run artifacts are written under `results/runs/<run_id>/` and checkpoints under `results/checkpoints/`.
+
+---
+
+## Recent improvements
+
+### Retrieval
+- **Adjacent chunk expansion** — when retrieval uses the `retrieval_vector` index, seed element IDs are resolved to their parent `Chunk` before expanding to positional neighbours, so answers split across chunk boundaries are correctly reassembled.
+- **Confidence-aware graph filtering** — traversal queries and PPR subgraph fetch now apply `coalesce(r.confidence, 1.0) >= 0.4` to skip low-confidence edges extracted during KG build.
+
+### Uncertainty metrics
+- **GPS (Graph Path Support)** — switched from full `[*1..N]` path enumeration (times out on dense graphs) to one query per answer entity with `LIMIT 1`, preserving the confidence filter that `shortestPath` cannot support. GPS now correctly returns non-zero values when answer entities are not reachable via high-confidence paths.
+- **SEU (Support Entailment Uncertainty)** — now computed even when generation failed: retrieved chunks still exist and are evaluated against the expected answer as hypothesis. This turns SEU into a signal for *why* the model abstained (context didn't entail the answer vs. other failure modes). ECU receives the same fix.
+- **SPS (Subgraph Perturbation Stability)** — entity caps tightened from 20 to 5 per query with 20 s timeout to prevent silent hangs.
+
+### Frontend
+- Replaced the monolithic `index.html` (5000-line vanilla JS) with a React + TypeScript frontend (`frontend/`) built with Vite.
+- Component architecture: `ChatPanel`, `GraphContainer`, `KGBuildSection`, `NodeDetailPanel`, and more — each independently testable.
+- Build step required: `cd frontend && npm install && npm run build`.
 
 ---
 
@@ -415,46 +594,64 @@ Results are saved to `results/<dataset>_<timestamp>.json` and optionally synced 
 ### KG build pipeline
 
 1. **Ingest** — file uploaded; PDF text extracted via PyMuPDF, plaintext decoded
-2. **Chunk** — overlapping text windows (`CHUNK_SIZE=1500`, `CHUNK_OVERLAP=200`)
+2. **Chunk** — deterministic overlapping text windows are created for passage-level extraction
 3. **Ontology load** — custom `.owl`/`.ttl` parsed (owlready2), or free-form extraction if none supplied
-4. **LLM extraction** — each chunk sent with an ontology-constrained prompt; relationships and entities returned as structured JSON (relationships-first ordering prevents truncation data loss)
-5. **Cross-chunk extraction** — sliding window over adjacent chunk pairs; a second LLM call extracts relationships that span chunk boundaries
-6. **Entity harmonization** — duplicate entities merged by normalized text; most specific ontology type wins; stable UUID assigned per entity
-7. **Confidence filtering** — each relationship triple is scored by co-occurrence in source chunks; hallucinated triples (score < 0.25) are dropped
-8. **Embed** — chunk and entity embeddings computed with `all-MiniLM-L6-v2` (384-dim, CPU) or OpenAI
-9. **Write** — nodes, relationships, and embeddings stored in Neo4j; entities tagged with `kgName` for scoped loading; progress streamed via SSE
+4. **LLM extraction** — each chunk is processed with an ontology-constrained prompt; entities and relationships are returned as structured JSON
+5. **Cross-chunk extraction** — adjacent chunk pairs get a second pass for span-overflow relations that would otherwise be missed
+6. **Entity harmonization** — duplicate and synonym entities are merged; alias surfaces are retained in `synonyms`; the most specific compatible type wins
+7. **Relationship provenance** — edges are stamped with chunk-position, passage, and question-local provenance so later retrieval can stay passage-local when needed
+8. **Specificity stats** — entities receive `passage_count` and `node_specificity = 1 / passage_count` so generic hubs can be down-weighted at retrieval time
+9. **Embed** — chunks and entities are embedded; entity vectors are name-centered so short query mentions align cleanly at ANN lookup time
+10. **Write** — nodes, relationships, embeddings, and provenance are stored in Neo4j; entities are tagged by `kgName`; progress streams via SSE
 
 ### RAG query pipeline
 
-1. **Embed query** — same model as build time
-2. **Vector search** — top-K chunks by cosine similarity
-3. **Graph traversal** — neighbour entities fetched via Cypher for each retrieved chunk
-4. **Assemble context** — chunk text + entity graph merged into LLM prompt
-5. **Synthesise** — LLM generates a grounded answer with citations
+1. **Entity-first seeding** — when enabled, the system extracts named mentions from the question, runs symbolic alias matching plus per-entity ANN, and anchors retrieval on those entity seeds
+2. **Question-local traversal** — provenance-aware graph traversal keeps path hops local to the current KG scope and, for bundle-style benchmarks, to the current question bundle
+3. **Graph scoring** — local entity neighborhoods are ranked with PPR-style support flow rather than a fixed hop table alone
+4. **Retriever-first graph expansion** — if entity anchoring is weak, dense passage retrieval seeds a second graph-expansion pass from chunk-linked entities
+5. **Fallback retrieval** — if graph signal stays weak, the system falls back to vector retrieval and then text search rather than forcing a brittle graph answer
+6. **Evidence organization** — graph paths and supporting passages are grouped into chain-style evidence blocks before generation
+7. **Answer synthesis** — the LLM answers from the evidence block, while the app surfaces simplified Structural and Grounding support signals
 
 ### Module layout
 
 ```
+frontend/                              # React + TypeScript web UI (Vite)
+├── src/
+│   ├── components/                    # Chat, graph, KG build, layout UI components
+│   ├── hooks/                         # useChat, useGraph, useModels, useHealth, ...
+│   ├── context/                       # AppContext, ThemeContext
+│   └── types/                         # Shared TypeScript types
+└── dist/                              # Built assets served by FastAPI (git-ignored; run npm run build)
+
 ontographrag/
 ├── api/
-│   ├── app.py                         # FastAPI application, all endpoints
-│   └── static/
-│       └── index.html                 # Single-page web UI
+│   └── app.py                         # FastAPI application, all endpoints; serves frontend/dist/
 ├── kg/
 │   ├── builders/
 │   │   ├── ontology_guided_kg_creator.py   # OntologyGuidedKGCreator — core extraction, harmonization, Neo4j write
 │   │   └── enhanced_kg_creator.py          # UnifiedOntologyGuidedKGCreator — API-facing wrapper + CSV bulk ops
-│   ├── loaders/
-│   │   └── kg_loader.py               # KGLoader — reads KG from Neo4j by kgName
+│   ├── chunking.py                    # Hierarchical chunking (large extraction chunks + small retrieval sub-chunks)
 │   └── utils/
 │       ├── common_functions.py        # Shared helpers (embedding, text normalization)
 │       └── constants.py               # Default values and Neo4j label constants
 ├── rag/
-│   └── systems/
-│       ├── enhanced_rag_system.py     # KG-RAG: hybrid vector + graph retrieval
-│       └── vanilla_rag_system.py      # Vanilla RAG: vector-only baseline
+│   ├── systems/
+│   │   ├── enhanced_rag_system.py     # KG-RAG: entity-first + PPR scoring + RFGE + vector fallback
+│   │   └── vanilla_rag_system.py      # Vanilla RAG: vector-only baseline with adjacent chunk expansion
+│   ├── answer_guardrails.py           # Runtime answer quality guardrails
+│   └── retrieval_sampling.py         # Retrieval temperature sampling helpers
+├── schemas/                           # Pydantic models: Chunk, Entity, Relationship, KGContext
 └── providers/
     └── model_providers.py             # LLM + embedding provider abstractions
+
+experiments/
+├── experiment.py                      # Main benchmark runner
+├── uncertainty_metrics.py             # 15-metric UQ suite (output, structural, grounding)
+├── dataset_adapters.py                # Dataset normalization and corpus-role metadata
+├── prepare_bioasq_corpus.py           # Build shared PubMed abstract corpus for BioASQ
+└── visualize_results.py              # Plotting utilities
 ```
 
 ### Key specs
@@ -465,27 +662,22 @@ ontographrag/
 | Vector similarity | Cosine, default threshold 0.1 |
 | Chunk size | 1500 chars, 200 overlap |
 | Graph database | Neo4j 5.0+ with vector indexes |
-| Graph visualisation | vis.js 9.1.0 |
+| Graph visualisation | React + force-directed graph (frontend) |
 | File upload limit | 50 MB |
 | Chat rate limit | 30 req/min per IP |
 | KG build rate limit | 5 req/min per IP |
 
 ---
 
-## Utility scripts
+## Internal support modules
 
-| Script | Purpose |
+The supported product surface is the CLI, web app, and experiment runner. A few
+root-level Python modules remain because the app imports them directly:
+
+| Module | Purpose |
 |--------|---------|
-| `start_server.py` | Start the FastAPI server on port 8004 |
-| `run_kg_generation.py` | Build a KG from the command line without the API |
-| `populate_neo4j.py` | Seed Neo4j with sample data |
-| `clear_neo4j.py` | Delete all nodes and relationships |
-| `cleanup_and_rebuild_kg.py` | Clear Neo4j and rebuild a KG in one step |
-| `graphDB_dataAccess.py` | Low-level Neo4j data access layer (named KG CRUD) |
-| `csv_processor.py` | `MedicalReportCSVProcessor` for medical-report CSVs |
-| `compare_extraction_methods.py` | Compare ontology-guided vs free-form LLM extraction |
-| `test_named_kg.py` | Integration test for named KG creation and retrieval |
-| `MIRAGE_adaptation.py` | Adapter for the MIRAGE biomedical benchmark |
+| `graphDB_dataAccess.py` | Low-level Neo4j data access layer used by the API |
+| `csv_processor.py` | CSV validation and bulk-processing helpers for the app |
 
 ---
 
@@ -525,22 +717,28 @@ docker compose down
 
 ### Embedding providers
 
-| Provider | Env var | Model |
-|----------|---------|-------|
-| `huggingface` (default) | — | `all-MiniLM-L6-v2`, runs locally |
-| `openai` | `OPENAI_API_KEY` | `text-embedding-ada-002` |
-| `vertexai` | GCP credentials | `textembedding-gecko` |
+| Provider | Typical use | Notes |
+|----------|-------------|-------|
+| `sentence_transformers` (runtime default) | local CPU/GPU embeddings | Uses the local MiniLM-family sentence-transformers path |
+| `openai` | hosted embeddings | Requires `OPENAI_API_KEY` |
+| `huggingface`, `vertexai` | advanced/provider-helper integrations | Supported by lower-level provider helpers, but the current runtime paths default to `sentence_transformers` or `openai` |
 
-### Processing tuning
+### Runtime knobs that are actually live via env vars
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `CHUNK_SIZE` | `1500` | Tokens per chunk |
-| `CHUNK_OVERLAP` | `200` | Token overlap between consecutive chunks |
-| `MAX_CHUNKS` | `50` | Max chunks processed per document |
-| `VECTOR_SIMILARITY_THRESHOLD` | `0.1` | Minimum cosine similarity for retrieval |
-| `MAX_WORKERS` | `4` | Parallel workers for batch processing |
+| `EMBEDDING_PROVIDER` | `sentence_transformers` | Runtime embedding backend for app / retrieval |
+| `OLLAMA_HOST` | `http://localhost:11434` | Base URL for local Ollama models |
+| `APP_API_KEY` | unset | Enables API-key enforcement when present |
+| `ALLOWED_ORIGINS` | `*` | CORS policy for the FastAPI server |
 | `LLM_TIMEOUT_SECONDS` | `120` | Per-request LLM timeout |
+
+### Retrieval and evaluation defaults
+
+These are no longer primarily env-var driven:
+- KG build chunk windows and overlaps are code-level defaults in the builder / benchmark runner
+- retrieval thresholds and chunk-count sweeps are CLI-controlled in [experiments/README.md](experiments/README.md)
+- hybrid-retrieval behavior is controlled by retriever settings such as `retrieval_mode`, `use_rfge`, `use_ppr_scoring`, and `use_evidence_block`
 
 ---
 

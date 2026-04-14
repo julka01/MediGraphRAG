@@ -81,26 +81,5 @@ RETURN
   count(DISTINCT r) AS rels
 """
 
-async def extract_graph_from_file_local_file(uri, userName, password, database, model, merged_file_path, fileName, allowedNodes, allowedRelationship, token_chunk_size, chunk_overlap, chunks_to_combine, retry_condition, additional_instructions):
-    """
-    Extract graph from local file - copied from llm-graph-builder
-    This is a placeholder - the full implementation requires many dependencies
-    """
-    logging.info(f'Process file name :{fileName}')
-
-    # This is a simplified placeholder - the real implementation is much more complex
-    # and requires many dependencies from llm-graph-builder
-
-    # For now, return a mock response
-    uri_latency = {"mock": "true"}
-    response = {
-        "fileName": fileName,
-        "nodeCount": 0,
-        "relationshipCount": 0,
-        "total_processing_time": 0.0,
-        "status": "Mock - Not Implemented",
-        "model": model,
-        "success_count": 0
-    }
-
-    return uri_latency, response
+# extract_graph_from_file_local_file was removed — it always returned
+# {"status": "Mock - Not Implemented"} and had no live callers.

@@ -15,9 +15,10 @@ class ModelProvider(ABC):
         pass
 
 class LangChainRunnableAdapter(Runnable):
-    def __init__(self, provider: ModelProvider, model: str):
+    def __init__(self, provider: ModelProvider, model: str, temperature: float = 1.0):
         self.provider = provider
         self.model = model
+        self.temperature = temperature
 
     def invoke(self, input, config=None) -> str:
         # Handle ChatPromptTemplate inputs (system and user messages)
@@ -55,7 +56,9 @@ class LangChainRunnableAdapter(Runnable):
             else:
                 user_prompt = str(input)
 
-        return self.provider.generate(system_prompt, user_prompt, model_name)
+        return self.provider.generate(
+            system_prompt, user_prompt, model_name, temperature=self.temperature
+        )
 
     def __class_getitem__(cls, item):
         return cls
@@ -78,7 +81,7 @@ class OpenAIProvider(ModelProvider):
         )
 
     def generate(self, system_prompt: str, user_prompt: str, model: str, **kwargs) -> str:
-        kwargs.setdefault("temperature", 0)
+        kwargs.setdefault("temperature", 1.0)
         response = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -103,6 +106,7 @@ class OllamaProvider(ModelProvider):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
+                "options": {"num_ctx": 16384},
             }
             
             # Only enforce JSON format if explicitly requested
@@ -123,8 +127,6 @@ class OllamaProvider(ModelProvider):
                     raise ValueError(f"Invalid JSON response from model: {content}")
             
             return content
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON response from model: {content}")
         except Exception as e:
             if "not found" in str(e).lower():
                 return f"Error: Model '{model}' not found. Please run 'ollama pull {model}' to download it."
@@ -216,6 +218,22 @@ class OpenRouterProvider(ModelProvider):
     def bind(self, **kwargs):
         """Add bind method for LangChain compatibility"""
         return self
+
+
+class TemperatureLockedProvider(ModelProvider):
+    """Wrap a provider and force a fixed temperature on every generate call."""
+
+    def __init__(self, provider: ModelProvider, temperature: float = 0.0):
+        self.provider = provider
+        self.temperature = temperature
+
+    def generate(self, system_prompt: str, user_prompt: str, model: str, **kwargs) -> str:
+        kwargs = dict(kwargs)
+        kwargs["temperature"] = self.temperature
+        return self.provider.generate(system_prompt, user_prompt, model, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self.provider, name)
 
 def get_provider(provider: str, model: str = None, **kwargs) -> ModelProvider:
     providers: Dict[str, Any] = {

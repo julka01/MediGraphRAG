@@ -1,0 +1,26 @@
+[
+  {
+    "id": "2wiki_helena_father_in_law",
+    "kg_name": "2wikimultihopqa",
+    "question": "Who is the father-in-law of Helena Palaiologina, Despotess Of Serbia?",
+    "expected_any": ["Đurađ Branković", "Durad Brankovic", "Djuradj Brankovic"]
+  },
+  {
+    "id": "2wiki_later_born_director",
+    "kg_name": "2wikimultihopqa",
+    "question": "Which film has the director born later, Riding The California Trail or Lost And Delirious?",
+    "expected_any": ["Lost And Delirious", "Lost and Delirious"]
+  },
+  {
+    "id": "hotpot_salford_ground",
+    "kg_name": "hotpotqa",
+    "question": "The current home ground of the Salford Red Devils was built for what season?",
+    "expected_any": ["2012 season", "2012"]
+  },
+  {
+    "id": "bioasq_mef2c_noncoding",
+    "kg_name": "bioasq",
+    "question": "Do only changes in coding regions of MEF2C cause developmental disorders?",
+    "expected_any": ["No"]
+  }
+]

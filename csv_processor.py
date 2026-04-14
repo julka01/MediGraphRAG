@@ -1,12 +1,132 @@
 #!/usr/bin/env python3
 """
-Enhanced CSV Processor for Medical Report Data
-Supports pipe-delimited format with validation and bulk processing capabilities
+CSV Processors for Knowledge Graph bulk ingestion.
+
+- DocumentCSVProcessor: generic, works with any CSV. The ontology defines the
+  domain; this class only cares about which column holds the document text.
+- MedicalReportCSVProcessor: specialisation for pipe-delimited medical reports
+  with structured section columns.
 """
 import pandas as pd
 import logging
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+
+
+class DocumentCSVProcessor:
+    """
+    Generic CSV processor for bulk KG ingestion.
+
+    Domain knowledge lives in the ontology, not here. This class only needs to
+    know which column contains the document text and (optionally) which column
+    to use as a stable document ID.
+    """
+
+    def __init__(self, text_column: str, id_column: str = None, delimiter: str = ','):
+        """
+        Args:
+            text_column: Name of the column that contains the document text.
+            id_column:   Optional column to use as doc_id. When None, row index
+                         is used ("row_0", "row_1", …).
+            delimiter:   CSV field delimiter.
+        """
+        self.text_column = text_column
+        self.id_column = id_column
+        self.delimiter = delimiter
+
+    def validate_csv_format(self, file_path: str) -> Dict[str, Any]:
+        if not Path(file_path).exists():
+            raise FileNotFoundError(f"CSV file not found: {file_path}")
+
+        df = pd.read_csv(file_path, sep=self.delimiter, nrows=5, encoding='utf-8')
+
+        errors = []
+        if self.text_column not in df.columns:
+            errors.append(f"text_column '{self.text_column}' not found in CSV. "
+                          f"Available columns: {list(df.columns)}")
+        if self.id_column and self.id_column not in df.columns:
+            errors.append(f"id_column '{self.id_column}' not found in CSV. "
+                          f"Available columns: {list(df.columns)}")
+
+        return {
+            'is_valid': len(errors) == 0,
+            'delimiter': self.delimiter,
+            'num_columns': len(df.columns),
+            'column_names': list(df.columns),
+            'validation_errors': errors,
+        }
+
+    def load_documents_bulk(
+        self,
+        file_path: str,
+        start_row: int = 0,
+        max_rows: int = 50,
+    ) -> Dict[str, Any]:
+        """
+        Load a batch of documents from CSV.
+
+        Returns:
+            {
+                'documents': [
+                    {
+                        'text':      str,   # content of text_column
+                        'doc_id':    str,   # id_column value or "row_{row_index}"
+                        'row_index': int,   # absolute row number in the file
+                        'metadata':  dict,  # all other columns as-is
+                    },
+                    ...
+                ],
+                'metadata': {
+                    'total_documents': int,
+                    'start_row': int,
+                    'max_rows': int,
+                    'columns': list,
+                },
+            }
+        """
+        df = pd.read_csv(
+            file_path,
+            sep=self.delimiter,
+            skiprows=range(1, start_row + 1) if start_row > 0 else None,
+            nrows=max_rows,
+            encoding='utf-8',
+        )
+
+        documents = []
+        for local_idx, row in df.iterrows():
+            row_index = start_row + local_idx
+            text = str(row.get(self.text_column, '') or '')
+            if not text.strip():
+                continue
+
+            doc_id = (
+                str(row[self.id_column])
+                if self.id_column and self.id_column in row
+                else f"row_{row_index}"
+            )
+
+            metadata = {
+                col: row[col]
+                for col in df.columns
+                if col != self.text_column and (self.id_column is None or col != self.id_column)
+            }
+
+            documents.append({
+                'text': text,
+                'doc_id': doc_id,
+                'row_index': row_index,
+                'metadata': metadata,
+            })
+
+        return {
+            'documents': documents,
+            'metadata': {
+                'total_documents': len(documents),
+                'start_row': start_row,
+                'max_rows': max_rows,
+                'columns': list(df.columns),
+            },
+        }
 
 class MedicalReportCSVProcessor:
     """

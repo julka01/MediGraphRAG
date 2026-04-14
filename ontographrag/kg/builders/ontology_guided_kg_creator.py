@@ -10,7 +10,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain.docstore.document import Document
 from langchain_neo4j import Neo4jGraph
-from langchain_text_splitters import TokenTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from ontographrag.kg.chunking import chunk_text as _chunk_text_fn
 from collections import defaultdict, Counter
 import os
 import sys
@@ -19,6 +20,10 @@ import time
 
 # Import from local kg_utils
 from ontographrag.kg.utils.common_functions import load_embedding_model
+from ontographrag.schemas.models import (
+    OntologySchema, EntityType as OntEntityType, RelationshipType as OntRelType,
+    DataBinding, RelationshipAttribute, PropertyType,
+)
 
 class OntologyGuidedKGCreator:
     """
@@ -35,10 +40,42 @@ class OntologyGuidedKGCreator:
         neo4j_password: str = "password",
         neo4j_database: str = "neo4j",
         embedding_model: str = "sentence_transformers",
-        ontology_path: str = None
+        ontology_path: str = None,
+        enable_coreference_resolution: bool = False,
+        retrieval_chunk_size: Optional[int] = None,
+        retrieval_chunk_overlap: Optional[int] = None,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        env_retrieval_chunk_size = os.getenv("RETRIEVAL_CHUNK_SIZE")
+        env_retrieval_chunk_overlap = os.getenv("RETRIEVAL_CHUNK_OVERLAP")
+        resolved_retrieval_chunk_size = retrieval_chunk_size
+        if resolved_retrieval_chunk_size is None and env_retrieval_chunk_size:
+            try:
+                resolved_retrieval_chunk_size = int(env_retrieval_chunk_size)
+            except ValueError:
+                logging.warning(
+                    "Invalid RETRIEVAL_CHUNK_SIZE=%r; falling back to 256",
+                    env_retrieval_chunk_size,
+                )
+        resolved_retrieval_chunk_overlap = retrieval_chunk_overlap
+        if resolved_retrieval_chunk_overlap is None and env_retrieval_chunk_overlap:
+            try:
+                resolved_retrieval_chunk_overlap = int(env_retrieval_chunk_overlap)
+            except ValueError:
+                logging.warning(
+                    "Invalid RETRIEVAL_CHUNK_OVERLAP=%r; falling back to 64",
+                    env_retrieval_chunk_overlap,
+                )
+        self.retrieval_chunk_size = max(64, int(resolved_retrieval_chunk_size or 256))
+        default_retrieval_overlap = resolved_retrieval_chunk_overlap
+        if default_retrieval_overlap is None:
+            default_retrieval_overlap = min(64, max(16, self.retrieval_chunk_size // 4))
+        self.retrieval_chunk_overlap = max(
+            0,
+            min(int(default_retrieval_overlap), self.retrieval_chunk_size - 1),
+        )
+        self.enable_coreference_resolution = enable_coreference_resolution
         self.neo4j_uri = neo4j_uri
         self.neo4j_user = neo4j_user
         self.neo4j_password = neo4j_password
@@ -53,6 +90,7 @@ class OntologyGuidedKGCreator:
         # Load ontology if provided
         self.ontology_classes = []
         self.ontology_relationships = []
+        self._ontology_schema: Optional[OntologySchema] = None
         if ontology_path and os.path.exists(ontology_path):
             logging.info(f"Ontology file exists at: {ontology_path} (size: {os.path.getsize(ontology_path)} bytes)")
             try:
@@ -89,51 +127,296 @@ class OntologyGuidedKGCreator:
             except Exception as e:
                 logging.warning(f"Could not pre-compute ontology class embeddings: {e}. Falling back to keyword matching.")
 
+    # ------------------------------------------------------------------
+    # Ontology loading — supports OWL/RDF and JSON
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _prop_type(raw: str) -> PropertyType:
+        """Map a raw type string from JSON to a PropertyType enum value."""
+        _map = {
+            "string": PropertyType.STRING, "str": PropertyType.STRING,
+            "integer": PropertyType.INTEGER, "int": PropertyType.INTEGER,
+            "decimal": PropertyType.DECIMAL, "numeric": PropertyType.DECIMAL,
+            "double": PropertyType.DOUBLE,
+            "float": PropertyType.FLOAT, "number": PropertyType.FLOAT,
+            "boolean": PropertyType.BOOLEAN, "bool": PropertyType.BOOLEAN,
+            "date": PropertyType.DATE, "datetime": PropertyType.DATETIME,
+            "enum": PropertyType.ENUM,
+            "id": PropertyType.ID, "identifier": PropertyType.ID,
+        }
+        return _map.get((raw or "string").strip().lower(), PropertyType.STRING)
+
     def _load_ontology(self, ontology_path: str):
+        """Load ontology from OWL/RDF (XML) or Ontology Playground-style JSON.
+
+        Both paths normalise into:
+          self._ontology_schema     — OntologySchema (full typed model)
+          self.ontology_classes     — List[dict]  (legacy flat list)
+          self.ontology_relationships — List[dict]  (legacy flat list)
         """
-        Load ontology classes and relationships from OWL file
-        """
+        ext = os.path.splitext(ontology_path)[1].lower()
+        is_json = ext == '.json'
+        if not is_json and ext not in ('.owl', '.rdf', '.ttl', '.xml'):
+            # Peek at first byte to detect JSON
+            try:
+                with open(ontology_path, 'r', encoding='utf-8') as _f:
+                    _peek = _f.read(3).lstrip()
+                is_json = _peek.startswith('{') or _peek.startswith('[')
+            except OSError:
+                pass
+
         try:
-            tree = ET.parse(ontology_path)
-            root = tree.getroot()
-
-            # Define namespaces
-            ns = {
-                'owl': 'http://www.w3.org/2002/07/owl#',
-                'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-                'rdfs': 'http://www.w3.org/2000/01/rdf-schema#'
-            }
-
-            # Extract classes
-            for class_elem in root.findall('.//owl:Class', ns):
-                class_id = class_elem.get('{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about', '')
-                if class_id:
-                    # Extract local name from URI
-                    class_name = class_id.split('#')[-1] if '#' in class_id else class_id.split('/')[-1]
-                    if class_name:
-                        self.ontology_classes.append({
-                            'id': class_name,
-                            'uri': class_id,
-                            'label': class_name.replace('_', ' ').title()
-                        })
-
-            # Extract object properties (relationships)
-            for prop_elem in root.findall('.//owl:ObjectProperty', ns):
-                prop_id = prop_elem.get('{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about', '')
-                if prop_id:
-                    prop_name = prop_id.split('#')[-1] if '#' in prop_id else prop_id.split('/')[-1]
-                    if prop_name:
-                        self.ontology_relationships.append({
-                            'id': prop_name,
-                            'uri': prop_id,
-                            'label': prop_name.replace('_', ' ').title()
-                        })
-
-            logging.info(f"Successfully loaded {len(self.ontology_classes)} ontology classes and {len(self.ontology_relationships)} relationships")
-
+            if is_json:
+                self._ontology_schema = self._load_ontology_json(ontology_path)
+            else:
+                self._ontology_schema = self._load_ontology_owl(ontology_path)
         except Exception as e:
-            logging.error(f"Error loading ontology: {e}")
-            raise e
+            logging.error("Error loading ontology: %s", e)
+            raise
+
+        # Populate legacy flat lists for backwards compatibility
+        self.ontology_classes = [
+            {'id': et.id, 'uri': et.uri or '', 'label': et.label,
+             'description': et.description or ''}
+            for et in self._ontology_schema.entity_types
+        ]
+        self.ontology_relationships = [
+            {'id': rt.id, 'uri': rt.uri or '', 'label': rt.label,
+             'description': rt.description or '',
+             'domain': rt.domain or '', 'range': rt.range or '',
+             'cardinality': rt.cardinality or ''}
+            for rt in self._ontology_schema.relationship_types
+        ]
+        logging.info(
+            "Loaded ontology (%s): %d entity types, %d relationship types",
+            self._ontology_schema.source_format,
+            len(self.ontology_classes), len(self.ontology_relationships),
+        )
+
+    def _load_ontology_json(self, ontology_path: str) -> OntologySchema:
+        """Parse an Ontology Playground-style JSON file.
+
+        Accepts layout A: {"classes": [...], "relationships": [...]}
+        and layout B:     {"entity_types": [...], "relationship_types": [...]}
+        """
+        with open(ontology_path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+
+        raw_classes = raw.get('classes') or raw.get('entity_types') or []
+        raw_rels = raw.get('relationships') or raw.get('relationship_types') or []
+
+        entity_types: List[OntEntityType] = []
+        for cls in raw_classes:
+            if not isinstance(cls, dict):
+                continue
+            eid = cls.get('id') or cls.get('name') or ''
+            if not eid:
+                continue
+            props = []
+            for p in cls.get('properties') or []:
+                pname = (p.get('name') or p.get('id') or '') if isinstance(p, dict) else ''
+                if not pname:
+                    continue
+                props.append(DataBinding(
+                    name=pname,
+                    type=self._prop_type(p.get('type', 'string')),
+                    description=p.get('description') or None,
+                    identifier=bool(p.get('identifier', False)),
+                    required=bool(p.get('required', False)),
+                    enum_values=list(p.get('enum_values') or p.get('values') or []),
+                    unit=p.get('unit') or None,
+                ))
+            entity_types.append(OntEntityType(
+                id=eid,
+                label=cls.get('label') or eid.replace('_', ' ').title(),
+                description=cls.get('description') or None,
+                uri=cls.get('uri') or None,
+                properties=props,
+            ))
+
+        relationship_types: List[OntRelType] = []
+        for rel in raw_rels:
+            if not isinstance(rel, dict):
+                continue
+            rid = rel.get('id') or rel.get('name') or rel.get('type') or ''
+            if not rid:
+                continue
+            attrs = []
+            for a in rel.get('attributes') or rel.get('properties') or []:
+                aname = (a.get('name') or a.get('id') or '') if isinstance(a, dict) else ''
+                if not aname:
+                    continue
+                attrs.append(RelationshipAttribute(
+                    name=aname,
+                    type=self._prop_type(a.get('type', 'string')),
+                    description=a.get('description') or None,
+                    unit=a.get('unit') or None,
+                ))
+            relationship_types.append(OntRelType(
+                id=rid,
+                label=rel.get('label') or rid.replace('_', ' ').title(),
+                description=rel.get('description') or None,
+                uri=rel.get('uri') or None,
+                domain=rel.get('from') or rel.get('domain') or None,
+                range=rel.get('to') or rel.get('range') or None,
+                cardinality=rel.get('cardinality') or None,
+                attributes=attrs,
+            ))
+
+        return OntologySchema(
+            entity_types=entity_types, relationship_types=relationship_types,
+            source_format='json', source_path=ontology_path,
+        )
+
+    def _load_ontology_owl(self, ontology_path: str) -> OntologySchema:
+        """Parse an OWL/RDF XML ontology into OntologySchema."""
+        tree = ET.parse(ontology_path)
+        root = tree.getroot()
+
+        ns = {
+            'owl':  'http://www.w3.org/2002/07/owl#',
+            'rdf':  'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+            'rdfs': 'http://www.w3.org/2000/01/rdf-schema#',
+        }
+        _rdf_about  = '{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about'
+        _rdfs_label = '{http://www.w3.org/2000/01/rdf-schema#}label'
+        _rdfs_cmt   = '{http://www.w3.org/2000/01/rdf-schema#}comment'
+        _rdfs_dom   = '{http://www.w3.org/2000/01/rdf-schema#}domain'
+        _rdfs_rng   = '{http://www.w3.org/2000/01/rdf-schema#}range'
+        _rdf_rsrc   = '{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource'
+
+        def _local(uri: str) -> str:
+            return uri.split('#')[-1] if '#' in uri else uri.split('/')[-1]
+
+        def _res_local(elem):
+            if elem is None:
+                return None
+            r = elem.get(_rdf_rsrc, '')
+            return _local(r) if r else None
+
+        def _child_text_by_local_name(parent, local_name: str) -> Optional[str]:
+            if parent is None:
+                return None
+            for child in list(parent):
+                tag = child.tag
+                if isinstance(tag, str):
+                    child_local = tag.split('}')[-1] if '}' in tag else tag.split(':')[-1]
+                    if child_local == local_name and child.text:
+                        return child.text.strip()
+            return None
+
+        def _bool_text(value: Optional[str]) -> bool:
+            return str(value or "").strip().lower() in {"true", "1", "yes"}
+
+        def _xsd_to_prop_type(range_uri: Optional[str], explicit_type: Optional[str]) -> PropertyType:
+            if explicit_type:
+                return self._prop_type(explicit_type)
+            local = _local(range_uri) if range_uri else ""
+            return {
+                "string": PropertyType.STRING,
+                "integer": PropertyType.INTEGER,
+                "int": PropertyType.INTEGER,
+                "long": PropertyType.INTEGER,
+                "decimal": PropertyType.DECIMAL,
+                "float": PropertyType.FLOAT,
+                "double": PropertyType.DOUBLE,
+                "date": PropertyType.DATE,
+                "dateTime": PropertyType.DATETIME,
+                "boolean": PropertyType.BOOLEAN,
+            }.get(local, PropertyType.STRING)
+
+        entity_types: List[OntEntityType] = []
+        for cls_elem in root.findall('.//owl:Class', ns):
+            uri = cls_elem.get(_rdf_about, '')
+            if not uri:
+                continue
+            local = _local(uri)
+            if not local:
+                continue
+            lbl_el = cls_elem.find(_rdfs_label)
+            cmt_el = cls_elem.find(_rdfs_cmt)
+            entity_types.append(OntEntityType(
+                id=local, uri=uri,
+                label=(lbl_el.text.strip() if lbl_el is not None and lbl_el.text else local.replace('_', ' ').title()),
+                description=(cmt_el.text.strip() if cmt_el is not None and cmt_el.text else None),
+            ))
+
+        entity_by_id = {et.id: et for et in entity_types}
+
+        relationship_attribute_map: Dict[str, List[RelationshipAttribute]] = defaultdict(list)
+
+        for dt_elem in root.findall('.//owl:DatatypeProperty', ns):
+            uri = dt_elem.get(_rdf_about, '')
+            if not uri:
+                continue
+
+            local = _local(uri)
+            label = _child_text_by_local_name(dt_elem, 'label') or local
+            description = _child_text_by_local_name(dt_elem, 'comment')
+            domain = _res_local(dt_elem.find('.//' + _rdfs_dom))
+            range_uri = dt_elem.find('.//' + _rdfs_rng)
+            range_local = _res_local(range_uri)
+            explicit_type = _child_text_by_local_name(dt_elem, 'propertyType') or _child_text_by_local_name(dt_elem, 'attributeType')
+            prop_type = _xsd_to_prop_type(range_local, explicit_type)
+            enum_values_text = _child_text_by_local_name(dt_elem, 'enumValues')
+            enum_values = [v.strip() for v in (enum_values_text or '').split(',') if v.strip()]
+            unit = _child_text_by_local_name(dt_elem, 'unit')
+            identifier = _bool_text(_child_text_by_local_name(dt_elem, 'isIdentifier'))
+            relationship_attr_of = _child_text_by_local_name(dt_elem, 'relationshipAttributeOf')
+
+            if relationship_attr_of:
+                relationship_attribute_map[relationship_attr_of].append(
+                    RelationshipAttribute(
+                        name=label,
+                        type=prop_type,
+                        description=description,
+                        unit=unit,
+                    )
+                )
+                continue
+
+            if not domain or domain not in entity_by_id:
+                continue
+
+            entity_by_id[domain].properties.append(
+                DataBinding(
+                    name=label,
+                    type=prop_type,
+                    description=description,
+                    identifier=identifier or prop_type == PropertyType.ID,
+                    required=False,
+                    enum_values=enum_values,
+                    unit=unit,
+                )
+            )
+
+        relationship_types: List[OntRelType] = []
+        for prop_elem in root.findall('.//owl:ObjectProperty', ns):
+            uri = prop_elem.get(_rdf_about, '')
+            if not uri:
+                continue
+            local = _local(uri)
+            if not local:
+                continue
+            lbl_el = prop_elem.find(_rdfs_label)
+            cmt_el = prop_elem.find(_rdfs_cmt)
+            dom_el = prop_elem.find('.//' + _rdfs_dom)
+            rng_el = prop_elem.find('.//' + _rdfs_rng)
+            relationship_types.append(OntRelType(
+                id=local, uri=uri,
+                label=(lbl_el.text.strip() if lbl_el is not None and lbl_el.text else local.replace('_', ' ').title()),
+                description=(cmt_el.text.strip() if cmt_el is not None and cmt_el.text else None),
+                domain=_res_local(dom_el),
+                range=_res_local(rng_el),
+                cardinality=_child_text_by_local_name(prop_elem, 'cardinality'),
+                attributes=relationship_attribute_map.get(local, []),
+            ))
+
+        return OntologySchema(
+            entity_types=entity_types, relationship_types=relationship_types,
+            source_format='owl', source_path=ontology_path,
+        )
 
     def _validate_ontology_structure(self):
         """
@@ -162,16 +445,15 @@ class OntologyGuidedKGCreator:
         logging.info(f"Validated ontology relationships: {len(self.ontology_relationships)} valid entries")
 
     def _build_schema_card(self) -> dict:
-        """
-        Build a versioned snapshot of the ontology used for this KG build.
+        """Build a versioned snapshot of the ontology for this KG build.
+
         Stored on the Document node so future queries can detect ontology drift.
+        Includes full property signatures, domain/range, cardinalities, and
+        attribute schemas when a typed OntologySchema is available.
         """
         classes = [c.get('id', '') for c in self.ontology_classes if isinstance(c, dict)]
-        rels = [r.get('id', '') for r in self.ontology_relationships if isinstance(r, dict)]
-        # Deterministic fingerprint: sort so order doesn't affect hash
-        fingerprint_str = json.dumps({"classes": sorted(classes), "relationships": sorted(rels)}, sort_keys=True)
-        schema_hash = hashlib.sha256(fingerprint_str.encode()).hexdigest()
-        # Also hash the raw ontology file if available
+        rels    = [r.get('id', '') for r in self.ontology_relationships if isinstance(r, dict)]
+
         ontology_file_hash = None
         if self.ontology_path and os.path.exists(self.ontology_path):
             try:
@@ -179,17 +461,66 @@ class OntologyGuidedKGCreator:
                     ontology_file_hash = hashlib.sha256(f.read()).hexdigest()
             except OSError:
                 pass
-        return {
-            "schemaVersion": schema_hash[:16],  # short fingerprint for display
-            "schemaHash": schema_hash,
+
+        card: dict = {
             "ontologyFileHash": ontology_file_hash or "",
-            "ontologyPath": os.path.basename(self.ontology_path) if self.ontology_path else "",
-            "classes": sorted(classes),
-            "relationships": sorted(rels),
-            "classCount": len(classes),
+            "ontologyPath":     os.path.basename(self.ontology_path) if self.ontology_path else "",
+            "sourceFormat":     (self._ontology_schema.source_format if self._ontology_schema else "unknown"),
+            "classes":          sorted(classes),
+            "relationships":    sorted(rels),
+            "classCount":       len(classes),
             "relationshipCount": len(rels),
-            "builtAt": datetime.now().isoformat(),
+            "builtAt":          datetime.now().isoformat(),
         }
+
+        # Enrich with typed property signatures and domain/range when available
+        schema = self._ontology_schema
+        if schema:
+            card["entityTypes"] = [
+                {
+                    "id": et.id,
+                    "label": et.label,
+                    "description": et.description,
+                    "properties": [
+                        {
+                            "name": p.name, "type": p.type.value,
+                            "identifier": p.identifier, "required": p.required,
+                            "enum_values": p.enum_values, "unit": p.unit,
+                        }
+                        for p in et.properties
+                    ],
+                }
+                for et in schema.entity_types
+            ]
+            card["relationshipTypes"] = [
+                {
+                    "id": rt.id, "label": rt.label, "description": rt.description,
+                    "domain": rt.domain, "range": rt.range, "cardinality": rt.cardinality,
+                    "attributes": [
+                        {"name": a.name, "type": a.type.value, "unit": a.unit}
+                        for a in rt.attributes
+                    ],
+                }
+                for rt in schema.relationship_types
+            ]
+
+        fingerprint_payload = {
+            "sourceFormat": card.get("sourceFormat", "unknown"),
+            "classes": card.get("classes", []),
+            "relationships": card.get("relationships", []),
+            "entityTypes": card.get("entityTypes", []),
+            "relationshipTypes": card.get("relationshipTypes", []),
+        }
+        fingerprint_str = json.dumps(
+            fingerprint_payload,
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        schema_hash = hashlib.sha256(fingerprint_str.encode("utf-8")).hexdigest()
+        card["schemaVersion"] = schema_hash[:16]
+        card["schemaHash"] = schema_hash
+
+        return card
 
     def _create_neo4j_connection(self):
         """Create Neo4j graph connection"""
@@ -213,138 +544,443 @@ class OntologyGuidedKGCreator:
             sanitize=True
         )
 
+    # ------------------------------------------------------------------
+    # Context enrichment helpers (section headers, qualifier sentences,
+    # and cross-chunk coreference resolution)
+    # ------------------------------------------------------------------
+
+    # Patterns that mark standard biomedical paper sections
+    _SECTION_HEADER_RE = re.compile(
+        r"(?m)^(?:"
+        r"\d+[\.\d]*\s*"                              # optional numbering: "2.", "2.1."
+        r")?"
+        r"(?P<header>"
+        r"abstract|introduction|background|methods?|materials?\s+and\s+methods?|"
+        r"experimental\s+(?:procedures?|design)|study\s+design|"
+        r"results?(?:\s+and\s+discussion)?|"
+        r"discussion|conclusions?|summary|"
+        r"statistical\s+analysis|data\s+analysis|"
+        r"supplementary|acknowledgements?|references?"
+        r")"
+        r"[:\s]*$",
+        re.IGNORECASE,
+    )
+
+    # Keywords that mark qualifier-bearing sentences
+    _QUALIFIER_KEYWORDS = re.compile(
+        r"\b(?:condition|experiment|treat(?:ed|ment)|knockout|knock[- ]?out|"
+        r"mutant|patient|cohort|model|culture|in\s+vitro|in\s+vivo|"
+        r"hypox|normox|baseline|control|express(?:ed|ion)|stimulat|"
+        r"inhibit|activat|induc|depleted|overexpress|transfect|"
+        r"under\s+these|such\s+conditions?|this\s+(?:model|system|context|protocol)|"
+        r"these\s+(?:cells?|conditions?|animals?|patients?|mice|rats?))\b",
+        re.IGNORECASE,
+    )
+
+    # Demonstrative coreference markers that indicate cross-chunk references
+    _COREF_MARKERS = re.compile(
+        r"\b(?:"
+        r"these\s+(?:conditions?|cells?|animals?|mice|rats?|patients?|results?|findings?|data)|"
+        r"this\s+(?:model|system|treatment|context|approach|protocol|setup|condition)|"
+        r"such\s+conditions?|"
+        r"under\s+these\s+(?:conditions?|circumstances?)|"
+        r"the\s+(?:treated|knockout|mutant|control)\s+(?:group|cells?|mice|animals?)|"
+        r"the\s+above[-\s](?:mentioned\s+)?(?:conditions?|treatment|model|protocol)|"
+        r"as\s+(?:described|mentioned|stated)\s+(?:above|previously|earlier)"
+        r")\b",
+        re.IGNORECASE,
+    )
+
+    def _detect_section_headers(self, text: str) -> List[Tuple[int, str]]:
+        """Return list of (char_position, normalised_section_name) for every section
+        header found in *text*, in document order.
+
+        e.g. [(0, 'Abstract'), (412, 'Introduction'), (2105, 'Methods'), ...]
+        """
+        headers: List[Tuple[int, str]] = []
+        for m in self._SECTION_HEADER_RE.finditer(text):
+            raw = m.group("header").strip()
+            # Normalise to title case; collapse "materials and methods" variants
+            if re.match(r"materials?\s+and\s+methods?", raw, re.I):
+                normalised = "Methods"
+            elif re.match(r"experimental\s+(?:procedures?|design)|study\s+design", raw, re.I):
+                normalised = "Methods"
+            elif re.match(r"results?\s+and\s+discussion", raw, re.I):
+                normalised = "Results"
+            else:
+                normalised = raw.title()
+            headers.append((m.start(), normalised))
+        return headers
+
+    def _get_section_for_position(
+        self, pos: int, section_headers: List[Tuple[int, str]]
+    ) -> Optional[str]:
+        """Return the section name that covers character position *pos*."""
+        current = None
+        for header_pos, name in section_headers:
+            if header_pos <= pos:
+                current = name
+            else:
+                break
+        return current
+
+    def _extract_qualifier_sentences(self, text: str, max_sentences: int = 4) -> str:
+        """Return up to *max_sentences* sentences from *text* that contain
+        qualifier / experimental-context keywords.  Used to build the
+        "context from previous chunk" header.
+        """
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        selected = [s.strip() for s in sentences if self._QUALIFIER_KEYWORDS.search(s)]
+        # Prefer sentences near the end of the chunk (most recent context)
+        selected = selected[-max_sentences:]
+        return " ".join(selected)
+
+    def _has_coreference_markers(self, text: str) -> bool:
+        """Return True if *text* contains demonstrative coreference markers."""
+        return bool(self._COREF_MARKERS.search(text))
+
+    def _resolve_coreferences_llm(
+        self,
+        chunk_text: str,
+        context_text: str,
+        llm,
+        model_name: str,
+    ) -> str:
+        """Use the LLM to resolve demonstrative coreferences in *chunk_text*
+        using *context_text* (content from previous chunks) as the lookup source.
+
+        Returns a rewritten version of *chunk_text* with all resolvable references
+        replaced by their full referents.  Falls back to the original text on any
+        error.
+
+        This is the cross-chunk qualifier coreference step: phrases like
+        "these conditions", "this model", "the treated cells" are replaced with
+        the specific experimental setup described in *context_text*, so that the
+        downstream extraction LLM can attach the correct qualifier to each claim.
+        """
+        if not context_text.strip():
+            return chunk_text
+
+        coref_prompt = f"""You are resolving ambiguous references in a biomedical research text.
+
+CONTEXT (from earlier in the paper — use this to identify what demonstrative phrases refer to):
+{context_text}
+
+CURRENT PASSAGE (rewrite this passage, replacing every ambiguous demonstrative reference with its full referent from the CONTEXT):
+{chunk_text}
+
+Rules:
+- Replace "these conditions" / "this model" / "the treated cells" / "such circumstances" etc. with their specific referents from the CONTEXT.
+- If a reference cannot be resolved from the CONTEXT, leave it unchanged.
+- Do NOT change any scientific claims, entity names, or factual content.
+- Return ONLY the rewritten passage text, nothing else."""
+
+        try:
+            resolved = llm.generate(coref_prompt, "", model_name)
+            resolved = resolved.strip()
+            if len(resolved) < 20 or len(resolved) > len(chunk_text) * 3:
+                # Sanity check: resolved text must be plausible
+                return chunk_text
+            return resolved
+        except Exception as e:
+            logging.warning("Coreference resolution failed, using original chunk: %s", e)
+            return chunk_text
+
     def _chunk_text(self, text: str) -> List[Dict[str, Any]]:
-        """Chunk text using TokenTextSplitter"""
-        text_splitter = TokenTextSplitter(
+        """Chunk text using RecursiveCharacterTextSplitter with tiktoken encoding.
+
+        Delegates to ontographrag.kg.chunking.chunk_text so the logic is
+        testable in isolation without instantiating the full creator.
+        """
+        return _chunk_text_fn(
+            text=text,
             chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap
+            chunk_overlap=self.chunk_overlap,
+            embedding_fn=self.embedding_function.embed_query,
         )
 
-        chunks = text_splitter.split_text(text)
-
-        formatted = []
-        total = len(chunks)
-        current_pos = 0
-
-        for idx, chunk_text in enumerate(chunks):
-            start_pos = current_pos
-            end_pos = start_pos + len(chunk_text)
-
-            # Generate embedding for the chunk
-            try:
-                chunk_embedding = self.embedding_function.embed_query(chunk_text)
-            except Exception as e:
-                logging.warning(f"Failed to generate embedding for chunk {idx}: {e}")
-                chunk_embedding = None
-
-            formatted.append({
-                "text": chunk_text,
-                "chunk_id": idx,
-                "start_pos": start_pos,
-                "end_pos": end_pos,
-                "total_chunks": total,
-                "embedding": chunk_embedding
-            })
-
-            current_pos += len(chunk_text) - self.chunk_overlap
-
-        return formatted
-
-    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm, model_name: str = "openai/gpt-oss-120b:free") -> Dict[str, Any]:
+    def _build_retrieval_subchunks(
+        self,
+        chunk: Dict[str, Any],
+        *,
+        parent_chunk_id: str,
+    ) -> List[Dict[str, Any]]:
         """
-        Extract entities and relationships using LLM with ontology guidance (if ontology available) or natural LLM detection
+        Build smaller retrieval-only spans from a larger KG extraction chunk.
+
+        KG extraction keeps broad context, but vector retrieval should operate on
+        spans sized for the embedding model. These RetrievalChunk nodes map back
+        to their parent Chunk so graph provenance stays intact.
+        """
+        chunk_text = str(chunk.get("text") or "")
+        if not chunk_text.strip():
+            return []
+
+        retrieval_chunk_size = max(64, int(getattr(self, "retrieval_chunk_size", 256) or 256))
+        retrieval_chunk_overlap = max(
+            0,
+            min(
+                int(getattr(self, "retrieval_chunk_overlap", 64) or 64),
+                retrieval_chunk_size - 1,
+            ),
+        )
+
+        raw_subchunks = _chunk_text_fn(
+            text=chunk_text,
+            chunk_size=retrieval_chunk_size,
+            chunk_overlap=retrieval_chunk_overlap,
+            embedding_fn=self.embedding_function.embed_query,
+        )
+        retrieval_subchunks: List[Dict[str, Any]] = []
+        parent_start = int(chunk.get("start_pos") or 0)
+        for subchunk in raw_subchunks:
+            retrieval_subchunks.append({
+                "id": hashlib.sha1(
+                    f"{parent_chunk_id}:{subchunk['position']}:{subchunk['text']}".encode()
+                ).hexdigest(),
+                "text": subchunk["text"],
+                "embedding": subchunk.get("embedding"),
+                "retrieval_local_index": subchunk["position"],
+                "start_pos": parent_start + int(subchunk.get("start_pos") or 0),
+                "end_pos": parent_start + int(subchunk.get("end_pos") or 0),
+                "position": int(chunk.get("position") or 0),
+                "source": chunk.get("source"),
+                "dataset": chunk.get("dataset"),
+                "question_id": chunk.get("question_id"),
+                "passage_index": chunk.get("passage_index"),
+                "chunk_local_index": chunk.get("chunk_local_index", chunk.get("chunk_id", 0)),
+                "parent_chunk_id": parent_chunk_id,
+            })
+        return retrieval_subchunks
+
+    # ------------------------------------------------------------------
+    # Schema-aware prompt helpers (step 4)
+    # ------------------------------------------------------------------
+
+    def _build_ontology_prompt_section(self, chunk_text: str, max_entity_types: int = 30, max_rel_types: int = 25) -> str:
+        """Build the ontology section of the extraction prompt.
+
+        When a typed OntologySchema is available, emits:
+          - entity types with description + typed property list
+          - relationship types with description + domain/range/cardinality + attributes
+
+        Only includes entity types whose label appears in the chunk text (relevance
+        filter), plus a tail of up to (max_entity_types - n_relevant) additional types
+        so low-frequency schema types aren't silently ignored.
+
+        Falls back to the flat list format when _ontology_schema is not available.
+        """
+        schema = self._ontology_schema
+
+        # ---- entity types ----
+        if schema and schema.entity_types:
+            chunk_lower = chunk_text.lower()
+            relevant, rest = [], []
+            for et in schema.entity_types:
+                if et.label.lower() in chunk_lower or et.id.lower() in chunk_lower:
+                    relevant.append(et)
+                else:
+                    rest.append(et)
+            selected_et = relevant + rest[:max(0, max_entity_types - len(relevant))]
+
+            et_lines = []
+            for et in selected_et:
+                desc = f" — {et.description}" if et.description else ""
+                line = f"  {et.id}{desc}"
+                if et.properties:
+                    prop_parts = []
+                    for p in et.properties:
+                        pt = p.type.value
+                        extra = ""
+                        if p.type == PropertyType.ENUM and p.enum_values:
+                            extra = f" [{', '.join(p.enum_values)}]"
+                        if p.unit:
+                            extra += f" ({p.unit})"
+                        flag = " [identifier]" if p.identifier else (" [required]" if p.required else "")
+                        prop_parts.append(f"{p.name}:{pt}{extra}{flag}")
+                    line += f"\n      properties: {', '.join(prop_parts)}"
+                et_lines.append(line)
+            entity_section = "ENTITY TYPES (id — description; properties with types):\n" + "\n".join(et_lines)
+        else:
+            lines = [
+                f"  {c['id']} — {c.get('description') or c.get('label', '')}"
+                for c in self.ontology_classes[:max_entity_types]
+                if isinstance(c, dict)
+            ]
+            entity_section = "ENTITY TYPES:\n" + "\n".join(lines)
+
+        # ---- relationship types ----
+        if schema and schema.relationship_types:
+            rel_lines = []
+            for rt in schema.relationship_types[:max_rel_types]:
+                desc = f" — {rt.description}" if rt.description else ""
+                dom_rng = ""
+                if rt.domain or rt.range:
+                    dom_rng = f" ({rt.domain or '?'} → {rt.range or '?'})"
+                    if rt.cardinality:
+                        dom_rng += f" [{rt.cardinality}]"
+                line = f"  {rt.id}{desc}{dom_rng}"
+                if rt.attributes:
+                    attr_parts = [
+                        f"{a.name}:{a.type.value}" + (f" ({a.unit})" if a.unit else "")
+                        for a in rt.attributes
+                    ]
+                    line += f"\n      attributes: {', '.join(attr_parts)}"
+                rel_lines.append(line)
+            rel_section = "RELATIONSHIP TYPES (id — description; domain→range [cardinality]):\n" + "\n".join(rel_lines)
+        else:
+            lines = [
+                f"  {r['id']} — {r.get('description') or r.get('label', '')}"
+                + (f" ({r.get('domain', '')} → {r.get('range', '')})" if r.get('domain') or r.get('range') else "")
+                for r in self.ontology_relationships[:max_rel_types]
+                if isinstance(r, dict)
+            ]
+            rel_section = "RELATIONSHIP TYPES:\n" + "\n".join(lines)
+
+        return entity_section + "\n\n" + rel_section
+
+    def _extract_entities_and_relationships_with_llm(
+        self,
+        chunk_text: str,
+        llm,
+        model_name: str = "openai/gpt-oss-120b:free",
+        context_header: str = None,
+        section_header: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Extract entities and relationships using LLM with ontology guidance (if ontology
+        available) or natural LLM detection.
+
+        Args:
+            chunk_text:      The text chunk to extract from.
+            llm:             LLM provider instance.
+            model_name:      Model identifier.
+            context_header:  Qualifier sentences from the previous chunk, injected
+                             before the main text so the LLM can resolve cross-chunk
+                             experimental conditions.
+            section_header:  Paper section the chunk belongs to (e.g. "Methods",
+                             "Results").  Helps the LLM interpret claims correctly.
         """
         if llm is None:
             logging.warning("_extract_entities_and_relationships_with_llm called with llm=None; returning empty.")
             return {"entities": [], "relationships": []}
 
-        # Check if ontology is available
+        # Build context preamble from section header + qualifier context.
+        # This is injected before the main chunk text so the LLM can resolve
+        # cross-chunk experimental conditions and interpret claims correctly.
+        context_preamble = ""
+        if section_header:
+            context_preamble += (
+                f"[DOCUMENT SECTION: {section_header}]\n"
+                f"Interpret claims in the context of a {section_header} section "
+                f"(e.g. experimental setups in Methods, findings reported in Results).\n\n"
+            )
+        if context_header:
+            context_preamble += (
+                f"[QUALIFIER CONTEXT FROM PREVIOUS CHUNK]\n"
+                f"The following experimental conditions were established earlier in the paper. "
+                f"Use them to resolve any ambiguous references (e.g. 'these conditions', "
+                f"'this model') in the text below and attach them as qualifiers where relevant:\n"
+                f"{context_header}\n\n"
+            )
+
+        # ------------------------------------------------------------------
+        # Build the ontology section of the system prompt.
+        # When a typed OntologySchema is available we emit schema-aware text
+        # (entity descriptions + allowed properties, relationship domain/range/
+        # cardinality/attributes).  We limit to the most relevant subset so the
+        # prompt stays compact: entity types whose label appears in the chunk
+        # text are always included; the rest are included up to a cap.
+        # ------------------------------------------------------------------
         has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
 
         if has_ontology:
-            # Ontology-guided extraction - with error handling
             try:
-                # Use more ontology classes for better context
-                ontology_classes_text = "\n".join([f"- {cls['label']} ({cls['id']})" for cls in self.ontology_classes[:100] if isinstance(cls, dict) and 'label' in cls and 'id' in cls])
-                ontology_relationships_text = "\n".join([f"- {rel['label']} ({rel['id']})" for rel in self.ontology_relationships[:50] if isinstance(rel, dict) and 'label' in rel and 'id' in rel])
-                logging.info(f"Ontology text generated: {len(self.ontology_classes)} classes (showing first 100), {len(self.ontology_relationships)} relationships (showing first 50)")
-            except Exception as e:
-                logging.warning(f"Error generating ontology text: {e}. Using basic extraction.")
-                ontology_classes_text = "Basic ontology - see classification for details"
-                ontology_relationships_text = "Basic relationships"
-                has_ontology = False  # Fall back to natural LLM
+                ontology_section = self._build_ontology_prompt_section(chunk_text)
+            except Exception as _oe:
+                logging.warning("Failed to build schema-aware ontology prompt section: %s", _oe)
+                ontology_section = (
+                    "ENTITY TYPES:\n"
+                    + "\n".join(f"- {c['label']} ({c['id']})" for c in self.ontology_classes[:100] if isinstance(c, dict))
+                    + "\n\nRELATIONSHIP TYPES:\n"
+                    + "\n".join(f"- {r['label']} ({r['id']})" for r in self.ontology_relationships[:50] if isinstance(r, dict))
+                )
 
             system_message = f"""
-You are an expert medical knowledge graph extraction system.
-Your task is to extract entities and relationships from medical/scientific text using the provided ontology.
+You are an expert ontology-guided knowledge graph extraction system.
+Extract entities and relationships from text using the schema below.
 
-ONTOLOGY CLASSES AVAILABLE:
-{ontology_classes_text}
-
-ONTOLOGY RELATIONSHIPS AVAILABLE:
-{ontology_relationships_text}
+{ontology_section}
 
 INSTRUCTIONS:
-1. Extract ONLY medically relevant entities from the text
-2. Classify each entity using the ontology classes above
-3. Create relationships ONLY between entities that actually interact in the text
-4. Use ontology relationships when they match the context
-5. Focus on diseases, treatments, symptoms, drugs, procedures, and medical concepts
-6. Ignore generic words, dates, numbers, and administrative content
+1. Extract all named entities; classify each using the entity types above ("Entity" if no type fits)
+2. For each entity, populate the typed properties defined in the schema (dates, quantities, enums, IDs)
+3. Create relationships ONLY between entities that actually interact in the text; use schema relationship types when they match
+4. Prefer relationship types whose domain/range match the source/target entity types
+5. Include specific named entities and technical terms — these are often the answer to downstream questions
+6. Ignore only pure function words, filler phrases, and generic pronouns
 
-Return ONLY a valid JSON object in this exact format.
-IMPORTANT: Output "relationships" FIRST, then "entities". This order is required.
-{{
-  "relationships": [
-    {{
-      "source": "source_entity_id",
-      "target": "target_entity_id",
-      "type": "ONTOLOGY_RELATIONSHIP",
-      "properties": {{
-        "description": "how they are related in the text"
-      }}
-    }}
-  ],
-  "entities": [
-    {{
-      "id": "exact_entity_name_from_text",
-      "type": "OntologyClass",
-      "properties": {{
-        "name": "exact_entity_name_from_text",
-        "description": "brief medical description"
-      }}
-    }}
-  ]
-}}
-
-TEXT TO ANALYZE:
-{chunk_text}
-
-IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
-        else:
-            # No ontology - natural LLM detection with no filtering
-            system_message = f"""
-You are an expert knowledge graph extraction system.
-Your task is to extract entities and relationships from text naturally and comprehensively.
-
-INSTRUCTIONS:
-1. Extract ALL significant entities and concepts from the text
-2. No restrictions on entity types - extract anything that could be part of a knowledge graph
-3. Create relationships between ANY entities that are meaningfully related in the text
-4. Use descriptive relationship types that best capture how entities interact
-5. Be comprehensive - detect as many nodes and relationships as naturally appear
-6. Include both technical and non-technical concepts if contextually relevant
-
-Return ONLY a valid JSON object in this exact format.
-IMPORTANT: Output "relationships" FIRST, then "entities". This order is required.
+Return ONLY a valid JSON object.
+IMPORTANT: Output "relationships" FIRST, then "entities".
 {{
   "relationships": [
     {{
       "source": "source_entity_id",
       "target": "target_entity_id",
       "type": "RELATIONSHIP_TYPE",
+      "negated": false,
       "properties": {{
-        "description": "how they are related in the text"
+        "description": "how they are related in the text",
+        "condition": "condition constraining this claim, or null",
+        "quantitative": "numerical finding attached to this relationship, or null",
+        "confidence": "demonstrated|suggested|hypothesized"
+      }}
+    }}
+  ],
+  "entities": [
+    {{
+      "id": "exact_entity_name_from_text",
+      "type": "EntityType",
+      "properties": {{
+        "name": "exact_entity_name_from_text",
+        "description": "brief grounded description"
+      }}
+    }}
+  ]
+}}
+
+NEGATION RULE: If the text states a relationship does NOT hold, set "negated": true and keep the positive form of the type.
+QUALIFIER RULE: Conditions (e.g. "in ALS patients") go in "condition"; numerical findings (e.g. "3-fold increase") go in "quantitative".
+
+{context_preamble}TEXT TO ANALYZE:
+{chunk_text}
+
+IMPORTANT: Return ONLY the JSON object, no additional text."""
+        else:
+            system_message = f"""
+You are an expert knowledge graph extraction system.
+Extract entities and relationships from text naturally and comprehensively.
+
+INSTRUCTIONS:
+1. Extract ALL significant entities and concepts
+2. Create relationships between any meaningfully related entities
+3. Use descriptive relationship types that capture how entities interact
+4. Be comprehensive; include both technical and non-technical concepts
+
+Return ONLY a valid JSON object.
+IMPORTANT: Output "relationships" FIRST, then "entities".
+{{
+  "relationships": [
+    {{
+      "source": "source_entity_id",
+      "target": "target_entity_id",
+      "type": "RELATIONSHIP_TYPE",
+      "negated": false,
+      "properties": {{
+        "description": "how they are related in the text",
+        "condition": "condition constraining this claim, or null",
+        "quantitative": "any numerical finding, or null",
+        "confidence": "demonstrated|suggested|hypothesized"
       }}
     }}
   ],
@@ -360,10 +996,13 @@ IMPORTANT: Output "relationships" FIRST, then "entities". This order is required
   ]
 }}
 
-TEXT TO ANALYZE:
+NEGATION RULE: If the text states a relationship does NOT hold, set "negated": true and keep the positive form.
+QUALIFIER RULE: Conditions go in "condition"; numerical findings go in "quantitative".
+
+{context_preamble}TEXT TO ANALYZE:
 {chunk_text}
 
-IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
+IMPORTANT: Return ONLY the JSON object, no additional text."""
 
         try:
 
@@ -509,12 +1148,12 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
                 medical_entities.append(entity)
 
-            # Filter relationships — source/target must reference known entities.
-            # Use a case-insensitive lookup to tolerate LLMs that capitalise
-            # inconsistently between the entity definition and the relationship field.
+            # Filter relationships — source/target must resolve to known entities.
+            # The LLM often abbreviates endpoint names in the relationship list,
+            # so we allow safe fuzzy resolution rather than exact-only matching.
             medical_relationships = []
-            # canonical lookup: lowercase → original-case entity id
-            entity_id_lower = {e['id'].lower(): e['id'] for e in medical_entities}
+            relationship_drop_count = 0
+            relationship_fuzzy_resolutions = 0
 
             relationships_raw = result.get('relationships', [])
 
@@ -534,19 +1173,164 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
                         if not isinstance(raw_src, str) or not isinstance(raw_tgt, str):
                             logging.warning(f"Relationship source/target not strings: {rel}. Skipping.")
                             continue
-                        # Resolve to canonical case (fallback: keep original)
-                        canonical_src = entity_id_lower.get(raw_src.lower(), raw_src)
-                        canonical_tgt = entity_id_lower.get(raw_tgt.lower(), raw_tgt)
-                        if canonical_src.lower() in entity_id_lower and canonical_tgt.lower() in entity_id_lower:
+                        canonical_src = self._resolve_relationship_endpoint(raw_src, medical_entities)
+                        canonical_tgt = self._resolve_relationship_endpoint(raw_tgt, medical_entities)
+                        if canonical_src and canonical_tgt:
                             rel_copy = dict(rel)
                             rel_copy['source'] = canonical_src
                             rel_copy['target'] = canonical_tgt
+                            rel_props = dict(rel_copy.get('properties') or {})
+                            rel_props.setdefault('source_name', raw_src)
+                            rel_props.setdefault('target_name', raw_tgt)
+                            rel_copy['properties'] = rel_props
+                            if canonical_src != raw_src or canonical_tgt != raw_tgt:
+                                relationship_fuzzy_resolutions += 1
                             medical_relationships.append(rel_copy)
                         else:
+                            relationship_drop_count += 1
                             logging.warning(f"Invalid relationship (source/target not in entities): {rel}. Skipping.")
                     else:
                         logging.warning(f"Relationship is neither string nor dict: {type(rel)} = {rel}. Skipping.")
                         continue
+
+            if relationships_raw:
+                logging.info(
+                    "Relationship endpoint resolution kept=%d dropped=%d fuzzy_resolved=%d",
+                    len(medical_relationships),
+                    relationship_drop_count,
+                    relationship_fuzzy_resolutions,
+                )
+
+            # ── GraphRAG-style self-reflection pass ──────────────────────────
+            # Ask the LLM to review the chunk against its own output and fill gaps.
+            # This catches entities the first pass missed (e.g. biological processes
+            # that were present in text but not extracted).
+            try:
+                existing_entity_names = [e['id'] for e in medical_entities]
+                reflection_prompt = f"""You are a quality-control agent for a knowledge graph extraction pipeline.
+
+ORIGINAL TEXT:
+{chunk_text}
+
+ALREADY-EXTRACTED ENTITIES:
+{json.dumps(existing_entity_names, indent=2)}
+
+TASK: Read the original text carefully. Identify any named entities (people, organizations, locations, works, events, concepts, domain-specific terms, quantitative measurements) that are clearly present in the text but MISSING from the already-extracted list above.
+
+Return ONLY a JSON object with the NEW missing entities (do not repeat already-extracted ones):
+{{
+  "new_entities": [
+    {{
+      "id": "exact_name_from_text",
+      "type": "EntityType",
+      "properties": {{
+        "name": "exact_name_from_text",
+        "description": "brief description"
+      }}
+    }}
+  ]
+}}
+
+If there are no missing entities, return: {{"new_entities": []}}
+Return ONLY the JSON object."""
+
+                reflection_response = llm.generate(reflection_prompt, "", model_name)
+                reflection_response = reflection_response.strip()
+                # Strip markdown code fences if present
+                if reflection_response.startswith('```'):
+                    reflection_response = re.sub(r'^```[a-z]*\n?', '', reflection_response)
+                    reflection_response = re.sub(r'\n?```$', '', reflection_response.rstrip())
+                r_start = reflection_response.find('{')
+                r_end = reflection_response.rfind('}') + 1
+                if r_start >= 0 and r_end > r_start:
+                    reflection_data = json.loads(reflection_response[r_start:r_end])
+                    new_entities_raw = reflection_data.get('new_entities', [])
+                    existing_ids_lower = {e['id'].lower() for e in medical_entities}
+                    added = 0
+                    added_entity_ids = []
+                    for entity in new_entities_raw:
+                        if not isinstance(entity, dict) or 'id' not in entity:
+                            continue
+                        if not isinstance(entity['id'], str):
+                            entity['id'] = str(entity['id'])
+                        if entity['id'].lower() in existing_ids_lower:
+                            continue
+                        entity.setdefault('type', self._classify_entity_with_ontology(entity['id']))
+                        entity.setdefault('properties', {'name': entity['id'], 'description': entity['type']})
+                        medical_entities.append(entity)
+                        existing_ids_lower.add(entity['id'].lower())
+                        added_entity_ids.append(entity['id'])
+                        added += 1
+                    if added:
+                        logging.info(f"Self-reflection added {added} new entities")
+
+                    # ── Relational reconciliation for new reflection entities ──
+                    # New entities from reflection are not yet connected to the graph.
+                    # Run a targeted relationship extraction pass to find any relationships
+                    # between the newly added entities and the rest of the known entities.
+                    if added_entity_ids:
+                        all_known_ids = [e['id'] for e in medical_entities]
+                        recon_prompt = f"""You are extracting relationships for a knowledge graph.
+
+TEXT:
+{chunk_text}
+
+NEW ENTITIES (just discovered — need relationships):
+{json.dumps(added_entity_ids, indent=2)}
+
+ALL KNOWN ENTITIES IN THIS CHUNK:
+{json.dumps(all_known_ids, indent=2)}
+
+TASK: Find ALL relationships in the text that involve at least one NEW ENTITY and any other known entity.
+
+Return ONLY a JSON object:
+{{
+  "relationships": [
+    {{
+      "source": "source_entity_id",
+      "target": "target_entity_id",
+      "type": "RELATIONSHIP_TYPE",
+      "negated": false,
+      "properties": {{
+        "description": "how they are related in the text",
+        "condition": "condition constraining this claim, or null",
+        "quantitative": "any numerical finding, or null",
+        "confidence": "demonstrated|suggested|hypothesized"
+      }}
+    }}
+  ]
+}}
+
+Rules:
+- source and target MUST be entity ids from the ALL KNOWN ENTITIES list above
+- At least one of source or target MUST be from the NEW ENTITIES list
+- If no relationships found, return {{"relationships": []}}
+- Return ONLY the JSON object."""
+
+                        try:
+                            recon_response = llm.generate(recon_prompt, "", model_name).strip()
+                            if recon_response.startswith('```'):
+                                recon_response = re.sub(r'^```[a-z]*\n?', '', recon_response)
+                                recon_response = re.sub(r'\n?```$', '', recon_response.rstrip())
+                            rc_start = recon_response.find('{')
+                            rc_end = recon_response.rfind('}') + 1
+                            if rc_start >= 0 and rc_end > rc_start:
+                                recon_data = json.loads(recon_response[rc_start:rc_end])
+                                new_rels = recon_data.get('relationships', [])
+                                new_rels_added = 0
+                                for rel in new_rels:
+                                    if isinstance(rel, dict) and rel.get('source') and rel.get('target') and rel.get('type'):
+                                        medical_relationships.append(rel)
+                                        new_rels_added += 1
+                                if new_rels_added:
+                                    logging.info(f"Reflection reconciliation added {new_rels_added} relationships for new entities")
+                        except Exception as recon_err:
+                            logging.debug(f"Reflection reconciliation failed (non-fatal): {recon_err}")
+                    # ── end relational reconciliation ────────────────────────
+
+            except Exception as refl_err:
+                logging.debug(f"Self-reflection pass failed (non-fatal): {refl_err}")
+            # ── end self-reflection ──────────────────────────────────────────
 
             return {
                 'entities': medical_entities,
@@ -561,6 +1345,136 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
 
 
 
+
+    def merge_synonym_entities(self, graph, similarity_threshold: float = 0.82, kg_name: str = None) -> int:
+        """
+        HippoRAG-style synonym merging: cluster entity nodes that share nearly-identical
+        embeddings (surface-form variants like "TBK1" / "TBK1 kinase" / "TBK1 protein")
+        and merge them into a single canonical node.
+
+        Uses the existing entity_vector index.  Merges the lower-degree node into the
+        higher-degree one so that the richer node survives.
+
+        Returns the number of merges performed.
+        """
+        try:
+            import numpy as np
+
+            # Fetch all entity nodes with their embeddings
+            params = {"kg_name": kg_name} if kg_name else {}
+            kg_filter = "AND e.kgName = $kg_name" if kg_name else ""
+            fetch_q = f"""
+            MATCH (e:__Entity__)
+            WHERE e.embedding IS NOT NULL {kg_filter}
+            RETURN elementId(e) AS eid, e.id AS name, e.embedding AS emb,
+                   COUNT {{ (e)--() }} AS degree,
+                   coalesce(e.type, e.ontology_class, '') AS etype
+            """
+            rows = graph.query(fetch_q, params)
+            if not rows:
+                logging.info("No entity embeddings found; skipping synonym merging.")
+                return 0
+
+            rows = [r for r in rows if r.get('emb') is not None]
+            if not rows:
+                logging.info("No entity embeddings found after filtering; skipping synonym merging.")
+                return 0
+            eids = [r['eid'] for r in rows]
+            names = [r['name'] for r in rows]
+            degrees = [r['degree'] for r in rows]
+            etypes = [r.get('etype', '') or '' for r in rows]
+            embeddings = np.array([r['emb'] for r in rows], dtype=float)
+
+            # Generic types that should not block merging (the LLM falls back to these
+            # when it cannot classify an entity, so two nodes might genuinely represent
+            # the same concept even though one was labelled "Entity" and the other "Concept").
+            _generic_types = {'entity', 'concept', 'unknown', 'other', ''}
+
+            # Normalise for cosine similarity
+            norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+            norms[norms == 0] = 1e-9
+            normed = embeddings / norms
+
+            # Build equivalence clusters via union-find so that synonym chains
+            # (A≈B, B≈C) are merged atomically rather than pairwise.
+            # Pairwise sequential merges leave dangling references when later pairs
+            # reference nodes already merged away.
+            sim_matrix = normed @ normed.T
+            n = len(eids)
+
+            parent = list(range(n))
+
+            def _find(x: int) -> int:
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]  # path compression
+                    x = parent[x]
+                return x
+
+            def _union(x: int, y: int) -> None:
+                px, py = _find(x), _find(y)
+                if px != py:
+                    parent[px] = py
+
+            for i in range(n):
+                for j in range(i + 1, n):
+                    if sim_matrix[i, j] >= similarity_threshold:
+                        ti, tj = etypes[i].lower(), etypes[j].lower()
+                        if ti not in _generic_types and tj not in _generic_types and ti != tj:
+                            continue
+                        _union(i, j)
+
+            # Group indices by cluster root
+            from collections import defaultdict as _dd
+            clusters: dict = _dd(list)
+            for i in range(n):
+                clusters[_find(i)].append(i)
+
+            # Build one (canonical, [duplicates]) tuple per multi-node cluster.
+            # Canonical = highest-degree node in the cluster.
+            merge_tasks = []
+            for members in clusters.values():
+                if len(members) < 2:
+                    continue
+                canonical_idx = max(members, key=lambda i: degrees[i])
+                dups = [i for i in members if i != canonical_idx]
+                merge_tasks.append((canonical_idx, dups))
+
+            if not merge_tasks:
+                logging.info("No synonym clusters found above threshold %.2f", similarity_threshold)
+                return 0
+
+            merged = 0
+            for canonical_idx, dup_indices in merge_tasks:
+                canonical_name = names[canonical_idx]
+                for dup_idx in dup_indices:
+                    duplicate_name = names[dup_idx]
+                    try:
+                        # Stamp synonym alias on canonical BEFORE merge (dup ceases to exist after).
+                        # Then use apoc.refactor.mergeNodes to atomically rewire all relationships
+                        # and delete the duplicate.  {properties: 'discard'} means the first
+                        # node in the list (canonical) wins all property conflicts.
+                        merge_q = """
+                        MATCH (can:__Entity__ {id: $can_id})
+                        MATCH (dup:__Entity__ {id: $dup_id})
+                        SET can.synonyms = coalesce(can.synonyms, []) + [dup.id]
+                        WITH [can, dup] AS nodes
+                        CALL apoc.refactor.mergeNodes(nodes, {properties: 'discard', mergeRels: true})
+                        YIELD node
+                        RETURN node.id AS merged_id
+                        """
+                        graph.query(merge_q, {"dup_id": duplicate_name, "can_id": canonical_name})
+                        logging.info("Merged synonym '%s' → '%s'", duplicate_name, canonical_name)
+                        merged += 1
+                    except Exception as merge_err:
+                        logging.warning("Failed to merge '%s' → '%s': %s",
+                                        duplicate_name, canonical_name, merge_err)
+
+            logging.info(f"Synonym merging complete: {merged}/{len(merge_tasks)} pairs merged")
+            return merged
+
+        except Exception as e:
+            logging.error(f"Synonym merging failed: {e}")
+            return 0
 
     def _entities_can_be_related(self, source_type: str, target_type: str) -> bool:
         """
@@ -690,75 +1604,130 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
         """
         Classify relationship using ontology guidance
         """
+        # ------------------------------------------------------------------
+        # Schema-constrained relationship classification (step 5).
+        # When OntologySchema is available, find relationship types whose
+        # domain/range are compatible with the given entity types, then rank
+        # by lexical similarity to the entity names as a tiebreaker.
+        # Falls back to hardcoded heuristics only when no schema is loaded.
+        # ------------------------------------------------------------------
+        schema = self._ontology_schema
+        if schema and schema.relationship_types:
+            source_type = self._classify_entity_with_ontology(source)
+            target_type = self._classify_entity_with_ontology(target)
+            candidates = schema.compatible_relationships(source_type, target_type)
+            if candidates:
+                # Rank by lexical similarity of the relationship label to
+                # the concatenated source+target text as a weak domain signal
+                combined = (source + " " + target).lower()
+                best = max(
+                    candidates,
+                    key=lambda rt: difflib.SequenceMatcher(
+                        None, rt.label.lower(), combined
+                    ).ratio(),
+                )
+                return best.id.replace(' ', '_').replace('-', '_').upper()
+
+        # Heuristic fallback (no schema or no compatible candidates found)
         source_lower = source.lower()
         target_lower = target.lower()
-
-        # Check for treatment relationships
-        if any(word in source_lower for word in ['treatment', 'therapy', 'drug']) or \
-           any(word in target_lower for word in ['treatment', 'therapy', 'drug']):
-            return 'treats'
-
-        # Check for disease-symptom relationships
-        if any(word in source_lower for word in ['disease', 'cancer']) and \
-           any(word in target_lower for word in ['symptom', 'sign']):
-            return 'hasSymptom'
-
-        # Check for physician-patient relationships
-        if any(word in source_lower for word in ['physician', 'doctor']) and \
-           any(word in target_lower for word in ['patient', 'person']):
-            return 'diagnoses'
-
-        # Default relationship
+        if any(w in source_lower for w in ['treatment', 'therapy', 'drug']) or \
+           any(w in target_lower for w in ['treatment', 'therapy', 'drug']):
+            return 'TREATS'
+        if any(w in source_lower for w in ['disease', 'cancer']) and \
+           any(w in target_lower for w in ['symptom', 'sign']):
+            return 'HAS_SYMPTOM'
+        if any(w in source_lower for w in ['physician', 'doctor']) and \
+           any(w in target_lower for w in ['patient', 'person']):
+            return 'DIAGNOSES'
         return 'RELATED_TO'
 
-    def _canonicalize_relationship_type(self, raw_type: str) -> str:
-        """
-        Map a raw LLM-generated relationship type to the closest ontology relationship.
+    def _canonicalize_relationship_type(
+        self,
+        raw_type: str,
+        source_type: Optional[str] = None,
+        target_type: Optional[str] = None,
+    ) -> str:
+        """Map a raw LLM-generated relationship type to the closest ontology relationship.
 
         Steps:
-        1. Exact label match (case/space-insensitive) against ontology relationships.
-        2. Fuzzy token-based match using difflib.SequenceMatcher with threshold ≥ 0.72.
-           This catches paraphrases like "is_treated_by" → "treatedBy".
-        3. Safe fallback: ASSOCIATED_WITH (semantically neutral, always valid).
-
-        The result is uppercased with spaces/hyphens replaced by underscores so it
-        is always a valid Neo4j relationship type.
+        1. Exact label/id match (case/space-insensitive) filtered to schema-compatible
+           candidates when source_type and target_type are provided.
+        2. Fuzzy match (SequenceMatcher ≥ 0.72) with schema-compatibility boost
+           (+0.10) for fully-compatible domain/range matches.
+        3. Sanitize raw type if it passes regex; else fall back to ASSOCIATED_WITH.
         """
         if not raw_type:
             return 'ASSOCIATED_WITH'
 
         normalized_raw = raw_type.lower().replace(' ', '_').replace('-', '_')
 
-        if self.ontology_relationships:
-            # Step 1: exact match
-            for ont_rel in self.ontology_relationships:
+        schema = self._ontology_schema
+        candidates = (
+            schema.compatible_relationships(source_type, target_type)
+            if schema and (source_type or target_type)
+            else (schema.relationship_types if schema else [])
+        )
+        # Merge with legacy flat list for non-schema path
+        ont_rels = self.ontology_relationships
+
+        if schema and candidates:
+            # Step 1: exact match within schema-compatible candidates first
+            for rt in candidates:
+                cand = rt.label.lower().replace(' ', '_')
+                if cand == normalized_raw or rt.id.lower() == normalized_raw:
+                    logging.debug("Exact schema-compatible rel match: '%s' → '%s'", raw_type, rt.id)
+                    return rt.id.replace(' ', '_').replace('-', '_').upper()
+            # Step 1b: exact match in full schema (less preferred)
+            for rt in schema.relationship_types:
+                cand = rt.label.lower().replace(' ', '_')
+                if cand == normalized_raw or rt.id.lower() == normalized_raw:
+                    return rt.id.replace(' ', '_').replace('-', '_').upper()
+
+            # Step 2: fuzzy match with schema-compatibility boost
+            compat_ids = {rt.id for rt in candidates}
+            best_match, best_score = None, 0.0
+            for rt in schema.relationship_types:
+                cand_label = rt.label.lower().replace(' ', '_')
+                score = max(
+                    difflib.SequenceMatcher(None, normalized_raw, cand_label).ratio(),
+                    difflib.SequenceMatcher(None, normalized_raw, rt.id.lower()).ratio(),
+                )
+                # Boost schema-compatible candidates
+                if rt.id in compat_ids:
+                    score += 0.10
+                if score > best_score:
+                    best_score, best_match = score, rt
+            if best_match and best_score >= 0.72:
+                logging.debug(
+                    "Fuzzy schema rel: '%s' → '%s' (score=%.2f)", raw_type, best_match.id, best_score
+                )
+                return best_match.id.replace(' ', '_').replace('-', '_').upper()
+
+        elif ont_rels:
+            # Legacy flat-list path (no OntologySchema)
+            for ont_rel in ont_rels:
                 candidate = ont_rel['label'].lower().replace(' ', '_')
                 if candidate == normalized_raw or ont_rel['id'].lower() == normalized_raw:
                     return ont_rel['id'].replace(' ', '_').replace('-', '_').upper()
-
-            # Step 2: fuzzy match
             best_match, best_score = None, 0.0
-            for ont_rel in self.ontology_relationships:
+            for ont_rel in ont_rels:
                 candidate = ont_rel['label'].lower().replace(' ', '_')
                 score = difflib.SequenceMatcher(None, normalized_raw, candidate).ratio()
-                if score > best_score:
-                    best_score, best_match = score, ont_rel
-                # Also compare against ont_rel id
                 id_score = difflib.SequenceMatcher(None, normalized_raw, ont_rel['id'].lower()).ratio()
-                if id_score > best_score:
-                    best_score, best_match = id_score, ont_rel
-
+                best_s = max(score, id_score)
+                if best_s > best_score:
+                    best_score, best_match = best_s, ont_rel
             if best_match and best_score >= 0.72:
                 logging.debug(
-                    f"Fuzzy rel canonicalization: '{raw_type}' → '{best_match['id']}' (score={best_score:.2f})"
+                    "Fuzzy rel (legacy): '%s' → '%s' (score=%.2f)", raw_type, best_match['id'], best_score
                 )
                 return best_match['id'].replace(' ', '_').replace('-', '_').upper()
 
-        # Step 3: sanitize raw type and use as-is if it looks reasonable, else fallback
+        # Step 3: sanitize raw type
         sanitized = raw_type.strip().replace(' ', '_').replace('-', '_').upper()
-        # If it's a suspiciously long or weird string, use safe fallback
         if len(sanitized) > 50 or not re.match(r'^[A-Z][A-Z0-9_]*$', sanitized):
-            logging.debug(f"Rel type '{raw_type}' failed sanitization; using ASSOCIATED_WITH")
+            logging.debug("Rel type '%s' failed sanitization; using ASSOCIATED_WITH", raw_type)
             return 'ASSOCIATED_WITH'
         return sanitized
 
@@ -777,7 +1746,7 @@ IMPORTANT: Return ONLY the JSON object, no additional text or explanation."""
             for e in known_entities[:60]  # cap to avoid over-long prompts
         )
 
-        prompt = f"""You are a medical knowledge graph expert.
+        prompt = f"""You are a knowledge graph extraction expert.
 Given the following text and list of known entities, identify ONLY relationships between these entities that are explicitly supported by the text.
 
 KNOWN ENTITIES:
@@ -793,7 +1762,13 @@ Return ONLY a JSON object with a "relationships" array (no "entities" key needed
       "source": "source_entity_id_from_list",
       "target": "target_entity_id_from_list",
       "type": "RELATIONSHIP_TYPE",
-      "properties": {{"description": "how they relate in the text"}}
+      "negated": false,
+      "properties": {{
+        "description": "how they relate in the text",
+        "condition": "biological/experimental condition constraining this claim, or null",
+        "quantitative": "any numerical finding attached to this relationship, or null",
+        "confidence": "demonstrated|suggested|hypothesized"
+      }}
     }}
   ]
 }}
@@ -802,6 +1777,8 @@ Rules:
 - source and target MUST be entity ids from the KNOWN ENTITIES list above
 - Only include relationships explicitly supported by the text
 - Prefer specific relationship types (TREATS, CAUSES, INDICATES, etc.) over generic ones
+- NEGATION RULE: set "negated": true if the text states the relationship does NOT hold
+- QUALIFIER RULE: put experimental conditions in "condition", numerical findings in "quantitative"
 - Return ONLY the JSON object, no other text"""
 
         try:
@@ -826,13 +1803,17 @@ Rules:
             return []
 
     def _generate_entity_id(self, entity: Dict[str, Any]) -> str:
+        """Generate a deterministic UUID scoped to both normalized text AND type.
+
+        Including the type means same-surface/different-type entities (e.g. "depression"
+        as Disease vs GeologicalFeature) get distinct UUIDs after the harmonization split.
+        For merged entities (LLM type-drift already resolved to one specific type by
+        _harmonize_entities) the representative carries a single resolved type, so
+        chunk-level variants still converge to the same UUID.
         """
-        Generate a UUID-based entity ID to prevent duplicates
-        """
-        # Seed on normalized text only (not type) so the same entity text always maps
-        # to the same UUID regardless of which ontology type the LLM assigned per chunk.
-        unique_seed = self._normalize_entity_text(entity['id'])
-        # Generate UUID5 (name-based) for deterministic but unique IDs
+        norm_text = self._normalize_entity_text(entity['id'])
+        entity_type = (entity.get('type') or '').strip()
+        unique_seed = f"{norm_text}:{entity_type}" if entity_type else norm_text
         return str(uuid.uuid5(uuid.NAMESPACE_OID, unique_seed))
 
     def _normalize_entity_text(self, text: str) -> str:
@@ -867,12 +1848,160 @@ Rules:
 
         return normalized
 
+    def _entity_name_variants(self, name: str) -> List[str]:
+        """Generate robust surface-form variants for entity resolution."""
+        if not isinstance(name, str):
+            return []
+        base = name.strip()
+        if not base:
+            return []
+
+        variants = {
+            base,
+            base.lower(),
+            base.replace('_', ' '),
+            base.replace(' ', '_'),
+            self._normalize_entity_text(base),
+        }
+        return [v for v in variants if isinstance(v, str) and v.strip()]
+
+    def _entity_candidate_names(self, entity: Dict[str, Any]) -> List[str]:
+        """Collect plausible surface forms for an extracted entity."""
+        if not isinstance(entity, dict):
+            return []
+
+        candidates: List[str] = []
+        for candidate in (
+            entity.get("id"),
+            entity.get("name"),
+            (entity.get("properties") or {}).get("name"),
+        ):
+            if isinstance(candidate, str) and candidate.strip():
+                candidates.append(candidate)
+
+        all_names = (entity.get("properties") or {}).get("all_names") or []
+        if isinstance(all_names, list):
+            for alias in all_names:
+                if isinstance(alias, str) and alias.strip():
+                    candidates.append(alias)
+
+        seen = set()
+        deduped: List[str] = []
+        for candidate in candidates:
+            if candidate not in seen:
+                seen.add(candidate)
+                deduped.append(candidate)
+        return deduped
+
+    def _entity_appears_in_text(self, entity: Dict[str, Any], text: str) -> bool:
+        """Check whether an entity or any of its aliases appears in text."""
+        if not isinstance(text, str) or not text.strip():
+            return False
+
+        text_lower = text.lower()
+        seen_variants = set()
+        for candidate in self._entity_candidate_names(entity):
+            for variant in self._entity_name_variants(candidate):
+                normalized = variant.strip().lower()
+                if len(normalized) < 3 or normalized in seen_variants:
+                    continue
+                seen_variants.add(normalized)
+                prefix = r'(?<!\w)' if not normalized[:1].isalnum() and normalized[:1] != '_' else r'\b'
+                suffix = r'(?!\w)' if not normalized[-1:].isalnum() and normalized[-1:] != '_' else r'\b'
+                pattern = re.compile(prefix + re.escape(normalized) + suffix)
+                if pattern.search(text_lower):
+                    return True
+        return False
+
+    def _resolve_relationship_endpoint(
+        self,
+        raw_name: str,
+        entities: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        """
+        Resolve a relationship endpoint to the best matching extracted entity ID.
+
+        The LLM often uses short forms in relationship triples while the entity
+        list carries a fuller mention, so we allow safe fuzzy matching here.
+        """
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            return None
+
+        raw_name = raw_name.strip()
+        raw_variants = self._entity_name_variants(raw_name)
+        raw_norm = self._normalize_entity_text(raw_name)
+
+        direct_matches: List[str] = []
+        best_entity_id: Optional[str] = None
+        best_score = 0.0
+        second_best = 0.0
+
+        for entity in entities:
+            entity_id = entity.get("id")
+            if not isinstance(entity_id, str) or not entity_id.strip():
+                continue
+
+            candidate_variants = set()
+            for candidate in self._entity_candidate_names(entity):
+                candidate_variants.update(self._entity_name_variants(candidate))
+
+            if any(rv.lower() == cv.lower() for rv in raw_variants for cv in candidate_variants):
+                direct_matches.append(entity_id)
+                continue
+
+            entity_best = 0.0
+            for candidate in candidate_variants:
+                candidate_norm = self._normalize_entity_text(candidate)
+                if not candidate_norm or not raw_norm:
+                    continue
+                if candidate_norm == raw_norm:
+                    entity_best = 1.0
+                    break
+
+                score = 0.0
+                if raw_norm in candidate_norm or candidate_norm in raw_norm:
+                    if min(len(raw_norm), len(candidate_norm)) >= 4:
+                        score = 0.94
+                else:
+                    score = difflib.SequenceMatcher(None, raw_norm, candidate_norm).ratio()
+                    raw_tokens = set(raw_norm.split('_'))
+                    candidate_tokens = set(candidate_norm.split('_'))
+                    if raw_tokens and candidate_tokens:
+                        overlap = len(raw_tokens & candidate_tokens) / max(
+                            1, min(len(raw_tokens), len(candidate_tokens))
+                        )
+                        score = max(score, overlap * 0.92)
+
+                entity_best = max(entity_best, score)
+
+            if entity_best > best_score:
+                second_best = best_score
+                best_score = entity_best
+                best_entity_id = entity_id
+            elif entity_best > second_best:
+                second_best = entity_best
+
+        unique_direct = list(dict.fromkeys(direct_matches))
+        if len(unique_direct) == 1:
+            return unique_direct[0]
+        if len(unique_direct) > 1:
+            for entity_id in unique_direct:
+                if entity_id.lower() == raw_name.lower():
+                    return entity_id
+            return None
+
+        if best_entity_id and best_score >= 0.90 and (best_score - second_best) >= 0.03:
+            return best_entity_id
+        return None
+
     def _verify_triple_confidence(
         self,
         source_name: str,
         target_name: str,
         rel_type: str,
         chunks: List[Dict],
+        source_aliases: List[str] = None,
+        target_aliases: List[str] = None,
     ) -> float:
         """
         Evidence-grounded verification for an extracted triple (inspired by MOSAICX verify).
@@ -904,15 +2033,37 @@ Rules:
             suffix = r'(?!\w)' if not name[-1:].isalnum() and name[-1:] != '_' else r'\b'
             return re.compile(prefix + re.escape(name) + suffix)
 
-        src_pat = _boundary_pattern(src_lower)
-        tgt_pat = _boundary_pattern(tgt_lower)
+        def _surface_forms(name: str) -> set:
+            """Return the name plus underscore↔space variants so LLM IDs like
+            'United_States' match chunk text 'United States' and vice versa."""
+            forms = {name}
+            forms.add(name.replace('_', ' '))
+            forms.add(name.replace(' ', '_'))
+            return {f for f in forms if f}
 
-        found_src, found_tgt, same_sentence = False, False, False
+        # Build a list of patterns for each entity — canonical name plus all aliases,
+        # including underscore/space variants to survive LLM ID normalisation differences.
+        _src_forms = list(
+            _surface_forms(src_lower)
+            | {v for a in (source_aliases or []) if a for v in _surface_forms(a.strip().lower())}
+        )
+        _tgt_forms = list(
+            _surface_forms(tgt_lower)
+            | {v for a in (target_aliases or []) if a for v in _surface_forms(a.strip().lower())}
+        )
+        src_pats = [_boundary_pattern(f) for f in _src_forms if f]
+        tgt_pats = [_boundary_pattern(f) for f in _tgt_forms if f]
+
+        # Keep single-pattern aliases for backwards compatibility
+        src_pat = src_pats[0] if src_pats else _boundary_pattern(src_lower)
+        tgt_pat = tgt_pats[0] if tgt_pats else _boundary_pattern(tgt_lower)
+
+        found_src, found_tgt, same_chunk, same_sentence = False, False, False, False
 
         for chunk in chunks:
             text = chunk.get('text', '').lower()
-            has_src = bool(src_pat.search(text))
-            has_tgt = bool(tgt_pat.search(text))
+            has_src = any(p.search(text) for p in src_pats)
+            has_tgt = any(p.search(text) for p in tgt_pats)
 
             if has_src:
                 found_src = True
@@ -920,18 +2071,26 @@ Rules:
                 found_tgt = True
 
             if has_src and has_tgt:
-                # Check sentence-level co-occurrence (use same pattern objects)
+                # Both entities present in this single chunk — check for sentence co-occurrence
+                same_chunk = True
                 sentences = re.split(r'(?<=[.!?])\s+', text)
-                if any(src_pat.search(s) and tgt_pat.search(s) for s in sentences):
+                if any(
+                    any(sp.search(s) for sp in src_pats) and any(tp.search(s) for tp in tgt_pats)
+                    for s in sentences
+                ):
                     same_sentence = True
                     break  # best possible score — stop scanning
 
         if same_sentence:
             return 1.0
-        if found_src and found_tgt:
+        if same_chunk:
+            # Both found within the same chunk (but not the same sentence)
             return 0.7
-        if found_src or found_tgt:
+        if found_src and found_tgt:
+            # Found in separate chunks of the same document — weaker evidence
             return 0.4
+        if found_src or found_tgt:
+            return 0.3
         return 0.1
 
     def _harmonize_entities(self, all_entities: List[Dict], return_id_map: bool = False):
@@ -940,17 +2099,61 @@ Rules:
         """
         logging.info(f"Starting harmonization of {len(all_entities)} raw entities")
 
-        # Step 1: Build initial grouping by normalized text only (NOT by type).
-        # The original kg_creator deduped by entity text hash, ignoring type.
-        # Using type:text as the key causes the same entity to become multiple nodes
-        # when the LLM assigns different ontology classes across chunks — e.g.
-        # "Prostate Cancer" as Disease in chunk 1 and Concept in chunk 2 → 2 nodes.
-        # Grouping by text only and picking the most specific type restores that behaviour.
-        entity_groups = defaultdict(list)
+        # Step 1: Build grouping by normalized text, then refine to avoid cross-type collapse.
+        #
+        # Why text-first, not (text, type):
+        #   Using (text, type) directly splits "Prostate Cancer" typed as Disease in chunk 1
+        #   and Concept in chunk 2 into two nodes — that is LLM drift, not a real distinction.
+        #   Grouping by text first and picking the most specific type handles this correctly.
+        #
+        # Why we then split by specific type:
+        #   Pure text grouping collapses genuinely different entities that happen to share a
+        #   surface form — e.g. "depression" (Disease) vs "depression" (GeologicalFeature).
+        #   If a text group contains more than one *distinct specific type*, we split it into
+        #   per-specific-type buckets; generic-typed occurrences (Concept/Entity/Unknown/Other)
+        #   are assigned to the dominant (largest) specific-type bucket so that LLM drift
+        #   toward generic labels still merges into the right node rather than floating free.
+        _generic_types = {'Concept', 'Entity', 'Unknown', 'Other'}
 
+        text_groups: Dict[str, list] = defaultdict(list)
         for entity in all_entities:
             normalized_text = self._normalize_entity_text(entity['id'])
-            entity_groups[normalized_text].append(entity)
+            text_groups[normalized_text].append(entity)
+
+        # Refine: split text groups that contain multiple distinct specific types.
+        # dominant_for_surface records which specific type is the largest bucket for
+        # each surface form that was split — used below to make entity_map writes
+        # deterministic (dominant type always wins, regardless of iteration order).
+        entity_groups: Dict = defaultdict(list)
+        dominant_for_surface: Dict[str, str] = {}  # norm_text → dominant specific type
+
+        for norm_text, entities in text_groups.items():
+            specific_types = {e.get('type') for e in entities if e.get('type') not in _generic_types}
+            if len(specific_types) <= 1:
+                # Common case: 0 or 1 distinct specific type — merge as before.
+                entity_groups[norm_text].extend(entities)
+            else:
+                # Multiple distinct specific types → split, generics go to largest bucket.
+                type_buckets: Dict[str, list] = defaultdict(list)
+                generics = []
+                for e in entities:
+                    if e.get('type') in _generic_types:
+                        generics.append(e)
+                    else:
+                        type_buckets[e['type']].append(e)
+                dominant = max(type_buckets, key=lambda t: len(type_buckets[t]))
+                if generics:
+                    type_buckets[dominant].extend(generics)
+                dominant_for_surface[norm_text] = dominant
+                logging.info(
+                    "Surface form '%s' has %d distinct specific types %s; "
+                    "relationships will resolve to dominant type '%s' (%d occurrences). "
+                    "Add source/target type fields to relationship dicts for per-type resolution.",
+                    norm_text, len(type_buckets), sorted(type_buckets),
+                    dominant, len(type_buckets[dominant]),
+                )
+                for stype, bucket in type_buckets.items():
+                    entity_groups[(norm_text, stype)].extend(bucket)
 
         # Step 2: Log entity distribution before harmonization
         type_distribution = Counter()
@@ -973,7 +2176,7 @@ Rules:
             # Rule 1: prefer specific ontology types over generic fallbacks (Concept, Entity, Unknown)
             # Rule 2: among equally specific types, prefer the longest description
             # Rule 3: if still tied, prefer the longest entity name (most fully-qualified)
-            _generic_types = {'Concept', 'Entity', 'Unknown', 'Other'}
+            # (_generic_types defined at Step 1 above)
 
             def _type_specificity(e):
                 return 0 if e.get('type', 'Concept') in _generic_types else 1
@@ -997,7 +2200,7 @@ Rules:
                 all_names.add(entity['id'])
                 desc = entity.get('properties', {}).get('description')
                 if desc:
-                    all_descriptions.add(desc)
+                    all_descriptions.add(desc if isinstance(desc, str) else str(desc))
 
                 # Keep the best embedding (prefer any available embedding)
                 if not representative_entity.get('embedding') and entity.get('embedding'):
@@ -1022,9 +2225,20 @@ Rules:
 
             harmonized_entities.append(representative_entity)
 
-            # Map all original name variations to the harmonized entity
+            # Map all original name variations to the harmonized entity.
+            # For split surface forms, entity_map[surface_form] must always point to the
+            # dominant-type representative so relationship resolution is deterministic
+            # regardless of which order entity_groups iterates the split buckets.
+            # The dominant type was pre-computed in the split phase above.
             for entity in entities:
-                entity_map[entity['id']] = representative_entity
+                norm = self._normalize_entity_text(entity['id'])
+                is_dominant = (
+                    dominant_for_surface.get(norm) == representative_entity.get('type')
+                    if norm in dominant_for_surface
+                    else True  # not a split surface form — always write
+                )
+                if is_dominant or entity['id'] not in entity_map:
+                    entity_map[entity['id']] = representative_entity
 
         logging.info(f"Harmonization complete: {len(harmonized_entities)} entities (removed {total_duplicates_removed} duplicates)")
 
@@ -1054,25 +2268,85 @@ Rules:
         # Iterating .items() — not .values() — ensures every variant name is covered,
         # so relationships that used a non-canonical spelling are not silently dropped.
         original_to_uuid = {}
+        candidate_names_by_uuid: Dict[str, set] = defaultdict(set)
+        entity_type_by_uuid: Dict[str, str] = {}
         for variant_name, representative in entity_map.items():
             if 'uuid' not in representative:
                 logging.warning(f"Entity '{representative.get('id', '?')}' missing uuid in entity_map — skipping in relationship mapping")
                 continue
-            original_to_uuid[variant_name] = representative['uuid']
-            # Also index by lowercase to catch case mismatches between extraction calls
-            original_to_uuid[variant_name.lower()] = representative['uuid']
+            uuid_value = representative['uuid']
+            if representative.get('type'):
+                entity_type_by_uuid.setdefault(uuid_value, representative.get('type'))
+            for candidate in self._entity_name_variants(variant_name) if isinstance(variant_name, str) else []:
+                original_to_uuid.setdefault(candidate, uuid_value)
+                original_to_uuid.setdefault(candidate.lower(), uuid_value)
+                candidate_names_by_uuid[uuid_value].add(candidate)
+            for candidate in self._entity_candidate_names(representative):
+                for variant in self._entity_name_variants(candidate):
+                    original_to_uuid.setdefault(variant, uuid_value)
+                    original_to_uuid.setdefault(variant.lower(), uuid_value)
+                    candidate_names_by_uuid[uuid_value].add(variant)
 
+        def _lookup_uuid(name: str):
+            """Try increasingly fuzzy lookups before giving up."""
+            if not isinstance(name, str) or not name.strip():
+                return None
+            exact = (
+                original_to_uuid.get(name)
+                or original_to_uuid.get(name.lower())
+                or original_to_uuid.get(name.replace('_', ' '))
+                or original_to_uuid.get(name.replace('_', ' ').lower())
+                or original_to_uuid.get(name.replace(' ', '_'))
+                or original_to_uuid.get(name.replace(' ', '_').lower())
+                or original_to_uuid.get(self._normalize_entity_text(name))
+            )
+            if exact:
+                return exact
+
+            raw_norm = self._normalize_entity_text(name)
+            best_uuid = None
+            best_score = 0.0
+            second_best = 0.0
+
+            for uuid_value, candidates in candidate_names_by_uuid.items():
+                entity_best = 0.0
+                for candidate in candidates:
+                    cand_norm = self._normalize_entity_text(candidate)
+                    if not cand_norm or not raw_norm:
+                        continue
+                    if cand_norm == raw_norm:
+                        entity_best = 1.0
+                        break
+                    if raw_norm in cand_norm or cand_norm in raw_norm:
+                        if min(len(raw_norm), len(cand_norm)) >= 4:
+                            entity_best = max(entity_best, 0.94)
+                    else:
+                        entity_best = max(
+                            entity_best,
+                            difflib.SequenceMatcher(None, raw_norm, cand_norm).ratio(),
+                        )
+
+                if entity_best > best_score:
+                    second_best = best_score
+                    best_score = entity_best
+                    best_uuid = uuid_value
+                elif entity_best > second_best:
+                    second_best = entity_best
+
+            if best_uuid and best_score >= 0.90 and (best_score - second_best) >= 0.03:
+                return best_uuid
+            return None
+
+        dropped_unmapped = 0
+        deduped_relationships = 0
         for rel in all_relationships:
             src = rel.get('source')
             tgt = rel.get('target')
-            # Map source and target to UUIDs — try exact match first, then lowercase fallback.
-            # Guard isinstance before .lower() to handle any non-string values from malformed input.
-            source_uuid = (original_to_uuid.get(src)
-                           or (original_to_uuid.get(src.lower()) if isinstance(src, str) else None))
-            target_uuid = (original_to_uuid.get(tgt)
-                           or (original_to_uuid.get(tgt.lower()) if isinstance(tgt, str) else None))
+            source_uuid = _lookup_uuid(src)
+            target_uuid = _lookup_uuid(tgt)
 
             if not source_uuid or not target_uuid:
+                dropped_unmapped += 1
                 logging.warning(
                     "Dropping relationship — entity not found in map: '%s' -[%s]-> '%s'",
                     src, rel.get('type', '?'), tgt,
@@ -1082,18 +2356,115 @@ Rules:
             if source_uuid and target_uuid:
                 # Create new relationship with UUID-based IDs
                 uuid_rel = rel.copy()
+                rel_properties = dict(uuid_rel.get('properties') or {})
+                if isinstance(src, str):
+                    rel_properties.setdefault("source_name", src)
+                if isinstance(tgt, str):
+                    rel_properties.setdefault("target_name", tgt)
+                uuid_rel['properties'] = rel_properties
                 uuid_rel['source'] = source_uuid
                 uuid_rel['target'] = target_uuid
 
-                rel_key = f"{source_uuid}:{rel['type']}:{target_uuid}"
+                # Include negated in the key: A-INHIBITS->B (negated=True) and
+                # A-INHIBITS->B (negated=False) are opposite claims and must not collapse.
+                _neg = bool(uuid_rel.get('negated', False))
+                condition = uuid_rel.get('condition') or rel_properties.get('condition') or ''
+                quantitative = uuid_rel.get('quantitative') or rel_properties.get('quantitative') or ''
+                rel_type_key = self._canonicalize_relationship_type(
+                    uuid_rel.get('type', ''),
+                    source_type=entity_type_by_uuid.get(source_uuid),
+                    target_type=entity_type_by_uuid.get(target_uuid),
+                )
+                rel_key = (
+                    f"{source_uuid}:{rel_type_key}:{target_uuid}:{_neg}:"
+                    f"{str(condition).strip().lower()}:{str(quantitative).strip().lower()}"
+                )
 
                 if rel_key not in seen_relationships:
                     harmonized_relationships.append(uuid_rel)
                     seen_relationships.add(rel_key)
+                else:
+                    deduped_relationships += 1
+
+        logging.info(
+            "Relationship harmonization kept=%d dropped_unmapped=%d deduped=%d",
+            len(harmonized_relationships),
+            dropped_unmapped,
+            deduped_relationships,
+        )
 
         return harmonized_relationships
 
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", max_chunks: int = None, kg_name: str = None, doc_metadata: dict = None, doc_hash: str = None, provider: str = "openai") -> Dict[str, Any]:
+    @staticmethod
+    def _attach_relationship_provenance(
+        relationships: List[Dict],
+        chunk_positions: List[int],
+    ) -> List[Dict]:
+        """Attach local chunk provenance so triple verification can stay passage-local."""
+        annotated: List[Dict] = []
+        normalized_positions = [
+            int(pos)
+            for pos in chunk_positions
+            if isinstance(pos, (int, float))
+        ]
+        for rel in relationships or []:
+            if not isinstance(rel, dict):
+                continue
+            rel_copy = dict(rel)
+            existing_positions = rel_copy.get("provenance_positions") or []
+            merged_positions = {
+                int(pos)
+                for pos in existing_positions
+                if isinstance(pos, (int, float))
+            }
+            merged_positions.update(normalized_positions)
+            rel_copy["provenance_positions"] = sorted(merged_positions)
+            annotated.append(rel_copy)
+        return annotated
+
+    @staticmethod
+    def _relationship_local_provenance(
+        rel: Dict[str, Any],
+        chunks: List[Dict[str, Any]],
+    ) -> Dict[str, List[Any]]:
+        """
+        Resolve question-local provenance for a relationship from chunk positions.
+
+        Older KGs only expose chunk positions on relationships. Newer builds also
+        stamp question and passage provenance onto the edge so question-scoped
+        retrieval can be enforced exactly at query time.
+        """
+        positions = {
+            int(pos)
+            for pos in (rel.get("provenance_positions") or [])
+            if isinstance(pos, (int, float))
+        }
+        if not positions:
+            return {
+                "provenance_positions": [],
+                "question_ids": [],
+                "passage_keys": [],
+            }
+
+        question_ids = set()
+        passage_keys = set()
+        for chunk in chunks or []:
+            pos = chunk.get("position")
+            if not isinstance(pos, (int, float)) or int(pos) not in positions:
+                continue
+            qid = chunk.get("question_id")
+            if qid is not None and str(qid).strip():
+                question_ids.add(str(qid))
+            passage_key = f"{chunk.get('question_id', '')}::p{chunk.get('passage_index', -1)}"
+            passage_keys.add(passage_key)
+
+        return {
+            "provenance_positions": sorted(positions),
+            "question_ids": sorted(question_ids),
+            "passage_keys": sorted(passage_keys),
+        }
+
+    def generate_knowledge_graph(self, text: str, llm, file_name: str = None, model_name: str = "openai/gpt-oss-120b:free", max_chunks: int = None, kg_name: str = None, doc_metadata: dict = None, doc_hash: str = None) -> Dict[str, Any]:
         """
         Generate knowledge graph from text with ontology-guided entity extraction
 
@@ -1120,6 +2491,13 @@ Rules:
             logging.warning(f"Limiting processing to {max_chunks} chunks out of {len(chunks)} total")
             chunks = chunks[:max_chunks]
 
+        # Step 1b: Detect section headers once across the full document.
+        # Each chunk is tagged with its section (e.g. "Methods", "Results") so
+        # the extraction LLM can interpret claims in the correct context.
+        section_headers = self._detect_section_headers(text)
+        logging.info("Detected %d section headers: %s", len(section_headers),
+                     [name for _, name in section_headers])
+
         # Step 2: Extract entities and relationships from each chunk
         all_entities = []
         all_relationships = []
@@ -1130,14 +2508,54 @@ Rules:
         for i, chunk in enumerate(chunks):
             try:
                 logging.info(f"Processing chunk {i+1}/{len(chunks)}")
-                chunk_kg = self._extract_entities_and_relationships_with_llm(chunk['text'], llm, model_name)
+
+                # --- Context enrichment ---
+                # 1. Section header for this chunk
+                chunk_section = self._get_section_for_position(
+                    chunk.get("start_pos", 0), section_headers
+                )
+
+                # 2. Qualifier sentences from the previous chunk
+                qualifier_ctx = ""
+                if i > 0:
+                    qualifier_ctx = self._extract_qualifier_sentences(chunks[i - 1]["text"])
+
+                # 3. Cross-chunk coreference resolution (only when enabled and markers detected)
+                extraction_text = chunk["text"]
+                if self.enable_coreference_resolution and llm is not None and self._has_coreference_markers(extraction_text):
+                    # Build context window: up to 2 previous chunks
+                    coref_context = "\n\n".join(
+                        chunks[j]["text"] for j in range(max(0, i - 2), i)
+                    )
+                    if coref_context:
+                        logging.info(
+                            "Chunk %d/%d: coreference markers detected — running resolution pass",
+                            i + 1, len(chunks),
+                        )
+                        extraction_text = self._resolve_coreferences_llm(
+                            extraction_text, coref_context, llm, model_name
+                        )
+                        time.sleep(0.5)  # extra LLM call — brief pause
+
+                chunk_kg = self._extract_entities_and_relationships_with_llm(
+                    extraction_text,
+                    llm,
+                    model_name,
+                    context_header=qualifier_ctx or None,
+                    section_header=chunk_section,
+                )
 
                 # Ensure chunk_kg is a dictionary with expected keys
                 try:
                     if isinstance(chunk_kg, dict) and (chunk_kg.get('entities', []) or chunk_kg.get('relationships', [])):
                         chunk_entities = chunk_kg.get('entities', [])
                         all_entities.extend(chunk_entities)
-                        all_relationships.extend(chunk_kg.get('relationships', []))
+                        all_relationships.extend(
+                            self._attach_relationship_provenance(
+                                chunk_kg.get('relationships', []),
+                                [chunk.get("position", i)],
+                            )
+                        )
                         entities_per_chunk[i] = chunk_entities
                         processed_chunks += 1
                         logging.info(f"✓ Chunk {i+1} processed: {len(chunk_entities)} entities, {len(chunk_kg.get('relationships', []))} relationships")
@@ -1184,7 +2602,12 @@ Rules:
                     continue
                 new_rels = self._extract_relationships_only(combined_text, combined_entities, llm, model_name)
                 if new_rels:
-                    all_relationships.extend(new_rels)
+                    all_relationships.extend(
+                        self._attach_relationship_provenance(
+                            new_rels,
+                            [chunks[i].get("position", i), chunks[i + 1].get("position", i + 1)],
+                        )
+                    )
                     cross_chunk_rels += len(new_rels)
                     logging.info(f"Cross-chunk pass ({i+1}↔{i+2}): {len(new_rels)} relationships found")
                 time.sleep(0.5)  # shorter delay for relationship-only calls
@@ -1239,6 +2662,7 @@ Rules:
                     "target": f"{kg_prefix}{rel['target']}",
                     "type": rel['type'],
                     "label": rel['type'],
+                    "negated": rel.get('negated', False),
                     "properties": rel.get('properties', {}),
                     "arrows": "to",
                     "color": {"color": "#444444"},
@@ -1281,6 +2705,329 @@ Rules:
             )
             kg['metadata']['stored_in_neo4j'] = success
 
+            # Step 5b: HippoRAG-style synonym merging.
+            # After embeddings are in Neo4j, cluster near-duplicate entity nodes
+            # (e.g. "TBK1" / "TBK1 kinase") and merge them so entity-first search
+            # can find all surface-form variants via a single canonical node.
+            if success:
+                try:
+                    graph_for_merge = self._create_neo4j_connection()
+                    merges = self.merge_synonym_entities(graph_for_merge, kg_name=kg_name)
+                    kg['metadata']['synonym_merges'] = merges
+                    logging.info(f"Synonym merging complete: {merges} pairs merged")
+                except Exception as syn_err:
+                    logging.warning(f"Synonym merging failed (non-fatal): {syn_err}")
+
+                # Compute node specificity (HippoRAG-style IDF weight):
+                # s(e) = 1 / |passages containing e|.  Stored on each entity node
+                # so that retrieval can down-weight ubiquitous hub entities as seeds.
+                try:
+                    graph_for_merge = self._create_neo4j_connection()
+                    scope_filter = "WHERE c.kgName = $kg_name" if kg_name else ""
+                    graph_for_merge.query(
+                        f"""
+                        MATCH (e:__Entity__)<-[:HAS_ENTITY]-(c:Chunk)
+                        {scope_filter}
+                        WITH e, count(DISTINCT c) AS passage_count
+                        SET e.passage_count = passage_count,
+                            e.node_specificity = 1.0 / toFloat(passage_count)
+                        """,
+                        {"kg_name": kg_name} if kg_name else {},
+                    )
+                    logging.info("Node specificity weights computed for kg_name=%s", kg_name)
+                except Exception as spec_err:
+                    logging.warning("Node specificity computation failed (non-fatal): %s", spec_err)
+
+        return kg
+
+    def generate_knowledge_graph_from_passages(
+        self,
+        passages,           # List[ContextPassage] — avoids circular import; duck-typed
+        llm,
+        file_name: str = None,
+        model_name: str = "openai/gpt-oss-120b:free",
+        kg_name: str = None,
+        doc_metadata: dict = None,
+        doc_hash: str = None,
+    ) -> Dict[str, Any]:
+        """Generate a KG from a list of ContextPassage objects.
+
+        Unlike generate_knowledge_graph, this method never concatenates passages
+        from different records before chunking.  Each passage is chunked
+        independently; sub-splitting only occurs when a single passage exceeds
+        chunk_size.  Cross-chunk relationship extraction is scoped within each
+        passage so the LLM never sees entity pairs that are only co-located
+        because two unrelated passages were glued together.
+
+        Harmonisation and Neo4j storage happen once after all passages are
+        processed, so the result is equivalent in structure to the single-call
+        path but with clean passage-level extraction boundaries.
+        """
+        logging.info(
+            "Starting passage-aware KG generation: %d passages", len(passages)
+        )
+        has_ontology = bool(self.ontology_classes) or bool(self.ontology_relationships)
+        extraction_method = "ontology_guided_llm" if has_ontology else "natural_llm"
+
+        all_chunks: List[Dict] = []
+        all_entities: List[Dict] = []
+        all_relationships: List[Dict] = []
+
+        global_chunk_offset = 0  # running count for position uniqueness across passages
+
+        for p_idx, passage in enumerate(passages):
+            passage_text = passage.text
+            source_label = f"{passage.dataset}/{passage.question_id}/p{passage.passage_index}"
+
+            # Chunk this passage independently.  Most passages fit in one chunk;
+            # sub-splitting only happens when the passage exceeds chunk_size.
+            p_chunks = self._chunk_text(passage_text)
+
+            # Shift position fields so they are globally unique across passages.
+            for local_i, ch in enumerate(p_chunks):
+                ch["position"] = global_chunk_offset + local_i
+                ch["source"] = source_label
+                ch["dataset"] = passage.dataset
+                ch["question_id"] = passage.question_id
+                ch["passage_index"] = passage.passage_index
+                ch["chunk_local_index"] = ch.get("chunk_id", local_i)
+
+            # Section headers scoped to this passage (usually empty for short passages).
+            section_headers = self._detect_section_headers(passage_text)
+
+            entities_this_passage: Dict[int, List[Dict]] = {}
+            processed = 0
+            failed = 0
+
+            for local_i, chunk in enumerate(p_chunks):
+                global_i = global_chunk_offset + local_i
+                try:
+                    chunk_section = self._get_section_for_position(
+                        chunk.get("start_pos", 0), section_headers
+                    )
+                    # Coreference context: only previous chunks within the same passage.
+                    qualifier_ctx = ""
+                    if local_i > 0:
+                        qualifier_ctx = self._extract_qualifier_sentences(
+                            p_chunks[local_i - 1]["text"]
+                        )
+                    extraction_text = chunk["text"]
+                    if (
+                        self.enable_coreference_resolution
+                        and llm is not None
+                        and self._has_coreference_markers(extraction_text)
+                    ):
+                        coref_context = "\n\n".join(
+                            p_chunks[j]["text"]
+                            for j in range(max(0, local_i - 2), local_i)
+                        )
+                        if coref_context:
+                            extraction_text = self._resolve_coreferences_llm(
+                                extraction_text, coref_context, llm, model_name
+                            )
+                            time.sleep(0.5)
+
+                    chunk_kg = self._extract_entities_and_relationships_with_llm(
+                        extraction_text, llm, model_name,
+                        context_header=qualifier_ctx or None,
+                        section_header=chunk_section,
+                    )
+                    if isinstance(chunk_kg, dict) and (
+                        chunk_kg.get("entities") or chunk_kg.get("relationships")
+                    ):
+                        chunk_entities = chunk_kg.get("entities", [])
+                        all_entities.extend(chunk_entities)
+                        all_relationships.extend(
+                            self._attach_relationship_provenance(
+                                chunk_kg.get("relationships", []),
+                                [chunk.get("position", global_i)],
+                            )
+                        )
+                        entities_this_passage[local_i] = chunk_entities
+                        processed += 1
+                        logging.info(
+                            "Passage %d/%d chunk %d/%d: %d entities, %d rels [%s]",
+                            p_idx + 1, len(passages),
+                            local_i + 1, len(p_chunks),
+                            len(chunk_entities),
+                            len(chunk_kg.get("relationships", [])),
+                            source_label,
+                        )
+                    else:
+                        failed += 1
+                except Exception as e:
+                    logging.error(
+                        "Passage %d chunk %d failed: %s", p_idx + 1, local_i + 1, e
+                    )
+                    failed += 1
+                    continue
+
+                if llm is not None and local_i < len(p_chunks) - 1:
+                    time.sleep(1.0)
+
+            # Cross-chunk relationship extraction — scoped within this passage only.
+            if llm is not None and len(p_chunks) > 1:
+                for local_i in range(len(p_chunks) - 1):
+                    left_ents = entities_this_passage.get(local_i, [])
+                    right_ents = entities_this_passage.get(local_i + 1, [])
+                    combined_text = (
+                        p_chunks[local_i]["text"] + "\n\n" + p_chunks[local_i + 1]["text"]
+                    )
+                    candidate_ents = []
+                    seen_entity_ids = set()
+                    for entity in (left_ents + right_ents):
+                        entity_id = entity.get("id")
+                        dedupe_key = entity_id if isinstance(entity_id, str) and entity_id else id(entity)
+                        if dedupe_key in seen_entity_ids:
+                            continue
+                        if self._entity_appears_in_text(entity, combined_text):
+                            candidate_ents.append(entity)
+                            seen_entity_ids.add(dedupe_key)
+                    if len(candidate_ents) >= 2:
+                        new_rels = self._extract_relationships_only(
+                            combined_text, candidate_ents, llm, model_name
+                        )
+                        if new_rels:
+                            all_relationships.extend(
+                                self._attach_relationship_provenance(
+                                    new_rels,
+                                    [
+                                        p_chunks[local_i].get("position", global_chunk_offset + local_i),
+                                        p_chunks[local_i + 1].get("position", global_chunk_offset + local_i + 1),
+                                    ],
+                                )
+                            )
+                        time.sleep(0.5)
+
+            all_chunks.extend(p_chunks)
+            global_chunk_offset += len(p_chunks)
+
+            logging.info(
+                "Passage %d/%d complete: processed=%d failed=%d [%s]",
+                p_idx + 1, len(passages), processed, failed, source_label,
+            )
+
+        logging.info(
+            "All passages processed: %d chunks, %d raw entities, %d raw relationships",
+            len(all_chunks), len(all_entities), len(all_relationships),
+        )
+
+        if not all_entities and not all_relationships:
+            raise RuntimeError(
+                "Passage-aware KG extraction yielded no entities or relationships. "
+                "Check LLM connectivity and passage content."
+            )
+
+        # Harmonise globally across all passages.
+        harmonized_entities, id_to_representative = self._harmonize_entities(
+            all_entities, return_id_map=True
+        )
+        harmonized_relationships = self._harmonize_relationships(
+            all_relationships, id_to_representative
+        )
+        logging.info(
+            "Harmonized: %d entities, %d relationships",
+            len(harmonized_entities), len(harmonized_relationships),
+        )
+
+        kg_prefix = f"{kg_name}_" if kg_name else ""
+        kg = {
+            "nodes": [
+                {
+                    "id": f"{kg_prefix}{entity['uuid']}",
+                    "label": entity["type"],
+                    "properties": {
+                        "name": entity["id"],
+                        "type": entity["type"],
+                        "original_id": entity["id"],
+                        **entity.get("properties", {}),
+                    },
+                    "embedding": entity.get("embedding"),
+                    "color": self._get_node_color(entity["type"]),
+                    "size": 30,
+                    "font": {"size": 14, "color": "#333333"},
+                    "title": (
+                        f"Entity: {entity['id']}\nType: {entity['type']}"
+                        f"\nKG: {kg_name or 'default'}\nClick for details"
+                    ),
+                }
+                for entity in harmonized_entities
+            ],
+            "relationships": [
+                {
+                    "id": f"{kg_prefix}rel_{rel['source']}_{rel['type']}_{rel['target']}_{idx}",
+                    "from": f"{kg_prefix}{rel['source']}",
+                    "to": f"{kg_prefix}{rel['target']}",
+                    "source": f"{kg_prefix}{rel['source']}",
+                    "target": f"{kg_prefix}{rel['target']}",
+                    "type": rel["type"],
+                    "label": rel["type"],
+                    "negated": rel.get("negated", False),
+                    "properties": rel.get("properties", {}),
+                    "provenance_positions": rel.get("provenance_positions") or [],
+                    "arrows": "to",
+                    "color": {"color": "#444444"},
+                    "font": {"size": 12, "align": "middle"},
+                }
+                for idx, rel in enumerate(harmonized_relationships)
+            ],
+            "chunks": all_chunks,
+            "metadata": {
+                "total_chunks": len(all_chunks),
+                "total_passages": len(passages),
+                "total_entities": len(harmonized_entities),
+                "total_relationships": len(harmonized_relationships),
+                "chunk_size": self.chunk_size,
+                "chunk_overlap": self.chunk_overlap,
+                "embedding_model": type(self.embedding_function).__name__,
+                "embedding_dimension": self.embedding_dimension,
+                "ontology_classes": len(self.ontology_classes),
+                "ontology_relationships": len(self.ontology_relationships),
+                "extraction_method": extraction_method,
+                "kg_name": kg_name,
+                "created_at": datetime.now().isoformat(),
+                "visualization_ready": True,
+                "file_name": file_name,
+                "doc_hash": doc_hash,
+            },
+        }
+
+        if doc_metadata:
+            kg["metadata"]["doc_metadata"] = doc_metadata
+
+        if file_name:
+            success = self.store_knowledge_graph_with_embeddings(
+                kg, file_name, doc_metadata=doc_metadata, doc_hash=doc_hash
+            )
+            kg["metadata"]["stored_in_neo4j"] = success
+            if success:
+                try:
+                    graph_for_merge = self._create_neo4j_connection()
+                    merges = self.merge_synonym_entities(
+                        graph_for_merge, kg_name=kg_name
+                    )
+                    kg["metadata"]["synonym_merges"] = merges
+                    logging.info("Synonym merging complete: %d pairs merged", merges)
+                except Exception as syn_err:
+                    logging.warning("Synonym merging failed (non-fatal): %s", syn_err)
+
+                try:
+                    graph_for_merge = self._create_neo4j_connection()
+                    scope_filter = "WHERE c.kgName = $kg_name" if kg_name else ""
+                    graph_for_merge.query(
+                        f"""
+                        MATCH (e:__Entity__)<-[:HAS_ENTITY]-(c:Chunk)
+                        {scope_filter}
+                        WITH e, count(DISTINCT c) AS passage_count
+                        SET e.passage_count = passage_count,
+                            e.node_specificity = 1.0 / toFloat(passage_count)
+                        """,
+                        {"kg_name": kg_name} if kg_name else {},
+                    )
+                    logging.info("Node specificity weights computed for kg_name=%s", kg_name)
+                except Exception as spec_err:
+                    logging.warning("Node specificity computation failed (non-fatal): %s", spec_err)
+
         return kg
 
     def _get_node_color(self, entity_type: str) -> str:
@@ -1300,6 +3047,43 @@ Rules:
         }
         return color_map.get(entity_type, "#a6cee3")
 
+    def _build_relationship_merge_query(
+        self,
+        sanitized_rel_type: str,
+        *,
+        include_condition: bool,
+        include_quantitative: bool,
+    ) -> str:
+        """Build the relationship MERGE query without null-valued qualifiers.
+
+        Neo4j rejects null property values inside MERGE patterns, so optional
+        qualifiers must only participate in the identity key when present.
+        """
+        merge_key_parts = ["negated: $negated"]
+        if include_condition:
+            merge_key_parts.append("condition: $condition")
+        if include_quantitative:
+            merge_key_parts.append("quantitative: $quantitative")
+
+        merge_key = ",\n                        ".join(merge_key_parts)
+        return f"""
+                    MATCH (source:__Entity__ {{id: $source_id}})
+                    MATCH (target:__Entity__ {{id: $target_id}})
+                    MERGE (source)-[r:{sanitized_rel_type} {{
+                        {merge_key}
+                    }}]->(target)
+                    SET r += $properties,
+                        r.provenancePositions =
+                            reduce(acc = [], x IN coalesce(r.provenancePositions, []) + $provenance_positions |
+                                CASE WHEN x IN acc THEN acc ELSE acc + x END),
+                        r.questionIds =
+                            reduce(acc = [], x IN coalesce(r.questionIds, []) + $question_ids |
+                                CASE WHEN x IN acc THEN acc ELSE acc + x END),
+                        r.passageKeys =
+                            reduce(acc = [], x IN coalesce(r.passageKeys, []) + $passage_keys |
+                                CASE WHEN x IN acc THEN acc ELSE acc + x END)
+                    """
+
     def store_knowledge_graph_with_embeddings(self, kg: Dict[str, Any], file_name: str, doc_metadata: dict = None, doc_hash: str = None) -> bool:
         """
         Store the knowledge graph in Neo4j database with proper embedding support
@@ -1315,11 +3099,43 @@ Rules:
                 else:
                     raise conn_error
 
-            # Create document node with versioning
+            # Pre-flight: remove any orphaned entities from a previous failed build
+            # for this dataset (entities written before the Document node was committed).
+            # This prevents unique-constraint violations on __Entity__.id when the LLM
+            # assigns a different type label on a subsequent run.
             import uuid
-            kg_version = str(uuid.uuid4())
-            # Get kgName from metadata (set during KG generation)
             kg_name_value = kg['metadata'].get('kg_name') or file_name or "default"
+            try:
+                graph.query(
+                    """
+                    MATCH (e:__Entity__)
+                    WHERE e.id STARTS WITH $prefix
+                      AND NOT EXISTS {
+                        MATCH (:Chunk)-[:HAS_ENTITY|MENTIONS]->(e)
+                      }
+                    DETACH DELETE e
+                    """,
+                    {"prefix": kg_name_value + "_"},
+                )
+                logging.info(f"[store_kg] Pre-flight cleanup done for '{kg_name_value}'")
+            except Exception as _cleanup_err:
+                logging.warning(f"[store_kg] Pre-flight cleanup failed (non-fatal): {_cleanup_err}")
+
+            try:
+                graph.query(
+                    """
+                    MATCH (q:Qualifier {kgName: $kg_name})
+                    WHERE NOT EXISTS { MATCH ()-[]->(q) }
+                       OR NOT EXISTS { MATCH (q)-[]->() }
+                    DETACH DELETE q
+                    """,
+                    {"kg_name": kg_name_value},
+                )
+            except Exception as _qual_cleanup_err:
+                logging.debug("[store_kg] Orphan qualifier cleanup failed (non-fatal): %s", _qual_cleanup_err)
+
+            # Create document node with versioning
+            kg_version = str(uuid.uuid4())
             schema_card = self._build_schema_card()
             schema_card_json = json.dumps(schema_card, ensure_ascii=False)
             doc_query = """
@@ -1376,23 +3192,35 @@ Rules:
                         {"fileName": file_name, "kgName": kg_name_value, "meta": safe_meta},
                     )
 
-            # Create chunk nodes with embeddings
+            # Create chunk nodes with embeddings.
+            # Include kg_name in the hash so identical text in different KGs
+            # gets distinct Chunk nodes and retrieval filters are not contaminated.
             for chunk in kg['chunks']:
-                chunk_id = hashlib.sha1(chunk['text'].encode()).hexdigest()
+                chunk_id = hashlib.sha1(f"{kg_name_value}:{file_name}:{chunk['position']}:{chunk['text']}".encode()).hexdigest()
                 chunk_query = """
                 MERGE (c:Chunk {id: $chunk_id})
                 SET c.text = $text,
                     c.position = $position,
+                    c.chunkLocalIndex = $chunk_local_index,
                     c.start_pos = $start_pos,
                     c.end_pos = $end_pos,
+                    c.source = $source,
+                    c.dataset = $dataset,
+                    c.questionId = $question_id,
+                    c.passageIndex = $passage_index,
                     c.embedding = $embedding
                 """
                 graph.query(chunk_query, {
                     "chunk_id": chunk_id,
                     "text": chunk['text'],
-                    "position": chunk['chunk_id'],
+                    "position": chunk['position'],
+                    "chunk_local_index": chunk.get('chunk_local_index', chunk.get('chunk_id', 0)),
                     "start_pos": chunk['start_pos'],
                     "end_pos": chunk['end_pos'],
+                    "source": chunk.get('source'),
+                    "dataset": chunk.get('dataset'),
+                    "question_id": chunk.get('question_id'),
+                    "passage_index": chunk.get('passage_index'),
                     "embedding": chunk.get('embedding')
                 })
 
@@ -1407,6 +3235,56 @@ Rules:
                     "fileName": file_name,
                     "kgName": kg_name_value,
                 })
+
+                # Create retrieval-only subchunks sized for the embedding model.
+                # These keep dense retrieval faithful without shrinking the
+                # larger parent chunks used for KG extraction.
+                retrieval_subchunks = self._build_retrieval_subchunks(
+                    chunk,
+                    parent_chunk_id=chunk_id,
+                )
+                for subchunk in retrieval_subchunks:
+                    retrieval_chunk_query = """
+                    MERGE (rc:RetrievalChunk {id: $retrieval_chunk_id})
+                    SET rc.text = $text,
+                        rc.position = $position,
+                        rc.retrievalLocalIndex = $retrieval_local_index,
+                        rc.parentChunkId = $parent_chunk_id,
+                        rc.chunkLocalIndex = $chunk_local_index,
+                        rc.start_pos = $start_pos,
+                        rc.end_pos = $end_pos,
+                        rc.source = $source,
+                        rc.dataset = $dataset,
+                        rc.questionId = $question_id,
+                        rc.passageIndex = $passage_index,
+                        rc.embedding = $embedding
+                    """
+                    graph.query(retrieval_chunk_query, {
+                        "retrieval_chunk_id": subchunk["id"],
+                        "text": subchunk["text"],
+                        "position": subchunk["position"],
+                        "retrieval_local_index": subchunk["retrieval_local_index"],
+                        "parent_chunk_id": subchunk["parent_chunk_id"],
+                        "chunk_local_index": subchunk["chunk_local_index"],
+                        "start_pos": subchunk["start_pos"],
+                        "end_pos": subchunk["end_pos"],
+                        "source": subchunk.get("source"),
+                        "dataset": subchunk.get("dataset"),
+                        "question_id": subchunk.get("question_id"),
+                        "passage_index": subchunk.get("passage_index"),
+                        "embedding": subchunk.get("embedding"),
+                    })
+                    graph.query(
+                        """
+                        MATCH (rc:RetrievalChunk {id: $retrieval_chunk_id})
+                        MATCH (c:Chunk {id: $chunk_id})
+                        MERGE (rc)-[:RETRIEVES_FROM]->(c)
+                        """,
+                        {
+                            "retrieval_chunk_id": subchunk["id"],
+                            "chunk_id": chunk_id,
+                        },
+                    )
 
             # Create entity nodes with embeddings and ontology-based labels.
             # MERGE on node id (kg-prefixed UUID) so each KG's entities are independent.
@@ -1430,24 +3308,34 @@ Rules:
                 if not re.match(r'^[A-Za-z][A-Za-z0-9_]{0,63}$', cypher_safe_entity_type):
                     logging.warning(f"Unsafe entity type '{entity_type}' → falling back to 'Concept'")
                     cypher_safe_entity_type = 'Concept'
+                # Blocklist structural/system labels that must not be applied to entity nodes
+                _RESERVED_LABELS = {'Document', 'Chunk', 'Mention', 'Entity', '__Entity__',
+                                    '__KGDocument__', 'Relationship', 'Node', 'Schema'}
+                if cypher_safe_entity_type in _RESERVED_LABELS:
+                    logging.warning(f"Entity type '{entity_type}' clashes with structural label — falling back to 'Concept'")
+                    cypher_safe_entity_type = 'Concept'
 
-                # Generate embedding for entity if it doesn't have one
+                # Generate embedding for entity if it doesn't have one.
+                # Embed the entity name only (not description): the entity_vector
+                # index is used for entity→entity ANN matching at query time, where
+                # the probe vector is also a short entity-mention string.  Including
+                # description here shifts the embedding into description-semantic space,
+                # making name-level similarity unreliable (HippoRAG embeds names only).
                 entity_embedding = node.get('embedding')
                 if entity_embedding is None:
                     entity_text = properties.get('name', node['id'])
-                    if properties.get('description'):
-                        entity_text += " " + properties.get('description', '')
                     try:
                         entity_embedding = self.embedding_function.embed_query(entity_text)
                     except Exception as e:
                         logging.warning(f"Failed to generate embedding for entity {node['id']}: {e}")
                         entity_embedding = None
 
-                # MERGE on id (kg-scoped) so relationship MATCH always finds this exact node.
-                # kgName is stored as a property so entities can be loaded without traversing
-                # chunk paths (which fail when mention-linking doesn't find the entity text).
+                # MERGE on __Entity__ only (not the specific type label) so that the
+                # unique constraint on __Entity__.id is respected even when the LLM assigns
+                # a different type label on a re-run.  The specific label is added with SET
+                # after the MERGE, which is idempotent on existing nodes.
                 node_query = f"""
-                MERGE (n:{cypher_safe_entity_type}:__Entity__ {{id: $id}})
+                MERGE (n:__Entity__ {{id: $id}})
                 ON CREATE SET
                     n.name = $name,
                     n.type = $type,
@@ -1462,8 +3350,11 @@ Rules:
                 ON MATCH SET
                     n.last_accessed = datetime(),
                     n.kgName = $kg_name,
+                    n.type = $type,
+                    n.ontology_class = $entity_type,
                     n.all_names = coalesce(n.all_names, []) + $all_names,
                     n.original_ids = coalesce(n.original_ids, []) + $original_ids
+                SET n:{cypher_safe_entity_type}
                 """
                 graph.query(node_query, {
                     "id": node['id'],
@@ -1490,26 +3381,70 @@ Rules:
 
             # Create relationships with improved error handling
             relationships_stored = 0
+            relationship_store_failures = 0
+            relationships_skipped_low_confidence = 0
             for idx, rel in enumerate(kg['relationships']):
                 try:
-                    # Filter out 'id' property to avoid duplicate key issues in database
-                    properties_filtered = {k: v for k, v in rel.get('properties', {}).items() if k != 'id'}
-
-                    # Canonicalize relationship type against ontology using fuzzy matching
-                    sanitized_rel_type = self._canonicalize_relationship_type(rel['type'])
+                    # Filter out fields that are managed explicitly below to avoid duplicates:
+                    # 'id' causes duplicate key issues; 'negated'/'condition'/'quantitative'
+                    # are promoted to top-level properties_with_confidence below.
+                    _exclude = {'id', 'negated', 'condition', 'quantitative'}
+                    properties_filtered = {
+                        k: v for k, v in rel.get('properties', {}).items()
+                        if k not in _exclude
+                    }
 
                     # Resolve UUIDs to entity names for evidence-grounded confidence check.
                     # Prefer explicit source_name/target_name properties; fall back to name lookup.
                     _src_id = rel.get('from') or rel.get('source', '')
                     _tgt_id = rel.get('to') or rel.get('target', '')
+                    _src_node = next((n for n in kg.get('nodes', []) if n.get('id') == _src_id), {})
+                    _tgt_node = next((n for n in kg.get('nodes', []) if n.get('id') == _tgt_id), {})
+                    source_type = (
+                        _src_node.get('label')
+                        or (_src_node.get('properties') or {}).get('type')
+                        or (_src_node.get('properties') or {}).get('ontology_class')
+                    )
+                    target_type = (
+                        _tgt_node.get('label')
+                        or (_tgt_node.get('properties') or {}).get('type')
+                        or (_tgt_node.get('properties') or {}).get('ontology_class')
+                    )
+
+                    # Canonicalize relationship type against ontology using fuzzy matching
+                    sanitized_rel_type = self._canonicalize_relationship_type(
+                        rel['type'],
+                        source_type=source_type,
+                        target_type=target_type,
+                    )
+
+                    # Use all known surface forms for the entity so canonical-name
+                    # mismatches (e.g. "TBK1 kinase" → "TBK1") don't falsely score 0.
+                    _src_all_names = _src_node.get('properties', {}).get('all_names') or []
+                    _tgt_all_names = _tgt_node.get('properties', {}).get('all_names') or []
                     source_name = (rel.get('properties', {}).get('source_name')
                                    or _uuid_to_name.get(_src_id)
                                    or _src_id)
                     target_name = (rel.get('properties', {}).get('target_name')
                                    or _uuid_to_name.get(_tgt_id)
                                    or _tgt_id)
+                    verification_chunks = kg.get('chunks', [])
+                    provenance_positions = rel.get('provenance_positions') or []
+                    if provenance_positions:
+                        scoped_chunks = [
+                            chunk for chunk in kg.get('chunks', [])
+                            if chunk.get('position') in provenance_positions
+                        ]
+                        if scoped_chunks:
+                            verification_chunks = scoped_chunks
+
                     triple_confidence = self._verify_triple_confidence(
-                        source_name, target_name, sanitized_rel_type, kg.get('chunks', [])
+                        source_name,
+                        target_name,
+                        sanitized_rel_type,
+                        verification_chunks,
+                        source_aliases=_src_all_names,
+                        target_aliases=_tgt_all_names,
                     )
 
                     # Reject only clear hallucinations: neither entity found anywhere in the document.
@@ -1517,40 +3452,166 @@ Rules:
                     # Threshold just above 0.1 avoids discarding relationships where one entity
                     # is confirmed (score 0.4) or entity names have minor surface-form mismatches.
                     if triple_confidence < 0.15:
+                        relationships_skipped_low_confidence += 1
                         logging.info(
                             "Skipping hallucinated relationship (confidence=%.2f): %s -[%s]-> %s",
                             triple_confidence, rel.get('from'), sanitized_rel_type, rel.get('to'),
                         )
                         continue
 
-                    properties_with_confidence = {**properties_filtered, "confidence": triple_confidence}
+                    # Pull negation and qualifiers extracted by LLM
+                    negated    = bool(rel.get('negated', False))
+                    condition  = rel.get('properties', {}).get('condition') or None
+                    quantitative = rel.get('properties', {}).get('quantitative') or None
 
-                    rel_query = f"""
-                    MATCH (source:__Entity__ {{id: $source_id}})
-                    MATCH (target:__Entity__ {{id: $target_id}})
-                    MERGE (source)-[r:{sanitized_rel_type}]->(target)
-                    SET r += $properties
-                    """
+                    properties_with_confidence = {
+                        **properties_filtered,
+                        "confidence": triple_confidence,
+                        "negated": negated,
+                    }
+                    if condition:
+                        properties_with_confidence["condition"] = condition
+                    if quantitative:
+                        properties_with_confidence["quantitative"] = quantitative
+
+                    # Keep negated in the MERGE key so that opposite claims
+                    # (A INHIBITS B negated=false vs true) do not overwrite each other.
+                    # Optional qualifiers only participate when present; Neo4j forbids
+                    # null property values inside MERGE patterns.
+                    rel_query = self._build_relationship_merge_query(
+                        sanitized_rel_type,
+                        include_condition=condition is not None,
+                        include_quantitative=quantitative is not None,
+                    )
+
+                    edge_provenance = self._relationship_local_provenance(
+                        rel,
+                        kg.get("chunks", []),
+                    )
 
                     logging.info(
-                        "Creating relationship %d/%d: %s -[%s]-> %s (confidence=%.2f)",
+                        "Creating relationship %d/%d: %s -[%s%s]-> %s (confidence=%.2f)",
                         idx + 1, len(kg['relationships']),
-                        rel.get('from'), sanitized_rel_type, rel.get('to'), triple_confidence,
+                        rel.get('from'),
+                        "NOT " if negated else "",
+                        sanitized_rel_type,
+                        rel.get('to'), triple_confidence,
                     )
 
                     graph.query(rel_query, {
-                        "source_id": rel.get('from'),  # Use 'from' field which has the prefixed UUID
-                        "target_id": rel.get('to'),    # Use 'to' field which has the prefixed UUID
-                        "properties": properties_with_confidence
+                        "source_id": rel.get('from'),
+                        "target_id": rel.get('to'),
+                        "negated": negated,
+                        "condition": condition,
+                        "quantitative": quantitative,
+                        "properties": properties_with_confidence,
+                        "provenance_positions": edge_provenance["provenance_positions"],
+                        "question_ids": edge_provenance["question_ids"],
+                        "passage_keys": edge_provenance["passage_keys"],
                     })
+
+                    # Create QUALIFIED_BY nodes for significant qualifiers so they
+                    # can be traversed independently and appear in path strings.
+                    for q_type, q_value in [("condition", condition), ("quantitative", quantitative)]:
+                        if not q_value:
+                            continue
+                        try:
+                            qual_id = hashlib.sha1(
+                                f"{rel.get('from')}|{sanitized_rel_type}|{rel.get('to')}|{q_type}|{q_value}".encode()
+                            ).hexdigest()
+                            qual_query = f"""
+                            MATCH (source:__Entity__ {{id: $source_id}})
+                            MATCH (target:__Entity__ {{id: $target_id}})
+                            MERGE (q:Qualifier {{id: $qual_id}})
+                            SET q.type = $q_type, q.value = $q_value,
+                                q.kgName = $kg_name
+                            MERGE (source)-[:{sanitized_rel_type}_QUALIFIED {{negated: $negated}}]->(q)
+                            MERGE (q)-[:QUALIFIES]->(target)
+                            """
+                            graph.query(qual_query, {
+                                "source_id": rel.get('from'),
+                                "target_id": rel.get('to'),
+                                "qual_id":   qual_id,
+                                "q_type":    q_type,
+                                "q_value":   q_value,
+                                "kg_name":   kg.get('metadata', {}).get('kg_name', ''),
+                                "negated":   negated,
+                            })
+                        except Exception as _qe:
+                            logging.debug("QUALIFIED_BY node creation failed (non-fatal): %s", _qe)
 
                     relationships_stored += 1
 
                 except Exception as rel_error:
+                    relationship_store_failures += 1
                     logging.error(f"Failed to store relationship {idx+1}: {rel} - Error: {rel_error}")
                     continue
 
             logging.info(f"Successfully stored {relationships_stored} out of {len(kg['relationships'])} relationships")
+
+            extracted_relationships = len(kg['relationships'])
+            attempted_relationships = max(
+                0,
+                extracted_relationships - relationships_skipped_low_confidence,
+            )
+            relationship_store_ratio = (
+                relationships_stored / attempted_relationships
+                if attempted_relationships
+                else 1.0
+            )
+            kg.setdefault("metadata", {})
+            kg["metadata"]["stored_relationships"] = relationships_stored
+            kg["metadata"]["relationship_store_failures"] = relationship_store_failures
+            kg["metadata"]["relationships_skipped_low_confidence"] = relationships_skipped_low_confidence
+            kg["metadata"]["relationship_store_ratio"] = relationship_store_ratio
+
+            graph.query(
+                """
+                MATCH (d:Document {fileName: $fileName, kgName: $kgName})
+                SET d.totalRelationships = $storedRelationships,
+                    d.extractedRelationships = $extractedRelationships,
+                    d.relationshipStoreFailures = $relationshipStoreFailures,
+                    d.relationshipsSkippedLowConfidence = $relationshipsSkippedLowConfidence
+                """,
+                {
+                    "fileName": file_name,
+                    "kgName": kg_name_value,
+                    "storedRelationships": relationships_stored,
+                    "extractedRelationships": extracted_relationships,
+                    "relationshipStoreFailures": relationship_store_failures,
+                    "relationshipsSkippedLowConfidence": relationships_skipped_low_confidence,
+                },
+            )
+
+            if relationship_store_failures > 0:
+                # Treat isolated write misses on large graphs as degraded-but-usable.
+                # We still fail fast on tiny graphs or when the failure rate suggests
+                # a systemic storage problem rather than a one-off edge issue.
+                relationship_failure_ratio = (
+                    relationship_store_failures / attempted_relationships
+                    if attempted_relationships
+                    else 1.0
+                )
+                fail_small_graph = attempted_relationships < 100
+                fail_systemic = relationship_failure_ratio > 0.005
+                fail_complete_loss = attempted_relationships > 0 and relationships_stored == 0
+                should_fail_build = fail_small_graph or fail_systemic or fail_complete_loss
+
+                log_fn = logging.error if should_fail_build else logging.warning
+                log_fn(
+                    "Relationship storage incomplete for %s: stored=%d attempted=%d skipped_low_confidence=%d failures=%d failure_ratio=%.4f fatal=%s",
+                    file_name,
+                    relationships_stored,
+                    attempted_relationships,
+                    relationships_skipped_low_confidence,
+                    relationship_store_failures,
+                    relationship_failure_ratio,
+                    should_fail_build,
+                )
+                kg["metadata"]["relationship_store_failure_ratio"] = relationship_failure_ratio
+                kg["metadata"]["relationship_store_degraded"] = not should_fail_build
+                if should_fail_build:
+                    return False
 
             # Link entities to chunks via per-fact provenance Mention nodes
             # Pattern: (Entity)-[:MENTIONED_IN]->(Mention {quote, ...})-[:FROM_CHUNK]->(Chunk)
@@ -1561,7 +3622,8 @@ Rules:
                 return re.compile(prefix + re.escape(name) + suffix)
 
             for chunk in kg['chunks']:
-                chunk_id = hashlib.sha1(chunk['text'].encode()).hexdigest()
+                # Must use the same kg-scoped hash as the chunk CREATE step above.
+                chunk_id = hashlib.sha1(f"{kg_name_value}:{file_name}:{chunk['position']}:{chunk['text']}".encode()).hexdigest()
                 chunk_text_lower = chunk['text'].lower()
 
                 for node in kg['nodes']:
@@ -1595,8 +3657,10 @@ Rules:
                         MERGE (m:Mention {id: $mention_id})
                         SET m.quote = $quote,
                             m.chunkIndex = $chunk_index,
+                            m.chunkLocalIndex = $chunk_local_index,
                             m.chunkStart = $chunk_start,
                             m.chunkEnd = $chunk_end,
+                            m.chunkSource = $chunk_source,
                             m.entityName = $entity_name,
                             m.createdAt = datetime()
                         MERGE (e)-[:MENTIONED_IN]->(m)
@@ -1608,9 +3672,11 @@ Rules:
                             "entity_id": node['id'],
                             "mention_id": mention_id,
                             "quote": quote,
-                            "chunk_index": chunk.get('chunk_id', 0),
+                            "chunk_index": chunk.get('position', chunk.get('chunk_id', 0)),
+                            "chunk_local_index": chunk.get('chunk_local_index', chunk.get('chunk_id', 0)),
                             "chunk_start": chunk.get('start_pos', 0),
                             "chunk_end": chunk.get('end_pos', 0),
+                            "chunk_source": chunk.get('source', ''),
                             "entity_name": properties.get('name', ''),
                         })
 
@@ -1643,6 +3709,12 @@ Rules:
             """
             graph.query(chunk_constraint_query)
 
+            retrieval_chunk_constraint_query = """
+            CREATE CONSTRAINT unique_retrieval_chunk_id IF NOT EXISTS
+            FOR (rc:RetrievalChunk) REQUIRE rc.id IS UNIQUE
+            """
+            graph.query(retrieval_chunk_constraint_query)
+
             # Create composite uniqueness for dataset-scoped documents
             # (same fileName may exist in different kgName datasets)
             doc_constraint_query = """
@@ -1671,6 +3743,18 @@ Rules:
             """
             graph.query(chunk_index_query)
 
+            retrieval_chunk_index_query = f"""
+            CREATE VECTOR INDEX retrieval_vector IF NOT EXISTS
+            FOR (rc:RetrievalChunk) ON (rc.embedding)
+            OPTIONS {{
+                indexConfig: {{
+                    `vector.dimensions`: {self.embedding_dimension},
+                    `vector.similarity_function`: 'cosine'
+                }}
+            }}
+            """
+            graph.query(retrieval_chunk_index_query)
+
             # Create vector index for entities
             entity_index_query = f"""
             CREATE VECTOR INDEX entity_vector IF NOT EXISTS
@@ -1690,6 +3774,12 @@ Rules:
             FOR (c:Chunk) ON EACH [c.text]
             """
             graph.query(keyword_index_query)
+
+            retrieval_keyword_index_query = """
+            CREATE FULLTEXT INDEX retrieval_keyword IF NOT EXISTS
+            FOR (rc:RetrievalChunk) ON EACH [rc.text]
+            """
+            graph.query(retrieval_keyword_index_query)
 
             # Index on entity name for fast text-matching and multi-hop traversal
             # lookups (EnhancedRAGSystem._expand_entities_via_graph seeds from e.id)

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, Body, Request, Depends
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
@@ -11,22 +12,73 @@ import asyncio
 import hashlib
 import logging
 import threading
+import time
 import os, uuid, sys, tempfile, io, json
 from collections import deque
+from pathlib import Path
 from dotenv import load_dotenv
+import httpx
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-from ontographrag.providers.model_providers import get_provider as get_llm_provider, LangChainRunnableAdapter
+_API_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _API_DIR.parent.parent
+_STATIC_DIR = _API_DIR / "static"
+_DEFAULT_WRITE_PROBE_DIR = _PROJECT_ROOT / "results"
+_READY_WRITE_PROBE_DIR = Path(
+    os.getenv("ONTOGRAPHRAG_WRITE_PROBE_DIR", str(_DEFAULT_WRITE_PROBE_DIR))
+)
+_DEBUG_ERRORS = str(os.getenv("ONTOGRAPHRAG_DEBUG_ERRORS", "0")).strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+from ontographrag.providers.model_providers import (
+    get_provider as get_llm_provider,
+    LangChainRunnableAdapter,
+    TemperatureLockedProvider,
+)
+from experiments.answer_formatting import (
+    build_answer_instructions,
+    normalize_answer_to_contract,
+)
+from ontographrag.api.runtime_helpers import (
+    build_readiness_report,
+    configured_provider_names_from_env,
+    filesystem_write_probe_ok,
+    guardrail_forces_abstention,
+    parse_request_timeout_seconds,
+)
 from ontographrag.kg.builders.enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
 from ontographrag.rag.systems.enhanced_rag_system import EnhancedRAGSystem
+
+_REQUEST_TIMEOUT_SECONDS = parse_request_timeout_seconds(
+    os.getenv("ONTOGRAPHRAG_REQUEST_TIMEOUT_SECONDS", "120")
+)
 
 # Module-level singleton with lock to prevent race conditions at startup
 _rag_system: EnhancedRAGSystem = None
 _rag_system_lock = threading.Lock()
 _rag_system_embedding: str | None = None
+
+_DEFAULT_TASK_TYPE_BY_DATASET = {
+    "pubmedqa": "binary",
+    "realmedqa": "free_text",
+    "hotpotqa": "free_text",
+    "2wikimultihopqa": "free_text",
+    "musique": "free_text",
+    "multihoprag": "free_text",
+}
+
+
+def _normalize_dataset_and_task(dataset_name: Optional[str], task_type: Optional[str]) -> tuple[str, str]:
+    dataset = str(dataset_name or "").strip().lower()
+    task = str(task_type or "").strip().lower()
+    if dataset and not task:
+        task = _DEFAULT_TASK_TYPE_BY_DATASET.get(dataset, "")
+    return dataset, task
+
 
 def get_rag_system(embedding_model: str | None = None) -> EnhancedRAGSystem:
     global _rag_system, _rag_system_embedding
@@ -43,7 +95,7 @@ from csv_processor import MedicalReportCSVProcessor
 MAX_FILE_SIZE_MB = 50
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_FILE_EXTENSIONS = {'.pdf', '.txt', '.csv', '.json', '.xml'}
-ALLOWED_ONTOLOGY_EXTENSIONS = {'.owl', '.rdf', '.ttl', '.xml'}
+ALLOWED_ONTOLOGY_EXTENSIONS = {'.owl', '.rdf', '.ttl', '.xml', '.json'}
 
 def validate_file_upload(file: UploadFile, max_size_bytes: int = MAX_FILE_SIZE_BYTES, allowed_extensions: set = None) -> None:
     """
@@ -68,8 +120,113 @@ def validate_file_upload(file: UploadFile, max_size_bytes: int = MAX_FILE_SIZE_B
     # This is a preliminary check that can be enhanced with streaming size validation
     logger.info(f"Validating file: {file.filename}")
 
+def validate_ontology_schema(ontology_bytes: bytes, filename: str) -> list[str]:
+    """Validate an ontology file before it is handed to the KG builder.
+
+    Returns a list of human-readable error strings.  An empty list means valid.
+    Handles both JSON and OWL inputs; silently skips OWL (structural validation
+    beyond format-detection is left to the XML parser).
+    """
+    errors: list[str] = []
+    ext = os.path.splitext(filename)[1].lower()
+
+    # Only deep-validate JSON; OWL validation is handled by ElementTree at load time
+    if ext != '.json':
+        return errors
+
+    try:
+        raw = json.loads(ontology_bytes.decode('utf-8'))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        return [f"Invalid JSON: {e}"]
+
+    raw_classes = raw.get('classes') or raw.get('entity_types') or []
+    raw_rels = raw.get('relationships') or raw.get('relationship_types') or []
+
+    valid_cardinalities = {'one_to_one', 'one_to_many', 'many_to_one', 'many_to_many', None, ''}
+    class_ids: set[str] = set()
+    rel_ids: set[str] = set()
+    prop_types: dict[str, str] = {}  # property name → first-seen type
+
+    # ---- validate entity types ----
+    for i, cls in enumerate(raw_classes):
+        if not isinstance(cls, dict):
+            errors.append(f"classes[{i}]: expected object, got {type(cls).__name__}")
+            continue
+        eid = cls.get('id') or cls.get('name') or ''
+        if not eid:
+            errors.append(f"classes[{i}]: missing 'id'")
+            continue
+        if eid in class_ids:
+            errors.append(f"Duplicate entity type id: '{eid}'")
+        class_ids.add(eid)
+
+        has_identifier = False
+        for j, p in enumerate(cls.get('properties') or []):
+            pname = (p.get('name') or p.get('id') or '') if isinstance(p, dict) else ''
+            if not pname:
+                errors.append(f"classes[{i}].properties[{j}]: missing 'name'")
+                continue
+            ptype = (p.get('type') or 'string').lower()
+
+            # Conflicting property types across reuse
+            key = f"{eid}.{pname}"
+            if key in prop_types and prop_types[key] != ptype:
+                errors.append(
+                    f"classes[{i}].properties '{pname}': type conflict "
+                    f"({prop_types[key]!r} vs {ptype!r})"
+                )
+            prop_types[key] = ptype
+
+            if p.get('identifier'):
+                has_identifier = True
+
+            # Enum must have values
+            if ptype == 'enum' and not (p.get('enum_values') or p.get('values')):
+                errors.append(f"classes[{i}].properties '{pname}': type=enum but no enum_values")
+
+        if not has_identifier:
+            errors.append(
+                f"classes[{i}] '{eid}': missing identifier property "
+                f"(mark one property with identifier=true)"
+            )
+
+    # ---- validate relationship types ----
+    for i, rel in enumerate(raw_rels):
+        if not isinstance(rel, dict):
+            errors.append(f"relationships[{i}]: expected object, got {type(rel).__name__}")
+            continue
+        rid = rel.get('id') or rel.get('name') or rel.get('type') or ''
+        if not rid:
+            errors.append(f"relationships[{i}]: missing 'id'")
+            continue
+        if rid in rel_ids:
+            errors.append(f"Duplicate relationship id: '{rid}'")
+        rel_ids.add(rid)
+
+        # Dangling domain / range
+        domain = rel.get('from') or rel.get('domain') or ''
+        range_ = rel.get('to') or rel.get('range') or ''
+        if domain and class_ids and domain not in class_ids:
+            errors.append(f"relationships[{i}] '{rid}': domain '{domain}' not in entity types")
+        if range_ and class_ids and range_ not in class_ids:
+            errors.append(f"relationships[{i}] '{rid}': range '{range_}' not in entity types")
+
+        # Self-referential edges (warn only — some schemas legitimately allow them)
+        if domain and domain == range_:
+            logger.debug("Relationship '%s' is self-referential (%s → %s)", rid, domain, range_)
+
+        # Cardinality
+        card = rel.get('cardinality') or ''
+        if card and card not in valid_cardinalities:
+            errors.append(
+                f"relationships[{i}] '{rid}': invalid cardinality '{card}' "
+                f"(expected one_to_one | one_to_many | many_to_one | many_to_many)"
+            )
+
+    return errors
+
+
 # Import from local kg_utils
-from ontographrag.kg.utils.extract_graph import extract_graph_from_file_local_file
 from ontographrag.kg.utils.graph_query import get_graphDB_driver
 
 # Retain actual langchain_experimental if available
@@ -145,7 +302,7 @@ def _extract_text_from_bytes(data: bytes, filename: str) -> tuple[str, str]:
             images.append(img)
         pdf_doc.close()
 
-        det_model, det_processor = load_det_model(), load_det_model()  # det processor
+        det_model, det_processor = load_det_model(), load_processor()
         rec_model, rec_processor = load_rec_model(), load_processor()
 
         det_results = batch_text_detection(images, det_model, det_processor)
@@ -179,7 +336,7 @@ app = FastAPI(
     description=(
         "Turn unstructured documents into schema-consistent knowledge graphs. "
         "Query them with hybrid vector + graph RAG. "
-        "Measure answer confidence with 8 uncertainty metrics including RS-UQ."
+        "Measure answer confidence with 15 uncertainty metrics and graph-grounded diagnostics."
     ),
     version="1.0.0",
 )
@@ -202,12 +359,83 @@ app.mount("/static", StaticFiles(directory="frontend/dist"), name="static")
 # Optional API key authentication — only enforced when APP_API_KEY is set in the environment.
 # In development (no APP_API_KEY) all requests pass through.
 _APP_API_KEY = os.getenv("APP_API_KEY")
+_OPEN_AUTH_PATHS = {"/", "/health", "/ready"}
+_OPEN_AUTH_PREFIXES = ("/static",)
 
 def require_api_key(request: Request) -> None:
     if _APP_API_KEY:
         key = request.headers.get("X-API-Key") or request.query_params.get("api_key")
         if key != _APP_API_KEY:
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+@app.middleware("http")
+async def api_key_auth_middleware(request: Request, call_next):
+    """
+    Enforce API-key auth for server endpoints when APP_API_KEY is configured.
+
+    The GUI shell ("/") and static assets remain public so the browser can load.
+    Actual API calls must supply X-API-Key or ?api_key=...
+    """
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
+    started_at = time.perf_counter()
+    path = request.url.path
+    if _APP_API_KEY and path not in _OPEN_AUTH_PATHS and not path.startswith(_OPEN_AUTH_PREFIXES):
+        require_api_key(request)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Process-Time-Ms"] = str(int((time.perf_counter() - started_at) * 1000))
+    return response
+
+
+def _request_id_for(request: Request) -> str:
+    request_id = getattr(request.state, "request_id", None)
+    return request_id or uuid.uuid4().hex
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = _request_id_for(request)
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers={"X-Request-ID": request_id},
+        content={
+            "status": "error",
+            "detail": exc.detail,
+            "request_id": request_id,
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = _request_id_for(request)
+    return JSONResponse(
+        status_code=422,
+        headers={"X-Request-ID": request_id},
+        content={
+            "status": "error",
+            "detail": "Request validation failed",
+            "errors": jsonable_encoder(exc.errors()),
+            "request_id": request_id,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = _request_id_for(request)
+    logger.exception("Unhandled API exception [%s]: %s", request_id, exc)
+    return JSONResponse(
+        status_code=500,
+        headers={"X-Request-ID": request_id},
+        content={
+            "status": "error",
+            "detail": str(exc) if _DEBUG_ERRORS else "Internal server error",
+            "request_id": request_id,
+        },
+    )
 
 # Global storage for current graph data
 current_graph_data = None
@@ -466,6 +694,41 @@ def neo4j_health():
             detail=f"Neo4j health check failed: {e}"
         )
 
+@app.get("/health")
+def health():
+    """Lightweight liveness probe for container/platform healthchecks."""
+    return {"status": "ok", "service": "ontographrag"}
+
+
+@app.get("/ready")
+async def ready():
+    """Fast readiness probe for orchestration and production health checks."""
+    rag_runtime_ready = False
+    rag_runtime_detail = ""
+    if neo4j_ready:
+        try:
+            await asyncio.to_thread(get_rag_system)
+            rag_runtime_ready = True
+            rag_runtime_detail = "RAG runtime initialized"
+        except Exception as e:
+            rag_runtime_detail = str(e)
+    else:
+        rag_runtime_detail = "Neo4j unavailable at startup"
+
+    write_ok, write_detail = filesystem_write_probe_ok(_READY_WRITE_PROBE_DIR)
+    report = build_readiness_report(
+        neo4j_ready=neo4j_ready,
+        rag_runtime_ready=rag_runtime_ready,
+        write_probe_ok=write_ok,
+        write_probe_detail=write_detail,
+        configured_providers=configured_provider_names_from_env(os.environ),
+    )
+    for check in report["checks"]:
+        if check["name"] == "rag_runtime":
+            check["detail"] = rag_runtime_detail
+            break
+    return JSONResponse(status_code=200 if report["ready"] else 503, content=report)
+
 @app.get("/")
 async def root():
     return FileResponse("frontend/dist/index.html")
@@ -474,113 +737,137 @@ async def root():
 async def load_kg_from_file(
     file: UploadFile = File(...),
     provider: str = Form("openai"),
-    model: str = Form("gpt-3.5-turbo")
+    model: str = Form("gpt-3.5-turbo"),
+    kg_name: str = Form(None),
+    neo4j_uri: str = Form(None),
+    neo4j_user: str = Form(None),
+    neo4j_password: str = Form(None),
+    neo4j_database: str = Form(None),
 ):
     """
-    Return the full raw KG from llm-graph-builder (no ontology filtering).
+    Build a KG from the uploaded file using OntologyGuidedKGCreator and return
+    the resulting nodes and relationships from Neo4j.
     """
-    file_path = None
+    require_neo4j()
     try:
         data = await file.read()
-        safe_name = f"{uuid.uuid4()}_{os.path.basename(file.filename)}"
-        file_path = os.path.join(tempfile.gettempdir(), safe_name)
-        await asyncio.to_thread(lambda: open(file_path, "wb").write(data))
-        latency, graph_data = await extract_graph_from_file_local_file(
-            os.getenv("NEO4J_URI"),
-            os.getenv("NEO4J_USERNAME"),
-            os.getenv("NEO4J_PASSWORD"),
-            os.getenv("NEO4J_DATABASE"),
-            model,
-            file_path,
-            file.filename,
-            [], [], 1000, 100, 1,
-            None, None
+        text_content, _ = _extract_text_from_bytes(data, file.filename)
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail="File contains no readable text content")
+
+        _neo4j_uri      = neo4j_uri      or os.getenv("NEO4J_URI",      "bolt://localhost:7687")
+        _neo4j_user     = neo4j_user     or os.getenv("NEO4J_USERNAME",  "neo4j")
+        _neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD",  "password")
+        _neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE",  "neo4j")
+        _kg_name        = kg_name or f"kg_{uuid.uuid4()}"
+
+        llm = TemperatureLockedProvider(get_llm_provider(provider, model), temperature=0.0)
+        kg_creator = UnifiedOntologyGuidedKGCreator(
+            neo4j_uri=_neo4j_uri,
+            neo4j_user=_neo4j_user,
+            neo4j_password=_neo4j_password,
+            neo4j_database=_neo4j_database,
         )
-        driver = get_graphDB_driver(
-            os.getenv("NEO4J_URI"),
-            os.getenv("NEO4J_USERNAME"),
-            os.getenv("NEO4J_PASSWORD"),
-            os.getenv("NEO4J_DATABASE"),
+        await asyncio.to_thread(
+            kg_creator.generate_knowledge_graph,
+            text_content, llm, file.filename, model, None, _kg_name, None, None,
         )
+
+        # Read back the nodes scoped to this KG from Neo4j
+        driver = get_graphDB_driver(_neo4j_uri, _neo4j_user, _neo4j_password, _neo4j_database)
         nodes = []
-        with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
-            for record in session.run("MATCH (n) RETURN n"):
+        with driver.session(database=_neo4j_database) as session:
+            for record in session.run(
+                "MATCH (n:__Entity__ {kgName: $kg_name}) RETURN n", {"kg_name": _kg_name}
+            ):
                 node = record["n"]
-                props = {}
-                for k, v in dict(node).items():
-                    if hasattr(v, "isoformat"):
-                        props[k] = v.isoformat()
-                    else:
-                        props[k] = v
-                nodes.append({"id": node.id, "labels": list(node.labels), "properties": props})
+                props = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in dict(node).items()}
+                nodes.append({"id": node.element_id, "labels": list(node.labels), "properties": props})
         relationships = []
-        with driver.session(database=os.getenv("NEO4J_DATABASE")) as session:
-            for record in session.run("MATCH ()-[r]->() RETURN r"):
+        with driver.session(database=_neo4j_database) as session:
+            for record in session.run(
+                "MATCH (s:__Entity__ {kgName: $kg_name})-[r]->(t:__Entity__ {kgName: $kg_name}) RETURN r",
+                {"kg_name": _kg_name},
+            ):
                 rel = record["r"]
-                props = {}
-                for k, v in dict(rel).items():
-                    if hasattr(v, "isoformat"):
-                        props[k] = v.isoformat()
-                    else:
-                        props[k] = v
+                props = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in dict(rel).items()}
                 relationships.append({
-                    "id": rel.id,
+                    "id": rel.element_id,
                     "type": rel.type,
-                    "start": rel.start_node.id,
-                    "end": rel.end_node.id,
-                    "properties": props
+                    "start": rel.start_node.element_id,
+                    "end": rel.end_node.element_id,
+                    "properties": props,
                 })
-        return JSONResponse(content=jsonable_encoder({"kg_id": str(uuid.uuid4()), "graph_data": {"nodes": nodes, "relationships": relationships}}))
-    except (ImportError, ModuleNotFoundError):
-        return JSONResponse(content=jsonable_encoder({"kg_id": str(uuid.uuid4()), "graph_data": {"nodes": [], "relationships": []}}))
+        driver.close()
+        return JSONResponse(content=jsonable_encoder({
+            "kg_id": str(uuid.uuid4()),
+            "kg_name": _kg_name,
+            "graph_data": {"nodes": nodes, "relationships": relationships},
+        }))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if file_path:
-            try:
-                os.unlink(file_path)
-            except OSError:
-                pass
 
 @app.post("/extract_graph")
 async def extract_graph(
     file: UploadFile = File(...),
     provider: str = Form("openai"),
-    model: str = Form("gpt-3.5-turbo")
+    model: str = Form("gpt-3.5-turbo"),
+    kg_name: str = Form(None),
+    neo4j_uri: str = Form(None),
+    neo4j_user: str = Form(None),
+    neo4j_password: str = Form(None),
+    neo4j_database: str = Form(None),
 ):
     """
-    Return raw graph JSON without ontology post-processing.
+    Extract a KG from the uploaded file using OntologyGuidedKGCreator and
+    return the extraction result (nodes, relationships, metadata) without
+    persisting to Neo4j.  Nodes are returned in visualization format
+    (label, properties, color, size, font, title fields); use node.properties.name
+    to access the raw entity name.
     """
-    file_path = None
+    require_neo4j()
     try:
         data = await file.read()
-        safe_name = f"{uuid.uuid4()}_{os.path.basename(file.filename)}"
-        file_path = os.path.join(tempfile.gettempdir(), safe_name)
-        await asyncio.to_thread(lambda: open(file_path, "wb").write(data))
-        _, graph_data = await extract_graph_from_file_local_file(
-            os.getenv("NEO4J_URI"),
-            os.getenv("NEO4J_USERNAME"),
-            os.getenv("NEO4J_PASSWORD"),
-            os.getenv("NEO4J_DATABASE"),
-            model,
-            file_path,
-            file.filename,
-            [], [], 1000, 100, 1,
-            None, None
+        text_content, _ = _extract_text_from_bytes(data, file.filename)
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail="File contains no readable text content")
+
+        _neo4j_uri      = neo4j_uri      or os.getenv("NEO4J_URI",      "bolt://localhost:7687")
+        _neo4j_user     = neo4j_user     or os.getenv("NEO4J_USERNAME",  "neo4j")
+        _neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD",  "password")
+        _neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE",  "neo4j")
+        _kg_name        = kg_name or f"kg_{uuid.uuid4()}"
+
+        llm = TemperatureLockedProvider(get_llm_provider(provider, model), temperature=0.0)
+        kg_creator = UnifiedOntologyGuidedKGCreator(
+            neo4j_uri=_neo4j_uri,
+            neo4j_user=_neo4j_user,
+            neo4j_password=_neo4j_password,
+            neo4j_database=_neo4j_database,
         )
-        return JSONResponse(content=graph_data)
+        # Pass file_name=None so generate_knowledge_graph skips Neo4j persistence —
+        # this is a preview/extraction endpoint, not a storage endpoint.
+        kg = await asyncio.to_thread(
+            kg_creator.generate_knowledge_graph,
+            text_content, llm, None, model, None, _kg_name, None, None,
+        )
+        return JSONResponse(content=jsonable_encoder({
+            "kg_name": _kg_name,
+            "fileName": file.filename,
+            "nodeCount": kg.get("metadata", {}).get("total_entities", 0),
+            "relationshipCount": kg.get("metadata", {}).get("total_relationships", 0),
+            "status": "Completed",
+            "model": model,
+            "nodes": kg.get("nodes", []),
+            "relationships": kg.get("relationships", []),
+            "metadata": kg.get("metadata", {}),
+        }))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if file_path:
-            try:
-                os.unlink(file_path)
-            except OSError:
-                pass
 
 @app.post("/create_ontology_guided_kg")
 @limiter.limit("5/minute")
@@ -596,7 +883,8 @@ async def create_ontology_guided_kg(  # noqa: C901
     neo4j_uri: str = Form(None),
     neo4j_user: str = Form(None),
     neo4j_password: str = Form(None),
-    neo4j_database: str = Form(None)
+    neo4j_database: str = Form(None),
+    enable_coreference_resolution: bool = Form(False),
 ):
     """
     Create knowledge graph with optional ontology guidance.
@@ -624,12 +912,14 @@ async def create_ontology_guided_kg(  # noqa: C901
             _neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD", "password")
             _neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE", "neo4j")
             _dup_driver = get_graphDB_driver(_neo4j_uri, _neo4j_user, _neo4j_password, _neo4j_database)
-            with _dup_driver.session() as _session:
-                _dup_result = _session.run(
-                    "MATCH (d:Document {contentHash: $hash, kgName: $kg_name}) RETURN d.kgName AS kgName, d.fileName AS fileName LIMIT 1",
-                    {"hash": doc_hash, "kg_name": kg_name}
-                ).single()
-            _dup_driver.close()
+            try:
+                with _dup_driver.session() as _session:
+                    _dup_result = _session.run(
+                        "MATCH (d:Document {contentHash: $hash, kgName: $kg_name}) RETURN d.kgName AS kgName, d.fileName AS fileName LIMIT 1",
+                        {"hash": doc_hash, "kg_name": kg_name}
+                    ).single()
+            finally:
+                _dup_driver.close()
             if _dup_result:
                 _existing_kg_name = _dup_result["kgName"]
                 _log_progress(f"♻️  Duplicate detected — reusing existing KG '{_existing_kg_name}'")
@@ -670,7 +960,7 @@ async def create_ontology_guided_kg(  # noqa: C901
         # Get LLM provider (use defaults matching test if not specified)
         provider = provider or "openrouter"
         model = model or "openai/gpt-oss-120b:free"
-        llm = get_llm_provider(provider, model)
+        llm = TemperatureLockedProvider(get_llm_provider(provider, model), temperature=0.0)
 
         # Handle ontology file if provided
         ontology_path = None
@@ -683,14 +973,13 @@ async def create_ontology_guided_kg(  # noqa: C901
                 tmpf.write(ontology_data)
             logger.info("Ontology saved to %s (%d bytes)", ontology_path, len(ontology_data))
 
-            # Quick format sanity-check
-            try:
-                with open(ontology_path, 'r', encoding='utf-8') as f:
-                    sample = f.read(500).lower()
-                if 'owl:' not in sample and 'rdf:' not in sample:
-                    logger.warning("Ontology file may not be valid OWL/RDF (no owl:/rdf: tags in first 500 chars)")
-            except Exception as e:
-                logger.warning("Could not inspect ontology file: %s", e)
+            # Schema validation — fail early with readable errors
+            ontology_errors = validate_ontology_schema(ontology_data, ontology_file.filename)
+            if ontology_errors:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"message": "Ontology validation failed", "errors": ontology_errors},
+                )
         else:
             logger.debug("No ontology file provided")
 
@@ -715,7 +1004,8 @@ async def create_ontology_guided_kg(  # noqa: C901
             neo4j_user=neo4j_user,
             neo4j_password=neo4j_password,
             neo4j_database=neo4j_database,
-            embedding_model=embedding_model or "sentence_transformers"
+            embedding_model=embedding_model or "sentence_transformers",
+            enable_coreference_resolution=enable_coreference_resolution,
         )
 
         logger.debug(
@@ -735,11 +1025,14 @@ async def create_ontology_guided_kg(  # noqa: C901
 
         # Log results like test script
         entities = kg.get('metadata', {}).get('total_entities', 0)
-        relationships = kg.get('metadata', {}).get('total_relationships', 0)
+        relationships = kg.get('metadata', {}).get(
+            'stored_relationships',
+            kg.get('metadata', {}).get('total_relationships', 0),
+        )
         stored = kg.get('metadata', {}).get('stored_in_neo4j', False)
 
         logger.info("KG results: %d entities, %d relationships, stored=%s", entities, relationships, stored)
-        _log_progress(f"📊 Extracted {entities} entities, {relationships} relationships")
+        _log_progress(f"📊 Extracted {entities} entities, stored {relationships} relationships")
 
         # Reload KG from Neo4j to ensure ontology labels are properly displayed
         loaded_kg = None
@@ -804,28 +1097,10 @@ async def create_ontology_guided_kg(  # noqa: C901
     except HTTPException:
         raise
     except Exception as e:
-        # Provide fallback: try to return the initial KG data even if Neo4j operations failed
-        error_msg = f"Ontology-guided KG creation failed: {str(e)}"
-
-        # If we have initial KG data (created before Neo4j failure), return it
-        if 'kg' in locals() and kg:
-            logger.warning("Neo4j storage/reload failed, returning locally generated KG data")
-            return JSONResponse(content={
-                "kg_id": str(uuid.uuid4()),
-                "graph_data": kg,
-                "method": "ontology_guided" if ontology_path else "basic_llm",
-                "ontology_file": ontology_file.filename if ontology_file else None,
-                "determinism_improvements": [
-                    "fixed_chunk_size",
-                    "temperature=0_for_all_LLMs",
-                    "node_label_fix"
-                ] + (["ontology_constraints_applied"] if ontology_path else []),
-                "warning": "Neo4j connection/storage failed - using locally processed data only",
-                "error_details": error_msg
-            })
-
-        # No fallback data available, raise the error
-        raise HTTPException(status_code=500, detail=error_msg)
+        # Fail closed: /create_ontology_guided_kg implies the KG was persisted.
+        # Returning local-only data would blur "built" vs "persisted" for callers.
+        # If you need a preview/extract-only path use /extract_graph instead.
+        raise HTTPException(status_code=500, detail=f"Ontology-guided KG creation failed: {str(e)}")
     finally:
         _kg_building = False
         # Always clean up the ontology temp file, regardless of success or failure.
@@ -844,6 +1119,7 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
     """
     require_neo4j()
     try:
+        request_id = _request_id_for(request)
         question = body.get("question", "")
         if not question or not isinstance(question, str):
             raise HTTPException(status_code=422, detail="Missing question")
@@ -851,11 +1127,33 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
             raise HTTPException(status_code=422, detail="Question too long (max 4096 chars)")
 
         docs = body.get("document_names", [])
+        if docs is not None and not isinstance(docs, list):
+            raise HTTPException(status_code=422, detail="document_names must be a list of strings")
         session = body.get("session_id", "default_session")
         mode = body.get("mode", "default")
         provider = body.get("provider_rag", "openrouter")
         model = body.get("model_rag", "openai/gpt-oss-120b:free")
         kg_name = body.get("kg_name", None)
+        dataset_name, task_type = _normalize_dataset_and_task(
+            body.get("dataset_name"),
+            body.get("task_type"),
+        )
+        explicit_answer_instructions = str(body.get("answer_instructions", "") or "").strip()
+        answer_instructions = explicit_answer_instructions or (
+            build_answer_instructions(dataset_name, task_type)
+            if dataset_name and task_type
+            else ""
+        )
+        _guardrail_default = str(os.getenv("ONTOGRAPHRAG_RUNTIME_ANSWER_GUARDRAIL", "1")).strip().lower() in {
+            "1", "true", "yes", "on",
+        }
+        runtime_guardrail = body.get("runtime_guardrail", _guardrail_default)
+        if isinstance(runtime_guardrail, str):
+            runtime_guardrail = runtime_guardrail.strip().lower() in {"1", "true", "yes", "on"}
+        runtime_guardrail_mode = body.get(
+            "runtime_guardrail_mode",
+            os.getenv("ONTOGRAPHRAG_RUNTIME_ANSWER_GUARDRAIL_MODE", "retry_then_abstain"),
+        )
 
         # Validate kg_name exists before querying (avoids confusing empty-result errors)
         if kg_name:
@@ -900,23 +1198,70 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
         # Generate response; cap at 120 s to prevent thread pool exhaustion on hung LLMs.
         try:
             result = await asyncio.wait_for(
-                asyncio.to_thread(rag_system.generate_response, question, llm, docs, kg_name=kg_name),
-                timeout=120,
+                asyncio.to_thread(
+                    rag_system.generate_response,
+                    question,
+                    llm,
+                    docs,
+                    kg_name=kg_name,
+                    answer_instructions=answer_instructions,
+                    runtime_guardrail=runtime_guardrail,
+                    runtime_guardrail_mode=runtime_guardrail_mode,
+                ),
+                timeout=_REQUEST_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="LLM response timed out — try again or choose a faster model")
+            raise HTTPException(
+                status_code=504,
+                detail=(
+                    "LLM response timed out — try again or choose a faster model "
+                    f"(timeout={_REQUEST_TIMEOUT_SECONDS}s)"
+                ),
+            )
+
+        if "response" in result and dataset_name and task_type:
+            normalized_response = normalize_answer_to_contract(
+                dataset_name,
+                task_type,
+                result.get("response", ""),
+            )
+            if normalized_response != result.get("response", ""):
+                result["response_raw"] = result.get("response", "")
+                result["response"] = normalized_response
+
+        # Compute GPS confidence score (best structural metric): fraction of answer
+        # entities reachable from question entities in the KG.  GPS = 1 − support,
+        # so confidence = 1 − GPS = support.  Only computed when a KG is loaded.
+        kg_confidence: Optional[float] = None
+        if kg_name and "response" in result and not guardrail_forces_abstention(result.get("guardrail")):
+            try:
+                from experiments.uncertainty_metrics import compute_graph_path_support
+                _gps = compute_graph_path_support(
+                    question=question,
+                    answer=result["response"],
+                    neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                    neo4j_user=os.getenv("NEO4J_USERNAME", "neo4j"),
+                    neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+                    neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
+                    kg_name=kg_name,
+                )
+                # GPS is uncertainty (0 = fully supported); convert to confidence
+                kg_confidence = round(1.0 - _gps, 3) if _gps is not None else None
+            except Exception as _conf_err:
+                logger.debug("GPS confidence computation skipped: %s", _conf_err)
 
         # Format response to match expected structure
         if "error" in result:
             return JSONResponse(content={
                 "session_id": session,
+                "request_id": request_id,
                 "message": f"KG Error: {result['error']}",
                 "info": {
                     "sources": [],
                     "model": model,
                     "nodedetails": [],
-                    "total_tokens": 0,
-                    "response_time": 0,
+                    "total_tokens": None,
+                    "response_time": None,
                     "mode": mode,
                     "entities": result.get("entities", []),
                     "metric_details": {},
@@ -929,6 +1274,7 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
         # Convert enhanced response to standard format
         return JSONResponse(content={
             "session_id": session,
+            "request_id": request_id,
             "message": result["response"],
             "info": {
                 "sources": result["sources"],
@@ -938,8 +1284,8 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                     "entitydetails": result.get("context", {}).get("entities", {}),
                     "communitydetails": []
                 },
-                "total_tokens": 0,  # TODO: Implement token counting
-                "response_time": 0,
+                "total_tokens": None,
+                "response_time": None,
                 "mode": mode,
                 "entities": {
                     "entityids": result.get("entities", []),
@@ -950,13 +1296,21 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                 "metric_details": {
                     "question": question,
                     "contexts": [chunk["text"] for chunk in result.get("context", {}).get("chunks", [])],
-                    "answer": result["response"]
+                    "answer": result["response"],
+                    "answer_raw": result.get("response_raw"),
                 },
                 "kg_only": True,
                 "chunk_count": result.get("chunk_count", 0),
                 "entity_count": result.get("entity_count", 0),
                 "relationship_count": result.get("relationship_count", 0),
-                "confidence": result.get("confidence", 0.0)
+                "confidence": result.get("confidence", 0.0),
+                "kg_confidence": kg_confidence,   # Graph Path Support (GPS) structural confidence score
+                "structural_support": kg_confidence,
+                "grounding_support": result.get("context", {}).get("grounding_quality"),
+                "guardrail": result.get("guardrail", {}),
+                "dataset_name": dataset_name or None,
+                "task_type": task_type or None,
+                "answer_instructions": answer_instructions or None,
             },
             "user": "chatbot"
         })
@@ -980,6 +1334,7 @@ def list_models(provider: str):
             "gpt-3.5-turbo",
         ],
         "openrouter": [
+            "openai/gpt-4o-mini",
             "openai/gpt-oss-120b:free",
             "meta-llama/llama-3.3-8b-instruct:free",
             "deepseek/deepseek-chat-v3.1:free",
@@ -1098,112 +1453,6 @@ async def clear_kg(kg_name: str = Form(None)):
         logger.exception("Error clearing KG")
         raise HTTPException(status_code=500, detail=f"Failed to clear knowledge graph: {str(e)}")
 
-@app.post("/test_create_working_kg")
-async def test_create_working_kg():
-    """
-    Create a working test KG with vector embeddings that the RAG can actually use with semantic similarity search.
-    """
-    try:
-        # Use the get_graphDB_driver function for consistency
-        driver = get_graphDB_driver(
-            os.getenv("NEO4J_URI"),
-            os.getenv("NEO4J_USERNAME"),
-            os.getenv("NEO4J_PASSWORD"),
-            os.getenv("NEO4J_DATABASE"),
-        )
-
-        logger.debug('Connected to Neo4j, creating test KG with placeholder embeddings...')
-
-        # Clear any existing test data and indexes
-        with driver.session() as session:
-            try:
-                logger.debug('🔄 Clearing existing test data...')
-
-                # First drop existing vector indexes
-                try:
-                    session.run('DROP INDEX vector IF EXISTS')
-                    session.run('DROP INDEX entity_vector IF EXISTS')
-                    logger.debug('✅ Dropped existing vector indexes')
-                except Exception as e:
-                    logger.debug(f'Index drop warning (may not exist): {e}')
-
-                # Clear all existing data before creating test KG
-                session.run('MATCH (n) DETACH DELETE n')
-
-                logger.debug('✅ Cleared existing test data')
-            except Exception as e:
-                logger.debug(f'Cleanup warning: {e}')
-
-            # Create sample data with UUIDs
-            doc_id = str(uuid.uuid4())
-            chunk_id = str(uuid.uuid4())
-
-            test_text = """Prostate cancer is a disease that affects men. Common symptoms include frequent urination, difficulty urinating, blood in urine, and erectile dysfunction. Treatment options include surgery (radical prostatectomy), radiation therapy, hormone therapy, and active surveillance for low-risk cases."""
-
-            # Create document
-            session.run('MERGE (d:Document {fileName: "test_medical_data.txt"}) SET d.id = $doc_id', {'doc_id': doc_id})
-
-            # Create chunk with simple embeddings (placeholder for now - we can upgrade to real embeddings later)
-            chunk_embedding = [0.1] * 384  # Placeholder vector similar to all-MiniLM-L6-v2 dimension
-
-            session.run('''
-            MERGE (c:Chunk {id: $chunk_id})
-            SET c.text = $text,
-                c.embedding = $embedding,
-                c.position = 0
-            ''', {
-                'chunk_id': chunk_id,
-                'text': test_text,
-                'embedding': chunk_embedding
-            })
-
-            # Link chunk to document
-            session.run('MATCH (c:Chunk {id: $chunk_id}), (d:Document {id: $doc_id}) MERGE (c)-[:PART_OF]->(d)', {
-                'chunk_id': chunk_id,
-                'doc_id': doc_id
-            })
-
-            # No test entities created - removed hardcoded test entities
-
-        logger.debug('✅ Test KG with embeddings created successfully!')
-
-        # Test the KG by querying it
-        with driver.session() as session:
-            stats = session.run('''
-            MATCH (d:Document) WHERE d.fileName = "test_medical_data.txt"
-            OPTIONAL MATCH (d)<-[:PART_OF]-(c:Chunk)
-            OPTIONAL MATCH (c)-[:HAS_ENTITY]->(e:__Entity__)
-            OPTIONAL MATCH (e)-[r]-()
-            RETURN count(DISTINCT d) AS docs, count(DISTINCT c) AS chunks, count(DISTINCT e) AS entities, count(DISTINCT r) AS rels
-            ''')
-
-            result = stats.single()
-
-        return JSONResponse(content={
-            "message": "Test KG with vector embeddings created successfully",
-            "status": "ready_with_embeddings",
-            "embeddings": "enabled",
-            "vector_indexes": "created",
-            "test_queries": [
-                "What are the symptoms of prostate cancer?",
-                "What treatments are available for prostate cancer?",
-                "How does prostate cancer affect men?"
-            ],
-            "data_stats": {
-                "documents": result.get('docs', 1) if 'result' in locals() and result else 1,
-                "chunks": result.get('chunks', 1) if 'result' in locals() and result else 1,
-                "entities": 0,  # No test entities created
-                "relationships": 0,  # No test relationships created
-                "embedding_dimensions": 384,
-                "similarity_function": "cosine"
-            }
-        })
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error creating test KG")
-        raise HTTPException(status_code=500, detail=f"Test KG creation failed: {str(e)}")
 
 
 @app.post("/save_kg_to_neo4j")
@@ -1352,11 +1601,17 @@ async def load_kg_from_neo4j(
                         props[k] = v
                 return props
 
+            _seen_node_ids: set = set()
+
             def _append_node(nodes_list: list, node_obj) -> None:
                 if node_obj is None:
                     return
+                nid = node_obj.id
+                if nid in _seen_node_ids:
+                    return
+                _seen_node_ids.add(nid)
                 nodes_list.append({
-                    "id": node_obj.id,
+                    "id": nid,
                     "labels": list(node_obj.labels),
                     "properties": _serialize_props(dict(node_obj))
                 })
@@ -1595,7 +1850,10 @@ async def bulk_process_csv(
         if not neo4j_password:
             raise HTTPException(status_code=500, detail="NEO4J_PASSWORD environment variable is not set")
 
-        llm = get_llm_provider("openrouter", "openai/gpt-oss-120b:free")
+        llm = TemperatureLockedProvider(
+            get_llm_provider("openrouter", "openai/gpt-oss-120b:free"),
+            temperature=0.0,
+        )
 
         kg_creator = UnifiedOntologyGuidedKGCreator(
             chunk_size=2000,
@@ -1687,33 +1945,83 @@ async def serve_csv_template():
                 pass
 
 
-# ---------------------------------------------------------------------------
-# /doctor — infrastructure health check (inspired by `mosaicx doctor`)
-# Validates all runtime dependencies without mutating any state.
-# ---------------------------------------------------------------------------
+def _probe_openai_models() -> str:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set")
+    response = httpx.get(
+        "https://api.openai.com/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=8.0,
+    )
+    response.raise_for_status()
+    data = response.json().get("data", [])
+    return f"reachable ({len(data)} models visible)"
 
-@app.get("/doctor")
-async def doctor():
-    """
-    Health check for all OntographRAG infrastructure.
 
-    Checks:
-      - Neo4j connectivity and node count
-      - Embedding model loads and can embed a test sentence
-      - Key environment variables are set
-      - PyMuPDF available (PDF parsing)
-      - Surya OCR available (optional — scan fallback)
-      - LLM provider keys present (OpenAI / Anthropic / OpenRouter)
+def _probe_openrouter_models() -> str:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY not set")
+    response = httpx.get(
+        "https://openrouter.ai/api/v1/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=8.0,
+    )
+    response.raise_for_status()
+    data = response.json().get("data", [])
+    return f"reachable ({len(data)} models visible)"
 
-    Returns a JSON report with pass/warn/fail status per check.
-    """
+
+def _probe_deepseek_models() -> str:
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY not set")
+    response = httpx.get(
+        "https://api.deepseek.com/models",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=8.0,
+    )
+    response.raise_for_status()
+    data = response.json().get("data", [])
+    return f"reachable ({len(data)} models visible)"
+
+
+def _probe_gemini_models() -> str:
+    import google.generativeai as genai
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    genai.configure(api_key=api_key)
+    model = next(iter(genai.list_models()), None)
+    if model is None:
+        return "reachable (no public models returned)"
+    model_name = getattr(model, "name", "unknown-model")
+    return f"reachable (sample model: {model_name})"
+
+
+def _probe_ollama_models() -> str:
+    import ollama
+
+    tags = ollama.list()
+    models = [m.model for m in getattr(tags, "models", [])]
+    if not models:
+        return "reachable (no local models pulled yet)"
+    return f"reachable ({len(models)} local models, sample: {models[0]})"
+
+
+async def run_doctor_checks(
+    probe_models: bool = False,
+    write_probe_dir: Optional[str] = None,
+) -> dict:
     import importlib
     from datetime import datetime, timezone
 
     checks: list[dict] = []
     overall = "ok"
 
-    def _add(name: str, status: str, detail: str = ""):
+    def _add(name: str, status: str, detail: str = "") -> None:
         nonlocal overall
         checks.append({"check": name, "status": status, "detail": detail})
         if status == "fail":
@@ -1721,76 +2029,193 @@ async def doctor():
         elif status == "warn" and overall == "ok":
             overall = "warn"
 
-    # 1. Neo4j connectivity
+    # 1. Static assets / package layout
+    if (_STATIC_DIR / "index.html").exists():
+        _add("static_assets", "ok", f"UI assets found in {_STATIC_DIR}")
+    else:
+        _add("static_assets", "fail", f"Missing packaged UI assets at {_STATIC_DIR}")
+
+    # 2. Neo4j connectivity
     try:
         _neo4j_uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         _neo4j_user = os.getenv("NEO4J_USERNAME", "neo4j")
         _neo4j_pw = os.getenv("NEO4J_PASSWORD", "")
         _neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
         driver = get_graphDB_driver(_neo4j_uri, _neo4j_user, _neo4j_pw, _neo4j_db)
-        with driver.session() as s:
-            rec = s.run("MATCH (n) RETURN count(n) AS c").single()
+        with driver.session(database=_neo4j_db) as session:
+            rec = session.run("MATCH (n) RETURN count(n) AS c").single()
             node_count = rec["c"] if rec else 0
         driver.close()
-        _add("neo4j", "ok", f"Connected to {_neo4j_uri} — {node_count} nodes")
+        _add("neo4j", "ok", f"Connected to {_neo4j_uri} ({_neo4j_db}) — {node_count} nodes")
     except Exception as e:
         _add("neo4j", "fail", str(e))
 
-    # 2. Embedding model
+    # 3. Embedding model load + sample vector
     try:
         from ontographrag.kg.utils.common_functions import load_embedding_model
-        emb_fn, emb_dim = await asyncio.to_thread(load_embedding_model, "sentence_transformers")
-        test_vec = await asyncio.to_thread(emb_fn.embed_query, "ontograph health check")
-        _add("embedding_model", "ok", f"sentence_transformers dim={emb_dim}, test vector len={len(test_vec)}")
+
+        embedding_provider = os.getenv("EMBEDDING_PROVIDER", "sentence_transformers")
+        emb_fn, emb_dim = await asyncio.to_thread(load_embedding_model, embedding_provider)
+        test_vec = await asyncio.to_thread(emb_fn.embed_query, "ontographrag readiness probe")
+        _add(
+            "embedding_model",
+            "ok",
+            f"{embedding_provider} dim={emb_dim}, sample vector len={len(test_vec)}",
+        )
     except Exception as e:
         _add("embedding_model", "fail", str(e))
 
-    # 3. PyMuPDF (PDF parsing)
+    # 4. OCR stack
     try:
         import fitz
+
         _add("pymupdf", "ok", f"fitz version {fitz.version[0]}")
     except ImportError:
         _add("pymupdf", "fail", "PyMuPDF not installed — PDF ingestion will fail")
 
-    # 4. Surya OCR (optional scan fallback)
     try:
         importlib.import_module("surya")
-        _add("surya_ocr", "ok", "surya installed — scan fallback available")
+        _add("surya_ocr", "ok", "surya installed — scanned PDF fallback available")
     except ImportError:
-        _add("surya_ocr", "warn", "surya not installed — scanned PDFs will use PyMuPDF (may yield sparse text)")
+        _add("surya_ocr", "warn", "surya not installed — scan fallback unavailable")
 
-    # 5. LLM provider keys
-    key_checks = [
-        ("OPENAI_API_KEY", "OpenAI"),
-        ("ANTHROPIC_API_KEY", "Anthropic"),
-        ("OPENROUTER_API_KEY", "OpenRouter"),
-    ]
-    any_llm = False
-    for env_var, label in key_checks:
-        if os.getenv(env_var):
-            _add(f"llm_{label.lower()}", "ok", f"{env_var} is set")
-            any_llm = True
+    # 5. Ontology parsing readiness
+    try:
+        import owlready2  # noqa: F401
+
+        probe_ontology = {
+            "entity_types": [
+                {
+                    "id": "Document",
+                    "properties": [
+                        {"name": "id", "type": "string", "identifier": True},
+                        {"name": "title", "type": "string"},
+                    ],
+                }
+            ],
+            "relationship_types": [
+                {"id": "REFERENCES", "from": "Document", "to": "Document", "cardinality": "many_to_many"}
+            ],
+        }
+        errors = validate_ontology_schema(
+            json.dumps(probe_ontology).encode("utf-8"),
+            "doctor_probe.json",
+        )
+        if errors:
+            _add("ontology_parse", "fail", "; ".join(errors))
         else:
-            _add(f"llm_{label.lower()}", "warn", f"{env_var} not set")
-    if not any_llm:
-        # Downgrade to fail if zero LLM keys available
-        _add("llm_any", "fail", "No LLM provider key found — KG extraction will fail without a local Ollama model")
+            _add("ontology_parse", "ok", "JSON ontology validation and OWL loader dependency available")
+    except ImportError:
+        _add("ontology_parse", "fail", "owlready2 not installed — ontology-guided extraction will fail")
+    except Exception as e:
+        _add("ontology_parse", "fail", str(e))
 
-    # 6. APP_API_KEY (security)
+    # 6. Filesystem write permissions
+    try:
+        probe_root = Path(write_probe_dir) if write_probe_dir else _DEFAULT_WRITE_PROBE_DIR
+        probe_root.mkdir(parents=True, exist_ok=True)
+        probe_file = probe_root / f".ontographrag_write_probe_{os.getpid()}"
+        probe_file.write_text("ok", encoding="utf-8")
+        probe_file.unlink(missing_ok=True)
+        _add("write_permissions", "ok", f"Can write to {probe_root}")
+    except Exception as e:
+        _add("write_permissions", "fail", str(e))
+
+    # 7. Provider configuration + optional connectivity probes
+    provider_envs = [
+        ("openai", "OPENAI_API_KEY"),
+        ("openrouter", "OPENROUTER_API_KEY"),
+        ("gemini", "GEMINI_API_KEY"),
+        ("deepseek", "DEEPSEEK_API_KEY"),
+    ]
+    configured_providers = [name for name, env_var in provider_envs if os.getenv(env_var)]
+    for name, env_var in provider_envs:
+        if os.getenv(env_var):
+            _add(f"{name}_config", "ok", f"{env_var} is set")
+        else:
+            _add(f"{name}_config", "warn", f"{env_var} not set")
+
+    try:
+        import ollama
+
+        host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        await asyncio.to_thread(ollama.list)
+        configured_providers.append("ollama")
+        _add("ollama_config", "ok", f"Ollama reachable at {host}")
+    except Exception as e:
+        _add("ollama_config", "warn", f"Ollama unavailable: {e}")
+
+    if not configured_providers:
+        _add("model_provider_any", "fail", "No configured or reachable model provider found")
+    elif not probe_models:
+        _add(
+            "model_connectivity",
+            "warn",
+            "Quick doctor mode — provider presence checked, active model probe skipped",
+        )
+    else:
+        model_probe_map = {
+            "openai": _probe_openai_models,
+            "openrouter": _probe_openrouter_models,
+            "gemini": _probe_gemini_models,
+            "deepseek": _probe_deepseek_models,
+            "ollama": _probe_ollama_models,
+        }
+        for provider_name in configured_providers:
+            probe_fn = model_probe_map.get(provider_name)
+            if not probe_fn:
+                _add(f"{provider_name}_connectivity", "warn", "No probe available")
+                continue
+            try:
+                detail = await asyncio.to_thread(probe_fn)
+                _add(f"{provider_name}_connectivity", "ok", detail)
+            except Exception as e:
+                _add(f"{provider_name}_connectivity", "warn", str(e))
+
+    # 8. API security / CORS
     if os.getenv("APP_API_KEY"):
         _add("api_key_auth", "ok", "APP_API_KEY set — endpoint auth enabled")
     else:
-        _add("api_key_auth", "warn", "APP_API_KEY not set — all endpoints are publicly accessible")
+        _add("api_key_auth", "warn", "APP_API_KEY not set — API is open in current environment")
 
-    # 7. ALLOWED_ORIGINS (CORS)
     origins = os.getenv("ALLOWED_ORIGINS", "*")
     if origins == "*":
-        _add("cors", "warn", "ALLOWED_ORIGINS=* — CORS is open to all origins (fine for local dev)")
+        _add("cors", "warn", "ALLOWED_ORIGINS=* — wide-open CORS (fine for local dev)")
     else:
         _add("cors", "ok", f"ALLOWED_ORIGINS restricted to: {origins}")
 
-    return JSONResponse(content={
+    summary = {
+        "ok": sum(1 for c in checks if c["status"] == "ok"),
+        "warn": sum(1 for c in checks if c["status"] == "warn"),
+        "fail": sum(1 for c in checks if c["status"] == "fail"),
+    }
+    return {
         "status": overall,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "probe_models": probe_models,
+        "summary": summary,
         "checks": checks,
-    })
+    }
+
+
+# ---------------------------------------------------------------------------
+# /doctor — infrastructure health check (inspired by `mosaicx doctor`)
+# ---------------------------------------------------------------------------
+
+@app.get("/doctor")
+async def doctor(
+    probe_models: bool = Query(False, description="Actively probe configured model providers"),
+    write_probe_dir: Optional[str] = Query(None, description="Directory used for the write-permission probe"),
+):
+    return JSONResponse(content=await run_doctor_checks(probe_models=probe_models, write_probe_dir=write_probe_dir))
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run(
+        "ontographrag.api.app:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8004")),
+        reload=os.getenv("RELOAD", "false").lower() in {"1", "true", "yes"},
+    )

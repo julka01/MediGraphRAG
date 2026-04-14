@@ -1,18 +1,10 @@
-import json
 import re
 import hashlib
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_neo4j import Neo4jGraph
 import os
 import logging
 
-# Import from local kg_utils
-from ontographrag.kg.utils.common_functions import load_embedding_model
-
-# Import the ontology-guided creator for unification
 from ontographrag.kg.builders.ontology_guided_kg_creator import OntologyGuidedKGCreator
 
 # Import CSV processors for bulk operations
@@ -22,327 +14,6 @@ except ImportError:
     logging.warning("CSV processors not available - bulk CSV operations disabled")
     MedicalReportCSVProcessor = None
     DocumentCSVProcessor = None
-
-class EnhancedKGCreator:
-    """
-    Enhanced Knowledge Graph Creator with proper embedding integration for RAG
-    """
-    
-    def __init__(
-        self,
-        chunk_size: int = 1500,
-        chunk_overlap: int = 200,
-        neo4j_uri: str = None,
-        neo4j_user: str = None,
-        neo4j_password: str = None,
-        neo4j_database: str = None,
-        embedding_model: str = None,
-    ):
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        self.neo4j_user = neo4j_user or os.getenv("NEO4J_USERNAME", "neo4j")
-        self.neo4j_password = neo4j_password or os.getenv("NEO4J_PASSWORD")
-        self.neo4j_database = neo4j_database or os.getenv("NEO4J_DATABASE", "neo4j")
-
-        # Initialize embedding model
-        embedding_model = embedding_model or os.getenv("EMBEDDING_PROVIDER", "sentence_transformers")
-        self.embedding_function, self.embedding_dimension = load_embedding_model(embedding_model)
-        logging.info(f"Initialized embedding model: {embedding_model}, dimension: {self.embedding_dimension}")
-
-    def _create_neo4j_connection(self):
-        """Create Neo4j graph connection"""
-        return Neo4jGraph(
-            url=self.neo4j_uri,
-            username=self.neo4j_user,
-            password=self.neo4j_password,
-            database=self.neo4j_database,
-            refresh_schema=False,
-            sanitize=True
-        )
-
-    def _chunk_text(self, text: str) -> List[Dict[str, Any]]:
-        """Chunk text using TokenTextSplitter"""
-        from langchain_text_splitters import TokenTextSplitter
-        
-        text_splitter = TokenTextSplitter(
-            chunk_size=self.chunk_size, 
-            chunk_overlap=self.chunk_overlap
-        )
-        
-        chunks = text_splitter.split_text(text)
-        
-        formatted = []
-        current_pos = 0
-        
-        for idx, chunk_text in enumerate(chunks):
-            start_pos = current_pos
-            end_pos = start_pos + len(chunk_text)
-            
-            try:
-                chunk_embedding = self.embedding_function.embed_query(chunk_text)
-            except Exception as e:
-                logging.warning(f"Failed to generate embedding for chunk {idx}: {e}")
-                chunk_embedding = None
-            
-            formatted.append({
-                "text": chunk_text,
-                "chunk_id": idx,
-                "start_pos": start_pos,
-                "end_pos": end_pos,
-                "total_chunks": len(chunks),
-                "embedding": chunk_embedding
-            })
-            
-            current_pos += len(chunk_text) - self.chunk_overlap
-            
-        return formatted
-
-
-
-    def _extract_entities_and_relationships_with_llm(self, chunk_text: str, llm) -> Dict[str, Any]:
-        """
-        Extract entities and relationships using LLM with robust error handling and pattern matching fallback
-        """
-        extraction_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert knowledge graph extraction system. Extract entities and relationships from medical text.
-
-IMPORTANT RULES:
-1. Focus on biomedical entities (diseases, treatments, symptoms, drugs)
-2. Use ontology-compatible relationship types (TREATS, CAUSES, DIAGNOSES)
-3. Include context-specific descriptions
-
-Return response as JSON with this structure:
-{{
-  "entities": [
-    {{"id": "entity_name", "type": "EntityType", "properties": {{"description": "domain-specific context"}}}}
-  ],
-  "relationships": [
-    {{"source": "source_entity", "target": "target_entity", "type": "RELATIONSHIP_TYPE"}}
-  ]
-}}"""),
-            ("human", "Extract knowledge from:\n{text}")
-        ])
-
-        try:
-            if llm is None:
-                # Fallback to pattern matching when LLM is not available
-                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
-
-            # Use LangChain chain structure
-            chain = extraction_prompt | llm | StrOutputParser()
-            response = chain.invoke({"text": chunk_text})
-
-            # Handle potential markdown code blocks
-            json_match = re.search(r'```(?:json)?\n(.*?)\n```', response, re.DOTALL)
-            if json_match:
-                response = json_match.group(1)
-            else:
-                # Fallback: Remove markdown code blocks if present
-                if response.startswith('```json'):
-                    response = response[7:]
-                if response.startswith('```'):
-                    response = response[3:]
-                if response.endswith('```'):
-                    response = response[:-3]
-
-            response = response.strip()
-
-            # Try to extract JSON from the response (sometimes LLMs add explanatory text)
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
-            if json_start != -1 and json_end > json_start:
-                response = response[json_start:json_end]
-
-            # Parse and validate JSON
-            try:
-                result = json.loads(response)
-            except json.JSONDecodeError as json_error:
-                logging.warning(f"JSON parsing failed. Raw LLM response:\n{response}")
-                logging.warning(f"JSON error: {json_error}")
-                # Try to salvage by looking for partial JSON structure
-                return self._attempt_json_recovery_from_llm_response(response, chunk_text)
-
-            # Validate result structure
-            if not isinstance(result, dict):
-                logging.warning(f"LLM returned non-dict result: {type(result)} = {result}. Using fallback.")
-                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
-
-            # Safely get entities and relationships with validation
-            entities_raw = result.get('entities', [])
-            relationships_raw = result.get('relationships', [])
-
-            if not isinstance(entities_raw, list):
-                logging.warning(f"Entities is not a list: {type(entities_raw)}. Using fallback.")
-                return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
-
-            if not isinstance(relationships_raw, list):
-                logging.warning(f"Relationships is not a list: {type(relationships_raw)}. Continuing with empty relationships.")
-                relationships_raw = []  # Allow processing to continue with empty relationships
-
-            # Process entities with enhanced validation
-            medical_entities = []
-            for entity in entities_raw:
-                if not isinstance(entity, dict):
-                    logging.warning(f"Entity is not a dict: {type(entity)} = {entity}. Skipping.")
-                    continue
-
-                if 'id' not in entity:
-                    logging.warning(f"Entity missing 'id' field: {entity}. Skipping.")
-                    continue
-
-                entity_type = entity.get('type', 'Concept')
-                entity_properties = entity.get('properties', {})
-
-                # Ensure properties is a dict
-                if not isinstance(entity_properties, dict):
-                    entity_properties = {"description": str(entity_properties)}
-
-                # Create standardized entity
-                medical_entities.append({
-                    "id": str(entity['id']),
-                    "type": str(entity_type),
-                    "properties": entity_properties
-                })
-
-            # Process relationships with enhanced validation
-            medical_relationships = []
-            for rel in relationships_raw:
-                if not isinstance(rel, dict):
-                    logging.warning(f"Relationship is not a dict: {type(rel)} = {rel}. Skipping.")
-                    continue
-
-                required_fields = ['source', 'target', 'type']
-                if not all(field in rel for field in required_fields):
-                    logging.warning(f"Relationship missing required fields: {rel}. Skipping.")
-                    continue
-
-                # Validate source and target exist in entities
-                source_id = str(rel['source'])
-                target_id = str(rel['target'])
-                entity_ids = {e['id'] for e in medical_entities}
-
-                if source_id not in entity_ids or target_id not in entity_ids:
-                    logging.warning(f"Relationship references non-existent entities: {rel}. Skipping.")
-                    continue
-
-                medical_relationships.append({
-                    "source": source_id,
-                    "target": target_id,
-                    "type": str(rel['type']),
-                    "properties": rel.get('properties', {})
-                })
-
-            return {
-                'entities': medical_entities,
-                'relationships': medical_relationships
-            }
-
-        except Exception as e:
-            logging.error(f"LLM extraction failed completely: {str(e)}")
-            # Fallback to pattern matching
-            return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
-
-    def _attempt_json_recovery_from_llm_response(self, _malformed_response: str, chunk_text: str) -> Dict[str, Any]:
-        """
-        Attempt to recover from malformed JSON response using pattern matching fallback
-        """
-        logging.info("Attempting JSON recovery with pattern matching fallback")
-
-        try:
-            # Try to extract entities from the chunk using pattern matching
-            return self._extract_entities_pattern_matching_llm_fallback(chunk_text)
-        except Exception as e2:
-            logging.error(f"Pattern matching fallback also failed: {e2}")
-            return {'entities': [], 'relationships': []}
-
-    def _extract_entities_pattern_matching_llm_fallback(self, text: str) -> Dict[str, Any]:
-        """
-        Fallback entity extraction using pattern matching when LLM JSON fails.
-        Nodes produced here are tagged with source='fallback' so they can be
-        distinguished from LLM-extracted entities in the graph.
-        """
-        logging.warning(
-            "LLM extraction failed — using regex pattern-matching fallback. "
-            "Resulting entities will be tagged source='fallback' and may be low quality."
-        )
-        entities = []
-        relationships = []
-
-        # Extract potential medical entities using pattern matching
-        entity_patterns = [
-            r'\b(?:cancer|diabetes|hypertension|asthma|arthritis|covid|covid-19)\b',
-            r'\b(?:aspirin|ibuprofen|metformin|insulin|lisinopril|amlodipine)\b',
-            r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b'  # Capitalized medical terms
-        ]
-
-        found_entities = set()
-        for pattern in entity_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                match = match.strip()
-                # Filter out common words that aren't medical entities
-                if len(match) > 2 and match.lower() not in ['the', 'and', 'but', 'for', 'with', 'this', 'that', 'from']:
-                    found_entities.add(match)
-
-        # Create relationships between consecutive medical entities found
-        entity_list = list(found_entities)
-        for i in range(len(entity_list) - 1):
-            relationships.append({
-                "source": entity_list[i],
-                "target": entity_list[i + 1],
-                "type": "RELATED_TO",
-                "properties": {"description": f"Found together in medical text"}
-            })
-
-        # Convert to entity format
-        for entity_text in found_entities:
-            # Classify entity type
-            if any(word in entity_text.lower() for word in ['cancer', 'diabetes', 'asthma', 'arthritis', 'covid']):
-                entity_type = "Disease"
-            elif any(word in entity_text.lower() for word in ['aspirin', 'ibuprofen', 'metformin', 'insulin']):
-                entity_type = "Drug"
-            else:
-                entity_type = "Concept"
-
-            entities.append({
-                "id": entity_text,
-                "type": entity_type,
-                "properties": {
-                    "name": entity_text,
-                    "description": f"Medical entity extracted via pattern matching: {entity_text}",
-                    "source": "fallback"
-                }
-            })
-
-        return {
-            "entities": entities,
-            "relationships": relationships
-        }
-
-    def generate_knowledge_graph(self, text: str, llm, file_name: str = None) -> Dict[str, Any]:
-        """
-        Generate knowledge graph from text with proper error handling
-        """
-        chunks = self._chunk_text(text)
-        kg = {
-            "nodes": [],
-            "relationships": [],
-            "metadata": {
-                "created_at": datetime.now().isoformat(),
-                "file_name": file_name
-            }
-        }
-
-        for chunk in chunks:
-            try:
-                result = self._extract_entities_and_relationships_with_llm(chunk['text'], llm)
-                kg["nodes"].extend(result.get("entities", []))
-                kg["relationships"].extend(result.get("relationships", []))
-            except Exception as e:
-                logging.error(f"Error processing chunk {chunk['chunk_id']}: {e}")
-
-        return kg
 
 
 class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
@@ -361,7 +32,10 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         neo4j_database: str = None,
         embedding_model: str = None,
         ontology_path: Optional[str] = None,
-        max_chunks: int = None  # For testing - limit chunks processed per report
+        max_chunks: int = None,  # For testing - limit chunks processed per report
+        enable_coreference_resolution: bool = False,
+        retrieval_chunk_size: Optional[int] = None,
+        retrieval_chunk_overlap: Optional[int] = None,
     ):
         # Resolve env-var defaults here so no hardcoded URIs appear in source code
         neo4j_uri = neo4j_uri or os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -376,27 +50,26 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
             chunk_size, chunk_overlap,
             neo4j_uri, neo4j_user, neo4j_password, neo4j_database,
             embedding_model, ontology_path,
+            enable_coreference_resolution=enable_coreference_resolution,
+            retrieval_chunk_size=retrieval_chunk_size,
+            retrieval_chunk_overlap=retrieval_chunk_overlap,
         )
 
         # Set max_chunks for testing
         self._test_max_chunks = max_chunks
 
-
     def _extract_patient_demographics(self, text: str) -> Dict[str, Any]:
         """Extract patient demographics from text"""
         patient_info = {}
 
-        # Extract name
         name_match = re.search(r'Name:\s*([^\n\r]+)', text, re.IGNORECASE)
         if name_match:
             patient_info['name'] = name_match.group(1).strip()
 
-        # Extract unit/admission info
         unit_match = re.search(r'Unit No:\s*([^\n\r]+)', text, re.IGNORECASE)
         if unit_match:
             patient_info['unit_no'] = unit_match.group(1).strip()
 
-        # Extract dates
         dob_match = re.search(r'Date of Birth:\s*([^\n\r]+)', text, re.IGNORECASE)
         if dob_match:
             patient_info['date_of_birth'] = dob_match.group(1).strip()
@@ -409,7 +82,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         if discharge_match:
             patient_info['discharge_date'] = discharge_match.group(1).strip()
 
-        # Extract sex and service
         sex_match = re.search(r'Sex:\s*([^\n\r]+)', text, re.IGNORECASE)
         if sex_match:
             patient_info['sex'] = sex_match.group(1).strip()
@@ -418,7 +90,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         if service_match:
             patient_info['service'] = service_match.group(1).strip()
 
-        # Extract attending physician
         attending_match = re.search(r'Attending:\s*([^\n\r]+)', text, re.IGNORECASE)
         if attending_match:
             patient_info['attending'] = attending_match.group(1).strip()
@@ -429,10 +100,8 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         """Extract medical conditions from various sections"""
         conditions = []
 
-        # Past Medical History section - extract numbered conditions
         pmh_section = self._extract_section(text, "Past Medical History")
         if pmh_section:
-            # Extract numbered list items (1., 2., etc.)
             condition_matches = re.findall(r'\d+\.\s*([^.\n]+)', pmh_section, re.MULTILINE)
             for match in condition_matches:
                 condition = match.strip()
@@ -443,7 +112,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                         'status': 'chronic'
                     })
 
-            # Also extract conditions from free text
             pmh_conditions = ['cirrhosis', 'HIV', 'IVDU', 'COPD', 'bipolar', 'PTSD', 'cancer', 'diabetes', 'hypertension']
             for condition in pmh_conditions:
                 if condition.lower() in pmh_section.lower():
@@ -453,10 +121,8 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                         'status': 'chronic'
                     })
 
-        # History of Present Illness - extract current conditions
         hopi_section = self._extract_section(text, "History of Present Illness")
         if hopi_section:
-            # Extract conditions mentioned as causes
             condition_matches = re.findall(r'(?:c/b|complicated by|due to|secondary to)\s+([^.,;]+)', hopi_section, re.IGNORECASE)
             for match in condition_matches:
                 match = match.strip()
@@ -467,7 +133,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                         'status': 'acute'
                     })
 
-            # Extract other common presenting conditions
             if 'ascites' in hopi_section.lower():
                 conditions.append({
                     'condition': 'ascites',
@@ -475,16 +140,13 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                     'status': 'acute'
                 })
 
-        # Chief Complaint
         chief_complaint_section = self._extract_section(text, "Chief Complaint")
         if chief_complaint_section:
-            # Extract the actual complaint
             complaint_text = chief_complaint_section.strip()
             if complaint_text.startswith('-'):
                 complaint_text = complaint_text[1:].strip()
 
             if complaint_text and len(complaint_text) > 3:
-                # Check for common conditions in chief complaint
                 if 'abdominal' in complaint_text.lower() and 'distension' in complaint_text.lower():
                     conditions.append({
                         'condition': 'abdominal distension',
@@ -498,10 +160,8 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                         'status': 'presenting'
                     })
 
-        # Discharge Diagnosis
         discharge_dx_section = self._extract_section(text, "Discharge Diagnosis")
         if discharge_dx_section:
-            # Extract from discharge diagnosis section
             if 'ascites' in discharge_dx_section.lower():
                 conditions.append({
                     'condition': 'ascites from portal hypertension',
@@ -509,7 +169,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                     'status': 'final'
                 })
 
-        # Remove duplicates based on condition name
         seen = set()
         unique_conditions = []
         for condition in conditions:
@@ -524,41 +183,25 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         """Extract medications from admission and discharge sections"""
         medications = []
 
-        # Admission medications
         admission_meds_section = self._extract_section(text, "Medications on Admission")
         if admission_meds_section:
             med_lines = [line.strip('- ').strip() for line in admission_meds_section.split('\n') if line.strip() and line[0].isdigit()]
             for med in med_lines:
                 if med and len(med) > 2:
-                    medications.append({
-                        'medication': med,
-                        'timing': 'admission',
-                        'status': 'chronic'
-                    })
+                    medications.append({'medication': med, 'timing': 'admission', 'status': 'chronic'})
 
-        # Discharge medications
         discharge_meds_section = self._extract_section(text, "Discharge Medications")
         if discharge_meds_section:
             med_lines = [line.strip('- ').strip() for line in discharge_meds_section.split('\n') if line.strip() and line[0].isdigit()]
             for med in med_lines:
                 if med and len(med) > 2:
-                    medications.append({
-                        'medication': med,
-                        'timing': 'discharge',
-                        'status': 'prescribed'
-                    })
+                    medications.append({'medication': med, 'timing': 'discharge', 'status': 'prescribed'})
 
-        # Hospital course medications
         hospital_course = self._extract_section(text, "Brief Hospital Course")
         if hospital_course:
-            # Extract diuretic/ACE inhibitor changes, spironolactone, furosemide, etc.
             med_changes = re.findall(r'(?:Furosemide|Lasix|Spironolactone|Aldactone|metoprolol|atorvastatin|simvastatin|omeprazole|lisinopril|enalapril)\s+\d+(?:\s*mg)?', hospital_course, re.IGNORECASE)
             for med_change in med_changes:
-                medications.append({
-                    'medication': med_change.strip(),
-                    'timing': 'hospital_course',
-                    'status': 'adjusted'
-                })
+                medications.append({'medication': med_change.strip(), 'timing': 'hospital_course', 'status': 'adjusted'})
 
         return medications
 
@@ -568,7 +211,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
 
         social_section = self._extract_section(text, "Social History")
         if social_section:
-            # Extract smoking history
             if 'smoking' in social_section.lower() or 'smoker' in social_section.lower():
                 if 'quit' in social_section.lower() or 'former' in social_section.lower():
                     social_info['smoking_status'] = 'former_smoker'
@@ -577,33 +219,22 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                 else:
                     social_info['smoking_status'] = 'unknown'
 
-            # Extract alcohol use
             if 'alcohol' in social_section.lower():
-                if 'none' in social_section.lower() or 'quit' in social_section.lower():
-                    social_info['alcohol_use'] = 'none'
-                else:
-                    social_info['alcohol_use'] = 'present'
+                social_info['alcohol_use'] = 'none' if ('none' in social_section.lower() or 'quit' in social_section.lower()) else 'present'
 
-            # Extract drug use
             if 'drug' in social_section.lower():
-                if 'none' in social_section.lower() or 'quit' in social_section.lower():
-                    social_info['drug_use'] = 'none'
-                else:
-                    social_info['drug_use'] = 'history'
+                social_info['drug_use'] = 'none' if ('none' in social_section.lower() or 'quit' in social_section.lower()) else 'history'
 
         return social_info
 
     def _extract_lab_values(self, text: str) -> List[Dict[str, Any]]:
         """Extract laboratory values and results"""
         lab_values = []
-
-        # Find lab sections
         lab_patterns = [
             r'(\w+)\s*[:-]\s*(\d+(?:\.\d+)?)\*?',
             r'(\w+)\((\w+)\)\s*[:-]\s*(\d+(?:\.\d+)?)\*?',
         ]
 
-        # Look for lab sections like Pertinent Results
         pertinent_results_section = self._extract_section(text, "Pertinent Results")
         if pertinent_results_section:
             for pattern in lab_patterns:
@@ -611,32 +242,20 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                 for match in matches:
                     if len(match) == 2:
                         lab_name, value = match
-                        lab_values.append({
-                            'test': lab_name.strip(),
-                            'value': value,
-                            'abnormal': '*' in str(match)
-                        })
+                        lab_values.append({'test': lab_name.strip(), 'value': value, 'abnormal': '*' in str(match)})
                     elif len(match) == 3:
                         full_name, short_name, value = match
-                        lab_values.append({
-                            'test': f"{full_name} ({short_name})",
-                            'value': value,
-                            'abnormal': '*' in str(match)
-                        })
+                        lab_values.append({'test': f"{full_name} ({short_name})", 'value': value, 'abnormal': '*' in str(match)})
 
         return lab_values
 
     def _extract_section(self, text: str, section_name: str) -> str:
         """Extract a specific section from the patient report"""
-        # Find section start
-        section_pattern = rf'{section_name}[:\s]*'
-        section_match = re.search(section_pattern, text, re.IGNORECASE)
+        section_match = re.search(rf'{section_name}[:\s]*', text, re.IGNORECASE)
         if not section_match:
             return ""
 
         start_pos = section_match.end()
-
-        # Find next section or end of relevant content
         next_section_patterns = [
             r'\n(?:Admission|Discharge|Physical|History|Brief|Medications|Pertinent|Social|Family)\s+(?:Medical\s+)?History[:\(\s]',
             r'\n[A-Z][A-Z\s]+:\s*'
@@ -644,7 +263,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
 
         text_remaining = text[start_pos:]
         min_end_pos = len(text)
-
         for pattern in next_section_patterns:
             next_match = re.search(pattern, text_remaining)
             if next_match:
@@ -653,105 +271,66 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         return text_remaining[:min_end_pos].strip()
 
     def bulk_process_medical_reports(self, csv_path: str, start_row: int = 0, batch_size: int = 50, llm=None) -> Dict[str, Any]:
-        """
-        Process multiple medical reports in bulk from CSV file.
-
-        Args:
-            csv_path: Path to pipe-delimited CSV file containing medical reports.
-            start_row: Starting row number (0-based).
-            batch_size: Number of reports to process per batch.
-            llm: Optional LLM provider for supplementary entity extraction in each report.
-                 When None, only regex-based extraction runs (faster but lower coverage).
-
-        Returns:
-            Dictionary containing processed knowledge graphs and metadata.
-        """
+        """Process multiple medical reports in bulk from a pipe-delimited CSV file."""
         logging.info(f"Starting bulk processing of medical reports from {csv_path}")
 
-        # Initialize CSV processor
         csv_processor = MedicalReportCSVProcessor(delimiter='|')
-
-        # Validate CSV format
         validation = csv_processor.validate_csv_format(csv_path)
         if not validation['is_valid']:
             raise ValueError(f"CSV validation failed: {validation.get('validation_errors', validation.get('error'))}")
 
-        logging.info(f"CSV validated successfully. Schema: {validation}")
-
-        # Process reports in batches
         all_knowledge_graphs = []
         total_processed = 0
 
         while True:
             try:
-                # Load batch of reports
-                batch_data = csv_processor.load_reports_bulk(
-                    csv_path,
-                    start_row=start_row + total_processed,
-                    max_rows=batch_size
-                )
-
+                batch_data = csv_processor.load_reports_bulk(csv_path, start_row=start_row + total_processed, max_rows=batch_size)
                 reports = batch_data['reports']
                 if not reports:
-                    break  # No more reports to process
+                    break
 
                 batch_kgs = []
                 for report in reports:
                     try:
-                        # Generate knowledge graph for this report
                         report_text = report['sections'].get('full_report_text', '')
-
-                        # If no full text, try to reconstruct from sections
                         if not report_text:
-                            sections_text = []
-                            for section_name, content in report['sections'].items():
-                                if section_name != 'full_report_text':
-                                    sections_text.append(f"{section_name.replace('_', ' ').title()}:\n{content}\n\n")
+                            sections_text = [
+                                f"{k.replace('_', ' ').title()}:\n{v}\n\n"
+                                for k, v in report['sections'].items()
+                                if k != 'full_report_text'
+                            ]
                             report_text = '\n'.join(sections_text)
 
                         if report_text:
-                            # Generate KG using patient-specific method (limited chunks for testing)
-                            max_chunks = getattr(self, '_test_max_chunks', None)
                             kg = self.generate_patient_knowledge_graph(
-                                report_text,
-                                llm=llm,
+                                report_text, llm=llm,
                                 file_name=f"report_{report['row_index']}",
-                                max_chunks=max_chunks,
+                                max_chunks=getattr(self, '_test_max_chunks', None),
                             )
                             if kg:
                                 batch_kgs.append(kg)
-
                     except Exception as e:
                         logging.error(f"Failed to process report at row {report['row_index']}: {e}")
-                        continue
 
                 all_knowledge_graphs.extend(batch_kgs)
                 total_processed += len(reports)
-
                 logging.info(f"Processed batch: {len(reports)} reports, generated {len(batch_kgs)} knowledge graphs")
 
                 if len(reports) < batch_size:
-                    break  # Processed all remaining reports
-
+                    break
             except Exception as e:
                 logging.error(f"Error processing batch starting at row {start_row + total_processed}: {e}")
                 break
 
-        # Combine all knowledge graphs (merge entities and relationships)
-        merged_kg = self._merge_knowledge_graphs(all_knowledge_graphs)
-
         return {
-            'knowledge_graph': merged_kg,
+            'knowledge_graph': self._merge_knowledge_graphs(all_knowledge_graphs),
             'metadata': {
                 'total_reports_processed': total_processed,
                 'total_knowledge_graphs': len(all_knowledge_graphs),
                 'csv_validation': validation,
-                'bulk_processing_info': {
-                    'start_row': start_row,
-                    'batch_size': batch_size,
-                    'total_batches': (total_processed + batch_size - 1) // batch_size
-                }
-            }
+                'bulk_processing_info': {'start_row': start_row, 'batch_size': batch_size,
+                                         'total_batches': (total_processed + batch_size - 1) // batch_size},
+            },
         }
 
     def bulk_process_documents(
@@ -765,25 +344,7 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
         max_chunks: int = None,
         kg_name: str = None,
     ) -> Dict[str, Any]:
-        """
-        Process documents from any CSV file and build a knowledge graph.
-
-        The ontology (loaded at construction time) defines what entities and
-        relationships to extract. This method is domain-agnostic: it only needs
-        to know which CSV column holds the document text.
-
-        Args:
-            csv_path:    Path to CSV file.
-            text_column: Column name containing the document text.
-            id_column:   Optional column to use as doc_id (defaults to row index).
-            start_row:   Starting row (0-based, excluding header).
-            batch_size:  Rows per batch.
-            llm:         LLM provider for ontology-guided extraction.
-            max_chunks:  Maximum chunks to process per document (None = all).
-
-        Returns:
-            {'knowledge_graph': merged_kg, 'metadata': {...}}
-        """
+        """Process documents from any CSV file and build a knowledge graph."""
         if DocumentCSVProcessor is None:
             raise RuntimeError("DocumentCSVProcessor not available — install csv_processor module")
 
@@ -799,11 +360,7 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
 
         while True:
             try:
-                batch_data = processor.load_documents_bulk(
-                    csv_path,
-                    start_row=start_row + total_processed,
-                    max_rows=batch_size,
-                )
+                batch_data = processor.load_documents_bulk(csv_path, start_row=start_row + total_processed, max_rows=batch_size)
                 documents = batch_data['documents']
                 if not documents:
                     break
@@ -812,305 +369,152 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                 for doc in documents:
                     try:
                         kg = self.generate_knowledge_graph(
-                            doc['text'],
-                            llm=llm,
-                            file_name=doc['doc_id'],
-                            max_chunks=max_chunks,
-                            kg_name=kg_name,
+                            doc['text'], llm=llm, file_name=doc['doc_id'],
+                            max_chunks=max_chunks, kg_name=kg_name,
                             doc_metadata=doc.get('metadata'),
                         )
                         if kg:
                             batch_kgs.append(kg)
                     except Exception as e:
-                        logging.error("Failed to process document '%s' (row %d): %s",
-                                      doc['doc_id'], doc['row_index'], e)
-                        continue
+                        logging.error("Failed to process document '%s' (row %d): %s", doc['doc_id'], doc['row_index'], e)
 
                 all_knowledge_graphs.extend(batch_kgs)
                 total_processed += len(documents)
-                logging.info("Processed batch: %d documents, generated %d knowledge graphs",
-                             len(documents), len(batch_kgs))
+                logging.info("Processed batch: %d documents, generated %d knowledge graphs", len(documents), len(batch_kgs))
 
                 if len(documents) < batch_size:
                     break
-
             except Exception as e:
-                logging.error("Error processing batch starting at row %d: %s",
-                              start_row + total_processed, e)
+                logging.error("Error processing batch starting at row %d: %s", start_row + total_processed, e)
                 break
 
-        merged_kg = self._merge_knowledge_graphs(all_knowledge_graphs)
-
         return {
-            'knowledge_graph': merged_kg,
+            'knowledge_graph': self._merge_knowledge_graphs(all_knowledge_graphs),
             'metadata': {
                 'total_documents_processed': total_processed,
                 'total_knowledge_graphs': len(all_knowledge_graphs),
                 'csv_validation': validation,
                 'bulk_processing_info': {
-                    'start_row': start_row,
-                    'batch_size': batch_size,
-                    'text_column': text_column,
-                    'id_column': id_column,
-                    'kg_name': kg_name,
+                    'start_row': start_row, 'batch_size': batch_size,
+                    'text_column': text_column, 'id_column': id_column, 'kg_name': kg_name,
                     'total_batches': (total_processed + batch_size - 1) // batch_size if total_processed else 0,
                 },
             },
         }
 
     def _merge_knowledge_graphs(self, knowledge_graphs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Merge multiple knowledge graphs into a single unified graph
-
-        Args:
-            knowledge_graphs: List of individual knowledge graphs
-
-        Returns:
-            Merged knowledge graph
-        """
-        merged = {
-            "nodes": [],
-            "relationships": [],
-            "chunks": [],
-            "metadata": {
-                "created_at": datetime.now().isoformat(),
-                "kg_type": "bulk_medical_reports",
-                "extraction_method": "patient_specific_hybrid",
-                "total_entities": 0,
-                "total_relationships": 0,
-                "source_knowledge_graphs": len(knowledge_graphs)
-            }
-        }
-
-        # Collect all entities, relationships, and chunks
-        all_nodes = []
-        all_relationships = []
-        all_chunks = []
-
+        """Merge multiple knowledge graphs into a single unified graph."""
+        all_nodes, all_relationships, all_chunks = [], [], []
         for kg in knowledge_graphs:
             all_nodes.extend(kg.get('nodes', []))
             all_relationships.extend(kg.get('relationships', []))
             all_chunks.extend(kg.get('chunks', []))
 
-        # Harmonize entities and relationships to remove duplicates.
-        # Pass return_id_map=True so all original variant IDs are covered and
-        # relationships referencing non-canonical names aren't silently dropped.
-        merged["nodes"], id_map = self._harmonize_entities(all_nodes, return_id_map=True)
-        merged["relationships"] = self._harmonize_relationships(all_relationships, id_map)
-        merged["chunks"] = all_chunks
+        harmonized_nodes, id_map = self._harmonize_entities(all_nodes, return_id_map=True)
+        harmonized_rels = self._harmonize_relationships(all_relationships, id_map)
 
-        # Update metadata
-        merged["metadata"]["total_entities"] = len(merged["nodes"])
-        merged["metadata"]["total_relationships"] = len(merged["relationships"])
-
-        return merged
-
-    def enhanced_section_parsing_with_field_names(self, report_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Enhanced section parsing using standardized field names from CSV
-
-        Args:
-            report_data: Dictionary containing report sections with field names
-
-        Returns:
-            Dictionary with enhanced parsed sections
-        """
-        enhanced_sections = {}
-
-        # Define section field mappings with expected field names
-        section_mappings = {
-            'demographics': ['patient_id', 'full_name', 'date_of_birth', 'sex'],
-            'admission_info': ['admission_date', 'service', 'attending', 'unit_no'],
-            'discharge_info': ['discharge_date'],
-            'chief_complaint': ['chief_complaint'],
-            'history_present_illness': ['history_present_illness_hopi'],
-            'past_medical_history': ['past_medical_history_pmh'],
-            'medications': ['medications_admission', 'medications_discharge'],
-            'hospital_course': ['brief_hospital_course'],
-            'results': ['pertinent_results'],
-            'social_history': ['social_history', 'family_history'],
-            'discharge_plan': ['discharge_diagnosis', 'discharge_instructions', 'follow_up_instructions'],
-            'full_text': ['full_report_text']
+        return {
+            "nodes": harmonized_nodes,
+            "relationships": harmonized_rels,
+            "chunks": all_chunks,
+            "metadata": {
+                "created_at": datetime.now().isoformat(),
+                "kg_type": "bulk_medical_reports",
+                "extraction_method": "patient_specific_hybrid",
+                "total_entities": len(harmonized_nodes),
+                "total_relationships": len(harmonized_rels),
+                "source_knowledge_graphs": len(knowledge_graphs),
+            },
         }
 
-        # Extract sections using field names
-        for category, field_names in section_mappings.items():
-            category_data = {}
-            for field in field_names:
-                if field in report_data.get('sections', {}):
-                    category_data[field] = report_data['sections'][field]
-                elif field in report_data.get('metadata', {}):
-                    category_data[field] = report_data['metadata'][field]
-
-            if category_data:
-                enhanced_sections[category] = category_data
-
-        # Add field name references for traceability
-        field_names_used = {}
-        for field in report_data.get('field_names', {}):
-            field_names_used[field] = {
-                'mapped_to': section_mappings.get(
-                    next((k for k, v in section_mappings.items() if field in v), 'other'),
-                    'other'
-                ),
-                'content_length': len(report_data.get('sections', {}).get(field, ''))
-            }
-
-        enhanced_sections['_field_mapping'] = field_names_used
-
-        return enhanced_sections
-
     def _extract_entities_and_relationships_for_patients(self, text: str) -> Dict[str, Any]:
-        """Extract patient-specific entities and relationships using hybrid approach"""
+        """Extract patient-specific entities and relationships using hybrid approach."""
         entities = []
         relationships = []
 
-        # Extract patient demographics as primary entity
         patient_info = self._extract_patient_demographics(text)
         if patient_info:
             patient_id = f"Patient_{hashlib.md5(str(patient_info).encode()).hexdigest()[:8]}"
             entities.append({
-                "id": patient_id,
-                "type": "Patient",
+                "id": patient_id, "type": "Patient",
                 "properties": {
-                    "name": patient_info.get('name', 'Unknown'),
-                    "type": "Patient",
-                    "description": f"Patient with demographics: {', '.join([f'{k}: {v}' for k, v in patient_info.items()])}",
+                    "name": patient_info.get('name', 'Unknown'), "type": "Patient",
+                    "description": f"Patient: {', '.join(f'{k}: {v}' for k, v in patient_info.items())}",
                     **patient_info
                 }
             })
 
-        # Extract medical conditions and link to patient
         conditions = self._extract_medical_conditions(text)
         for condition in conditions:
-            condition_id = f"Condition_{hashlib.md5(condition['condition'].encode()).hexdigest()[:8]}"
+            cid = f"Condition_{hashlib.md5(condition['condition'].encode()).hexdigest()[:8]}"
             entities.append({
-                "id": condition_id,
-                "type": "MedicalCondition",
+                "id": cid, "type": "MedicalCondition",
                 "properties": {
-                    "name": condition['condition'],
-                    "type": "MedicalCondition",
+                    "name": condition['condition'], "type": "MedicalCondition",
                     "description": f"{condition['condition']} ({condition['status']})",
-                    "category": condition['category'],
-                    "status": condition['status']
+                    "category": condition['category'], "status": condition['status'],
                 }
             })
-
-            # Link condition to patient
             if patient_info and condition['category'] != 'presenting':
                 relationships.append({
-                    "source": patient_id,
-                    "target": condition_id,
-                    "type": "HAS_CONDITION",
-                    "properties": {
-                        "description": f"Patient has {condition['condition']}",
-                        "category": condition['category'],
-                        "status": condition['status']
-                    }
+                    "source": patient_id, "target": cid, "type": "HAS_CONDITION",
+                    "properties": {"description": f"Patient has {condition['condition']}",
+                                   "category": condition['category'], "status": condition['status']},
                 })
 
-        # Extract medications and link to patient and conditions
-        medications = self._extract_medications(text)
-        for medication in medications:
-            med_id = f"Medication_{hashlib.md5(medication['medication'].encode()).hexdigest()[:8]}"
+        for medication in self._extract_medications(text):
+            mid = f"Medication_{hashlib.md5(medication['medication'].encode()).hexdigest()[:8]}"
             entities.append({
-                "id": med_id,
-                "type": "Medication",
+                "id": mid, "type": "Medication",
                 "properties": {
-                    "name": medication['medication'],
-                    "type": "Medication",
+                    "name": medication['medication'], "type": "Medication",
                     "description": f"Medication: {medication['medication']} ({medication['timing']})",
-                    "timing": medication['timing'],
-                    "status": medication['status']
+                    "timing": medication['timing'], "status": medication['status'],
                 }
             })
-
-            # Link medication to patient
             if patient_info:
                 relationships.append({
-                    "source": patient_id,
-                    "target": med_id,
-                    "type": "TAKES_MEDICATION",
-                    "properties": {
-                        "description": f"Patient takes {medication['medication']}",
-                        "timing": medication['timing'],
-                        "status": medication['status']
-                    }
+                    "source": patient_id, "target": mid, "type": "TAKES_MEDICATION",
+                    "properties": {"description": f"Patient takes {medication['medication']}",
+                                   "timing": medication['timing'], "status": medication['status']},
                 })
 
-        # Extract lab values and create relationships
-        lab_values = self._extract_lab_values(text)
-        for lab in lab_values:
-            lab_id = f"Lab_{hashlib.md5(lab['test'].encode()).hexdigest()[:8]}"
+        for lab in self._extract_lab_values(text):
+            lid = f"Lab_{hashlib.md5(lab['test'].encode()).hexdigest()[:8]}"
             entities.append({
-                "id": lab_id,
-                "type": "LabTest",
+                "id": lid, "type": "LabTest",
                 "properties": {
-                    "name": lab['test'],
-                    "type": "LabTest",
-                    "description": f"Lab test: {lab['test']} = {lab['value']}{'*' if lab['abnormal'] else ''}",
-                    "value": lab['value'],
-                    "abnormal": lab['abnormal']
+                    "name": lab['test'], "type": "LabTest",
+                    "description": f"Lab: {lab['test']} = {lab['value']}{'*' if lab['abnormal'] else ''}",
+                    "value": lab['value'], "abnormal": lab['abnormal'],
                 }
             })
-
-            # Link lab to patient
             if patient_info:
                 relationships.append({
-                    "source": patient_id,
-                    "target": lab_id,
-                    "type": "HAS_LAB_RESULT",
-                    "properties": {
-                        "description": f"Patient has lab result: {lab['test']} = {lab['value']}",
-                        "value": lab['value'],
-                        "abnormal": lab['abnormal']
-                    }
+                    "source": patient_id, "target": lid, "type": "HAS_LAB_RESULT",
+                    "properties": {"description": f"Patient has lab result: {lab['test']} = {lab['value']}",
+                                   "value": lab['value'], "abnormal": lab['abnormal']},
                 })
 
-        # Extract social history and link to patient
-        social_info = self._extract_social_history(text)
-        if social_info and patient_info:
-            for key, value in social_info.items():
-                social_id = f"Social_{key}_{hashlib.md5(str(value).encode()).hexdigest()[:8]}"
-                entities.append({
-                    "id": social_id,
-                    "type": "SocialFactor",
-                    "properties": {
-                        "name": key,
-                        "type": "SocialFactor",
-                        "description": f"Social history: {key} = {value}",
-                        "factor": key,
-                        "value": value
-                    }
-                })
-
+        for key, value in self._extract_social_history(text).items():
+            sid = f"Social_{key}_{hashlib.md5(str(value).encode()).hexdigest()[:8]}"
+            entities.append({
+                "id": sid, "type": "SocialFactor",
+                "properties": {"name": key, "type": "SocialFactor",
+                               "description": f"Social history: {key} = {value}",
+                               "factor": key, "value": value}
+            })
+            if patient_info:
                 relationships.append({
-                    "source": patient_id,
-                    "target": social_id,
-                    "type": "HAS_SOCIAL_HISTORY",
-                    "properties": {
-                        "description": f"Patient has social factor: {key} = {value}",
-                        "factor": key,
-                        "value": value
-                    }
+                    "source": patient_id, "target": sid, "type": "HAS_SOCIAL_HISTORY",
+                    "properties": {"description": f"Patient has social factor: {key} = {value}",
+                                   "factor": key, "value": value},
                 })
 
-        return {
-            "entities": entities,
-            "relationships": relationships
-        }
+        return {"entities": entities, "relationships": relationships}
 
     def generate_patient_knowledge_graph(self, text: str, llm=None, file_name: str = None, max_chunks: int = None) -> Dict[str, Any]:
-        """
-        Generate detailed knowledge graph from patient report text with patient-specific extraction.
-
-        Args:
-            text: Patient report text.
-            llm: LLM provider for supplementary entity extraction. When None, only
-                 regex-based patient-specific extraction is used (no LLM calls).
-            file_name: Optional filename for provenance metadata.
-            max_chunks: Limit chunks processed (useful for testing).
-        """
+        """Generate a knowledge graph from patient report text with patient-specific extraction."""
         logging.info("Generating patient-specific knowledge graph")
         if llm is None:
             logging.warning(
@@ -1118,40 +522,28 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                 "falling back to regex-only extraction. Pass an LLM for better coverage."
             )
 
-        # Split text into sections to maintain context but allow larger chunks
         chunks = self._chunk_text(text)
-
-        # Limit chunks for testing if specified
         if max_chunks is not None and max_chunks > 0:
             chunks = chunks[:max_chunks]
-            logging.info(f"Limited processing to first {max_chunks} chunks (out of {len(chunks)} total)")
 
-        all_entities = []
-        all_relationships = []
-
+        all_entities, all_relationships = [], []
         for chunk in chunks:
             try:
-                # Patient-specific regex extraction
                 result = self._extract_entities_and_relationships_for_patients(chunk['text'])
                 all_entities.extend(result.get("entities", []))
                 all_relationships.extend(result.get("relationships", []))
 
-                # Supplementary LLM extraction (skipped when llm is None)
                 if llm is not None:
                     llm_result = self._extract_entities_and_relationships_with_llm(chunk['text'], llm)
                     all_entities.extend(llm_result.get("entities", []))
                     all_relationships.extend(llm_result.get("relationships", []))
-
             except Exception as e:
                 logging.error(f"Error processing chunk {chunk['chunk_id']}: {e}")
-                continue
 
-        # Harmonize entities and relationships to remove duplicates.
         harmonized_entities, id_map = self._harmonize_entities(all_entities, return_id_map=True)
         harmonized_relationships = self._harmonize_relationships(all_relationships, id_map)
 
-        # Create KG structure
-        kg = {
+        return {
             "nodes": harmonized_entities,
             "relationships": harmonized_relationships,
             "chunks": chunks,
@@ -1161,9 +553,6 @@ class UnifiedOntologyGuidedKGCreator(OntologyGuidedKGCreator):
                 "kg_type": "patient_report",
                 "extraction_method": "patient_specific_hybrid",
                 "total_entities": len(harmonized_entities),
-                "total_relationships": len(harmonized_relationships)
-            }
+                "total_relationships": len(harmonized_relationships),
+            },
         }
-
-        return kg
-
