@@ -121,7 +121,9 @@ python experiments/experiment.py \
 
 # 5. Add BioASQ
 python experiments/experiment.py \
-  --datasets bioasq --num-samples 100 --subset-seed 42 --rebuild-kg --evaluation-mode full_metrics
+  --datasets bioasq --num-samples 100 --subset-seed 42 --rebuild-kg --evaluation-mode full_metrics \
+  --llm-provider openrouter --llm-model openai/gpt-4o-mini \
+  --retrieval-temperature-values 0.0
 ```
 
 ---
@@ -212,29 +214,48 @@ Retrieved graph paths and supporting passages are organized into explicit reason
 The live UI deliberately keeps these signals simple. The full uncertainty suite remains available in the evaluation pipeline.
 
 ### 5. Uncertainty quantification and hallucination detection
-A dedicated evaluation pipeline computes the current 15-metric suite per answer, grouped into output-side, structural, and grounding uncertainty:
 
-| Metric | What it measures |
-|--------|-----------------|
-| `semantic_entropy` | Shannon entropy over meaning-clusters of N sampled responses (Farquhar et al., *Nature* 2023) |
-| `discrete_semantic_entropy` | Same with hard cluster boundaries |
-| `p_true` | NLI-based probability responses are supported by context |
-| `selfcheckgpt` | Cross-sample self-consistency / contradiction-style uncertainty signal |
-| `vn_entropy` | Geometric uncertainty from the sampled-response embedding cloud |
-| `sre_uq` | **SRE-UQ** (Vipulanandan et al., ICLR 2026). Treats the response distribution as an RKHS wave function via kernel mean embedding and applies first-order quantum perturbation theory to measure local sensitivity of that wave function. High sensitivity = high uncertainty. |
-| `sd_uq` ⭐ | **SD-UQ — novel (this work).** Estimates the differential entropy of the response distribution in the question-orthogonal embedding subspace — the complement of the mutual information between question and response. Projects out the question direction from each response embedding (Gram-Schmidt), fits a Gaussian to the residuals, and returns the entropy power (geometric mean of top-$k$ covariance eigenvalues). High entropy = responses drift inconsistently beyond the question = hallucination risk. |
-| `graph_path_support` | Whether the KG exposes supporting paths from the question to the answer |
-| `graph_path_disagreement` | Structural disagreement across answer-supporting graph neighborhoods |
-| `competing_answer_alternatives` | KG evidence for rival answer candidates |
-| `evidence_vn_entropy` | Entropy-like concentration of evidence in the local graph |
-| `subgraph_informativeness` | How concentrated / informative the answer-supporting subgraph is before generation |
-| `subgraph_perturbation_stability` | How fragile support is under graph perturbations |
-| `support_entailment_uncertainty` | Whether retrieved evidence actually entails the answer |
-| `evidence_conflict_uncertainty` | Whether retrieved evidence chunks conflict with each other about the answer |
+A dedicated evaluation pipeline (`experiments/uncertainty_metrics.py`) computes uncertainty metrics per answer in three families. The core challenge: standard output-variance metrics collapse under KG-RAG because deterministic graph retrieval gives every sample identical context → identical outputs → artificially low variance. The structural and grounding families are designed to remain discriminative in this regime.
 
-The runner also computes `AUROC` and `AUREC` over these uncertainty scores in experiment mode to measure error prediction and abstention utility.
+#### Output-side (prior work baselines + novel extensions)
 
-Older run artifacts in `results/` may still contain legacy metric names from earlier iterations. The table above reflects the current maintained 15-metric suite used by the live experiment runner.
+| Metric | Formula | Ref |
+|--------|---------|-----|
+| `semantic_entropy` | NLI-cluster N responses with DeBERTa; $H = -\sum_c p_c \log p_c$ where $p_c$ = logsumexp of token log-probs per cluster | Farquhar et al., *Nature* 2024 |
+| `discrete_semantic_entropy` | Same clustering; $p_c = n_c / N$ (count proportions, no log-probs) | Farquhar et al., *Nature* 2024 |
+| `p_true` | Fraction of samples in the same NLI cluster as the most probable response; $p_{\text{true}} = \lvert\{i : c_i = c_0\}\rvert / N$ | Farquhar et al., *Nature* 2024 |
+| `selfcheckgpt` | Pairwise NLI contradiction rate: contradictions / (2 × pairs) across all response pairs | Manakul et al., EMNLP 2023 |
+| `sre_uq` | KME = weighted mean response embedding; Gaussian kernel $\kappa_r = e^{-d_r^2/2\sigma^2}$; perturbation sensitivity $= \lvert\Delta E_r + L_r\rvert$ averaged over top modes | Vipulanandan et al., ICLR 2026 |
+| `vn_entropy` ⭐ | L2-normalise embeddings $V$; $\rho = VV^\top / N$; $S(\rho) = -\sum_i \lambda_i \log \lambda_i$ | This work |
+| `sd_uq` ⭐ | Gram-Schmidt: $e_i = v_i - (v_i \cdot q)q$; SVD of centred residuals; $\text{SD-UQ} = \exp\!\left(\frac{1}{k}\sum_i \log(\lambda_i + \varepsilon)\right)$ | This work |
+
+`vn_entropy` is a soft, parameter-free analogue of semantic entropy (no NLI, no threshold). `sd_uq` extends it by conditioning out the question direction, estimating $H(v \mid q\text{-direction})$ — the entropy of what responses add *beyond* the question.
+
+#### Structural — KG-only *(this work)*
+
+No LLM sampling required. Path queries filtered to edges with confidence ≥ 0.4. Immune to context determinism.
+
+| Metric | Formula | Intuition |
+|--------|---------|----------|
+| `graph_path_support` (GPS) ⭐ | Find Q-entities and A-entities by name; per-entity reachability query ≤ 3 hops; $\text{GPS} = 1 - \lvert\text{reachable}\rvert / \lvert\text{A-entities}\rvert$ | 0 = KG fully supports the answer path; 1 = answer has no structural grounding. Single-sample metric, does not collapse under context determinism. |
+
+#### Grounding *(this work)*
+
+NLI between retrieved chunks and the generated answer. Works even when all N samples receive identical context.
+
+| Metric | Formula | Intuition |
+|--------|---------|----------|
+| `support_entailment_uncertainty` (SEU) ⭐ | DeBERTa NLI(chunk → answer) per chunk; $\text{support} = (n_{\text{entail}} - n_{\text{contradict}}) / N$; $\text{SEU} = (1 - \text{support}) / 2$ | 0 = all chunks entail the answer; 0.5 = neutral; 1 = all chunks contradict. Key signal for abstentions and wrong-hop answers on multi-hop benchmarks. |
+| `evidence_conflict_uncertainty` (ECU) ⭐ | Count entail-contradict chunk pairs; $\text{ECU} = \text{conflict pairs} / \binom{N}{2}$ | Variance complement to SEU. High = some chunks support while others contradict — genuine evidentiary conflict. Particularly diagnostic on multi-hop questions. |
+
+#### Selective prediction (AUROC / AUREC)
+
+After each run the pipeline computes per metric:
+
+- **AUROC** — discriminates correct from incorrect answers using the metric as a score. Higher = better (0.5 = random, 1.0 = perfect).
+- **AUREC** — Area Under the Rejection-Error Curve. Reject most uncertain questions first; measure error rate on retained questions at each rejection level. Lower = better.
+
+⭐ = novel contribution of this work.
 
 ### 6. Provider-agnostic LLM support
 Every endpoint accepts a `provider` + `model` pair. Supported providers: OpenRouter (free tier available), OpenAI, Google Gemini, Ollama (local), DeepSeek, HuggingFace. Switch model per request with no code changes.
@@ -519,13 +540,14 @@ python experiments/experiment.py \
   --rebuild-kg \
   --evaluation-mode accuracy_only
 
-# Full uncertainty pass on recommended retrieval benchmarks
+# Full uncertainty pass (paper configuration: seed 42, n=100)
 python experiments/experiment.py \
   --datasets hotpotqa 2wikimultihopqa musique pubmedqa multihoprag \
   --num-samples 100 \
-  --subset-seed 0 \
+  --subset-seed 42 \
   --rebuild-kg \
-  --evaluation-mode full_metrics
+  --evaluation-mode full_metrics \
+  --retrieval-temperature-values 0.0
 ```
 
 ### Supported datasets
@@ -571,7 +593,7 @@ Run artifacts are written under `results/runs/<run_id>/` and checkpoints under `
 
 ---
 
-## Recent improvements
+## Innovations
 
 ### Retrieval
 - **Adjacent chunk expansion** — when retrieval uses the `retrieval_vector` index, seed element IDs are resolved to their parent `Chunk` before expanding to positional neighbours, so answers split across chunk boundaries are correctly reassembled.
@@ -642,7 +664,8 @@ ontographrag/
 │   │   └── vanilla_rag_system.py      # Vanilla RAG: vector-only baseline with adjacent chunk expansion
 │   ├── answer_guardrails.py           # Runtime answer quality guardrails
 │   └── retrieval_sampling.py         # Retrieval temperature sampling helpers
-├── schemas/                           # Pydantic models: Chunk, Entity, Relationship, KGContext
+├── schemas/
+│   └── models.py                      # Pydantic models: Chunk, Entity, Relationship, KGContext, RetrievalResult
 └── providers/
     └── model_providers.py             # LLM + embedding provider abstractions
 
@@ -678,6 +701,7 @@ root-level Python modules remain because the app imports them directly:
 |--------|---------|
 | `graphDB_dataAccess.py` | Low-level Neo4j data access layer used by the API |
 | `csv_processor.py` | CSV validation and bulk-processing helpers for the app |
+| `shared/common_fn.py` | Shared text and embedding utilities used across modules |
 
 ---
 
