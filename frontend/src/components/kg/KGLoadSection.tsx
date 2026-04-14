@@ -12,7 +12,8 @@ interface KGLoadSectionProps {
 
 export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
   const { state, dispatch } = useApp();
-  const [importMode, setImportMode] = useState('limited-1000');
+  const [importMode, setImportMode] = useState('complete');
+  const [customLimit, setCustomLimit] = useState('');
   const [kgFilter, setKgFilter] = useState('');
 
   const handleLoadKG = () => {
@@ -24,6 +25,9 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
     } else if (importMode === 'complete') {
       loadMode = 'complete';
       nodeLimit = 0;
+    } else if (importMode === 'custom') {
+      loadMode = 'limited';
+      nodeLimit = Math.max(1, Number(customLimit) || 500);
     } else {
       loadMode = 'limited';
       nodeLimit = Number(importMode.split('-')[1]);
@@ -68,14 +72,29 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
       <FieldsetDropdown
         label="Import Mode"
         options={[
+          { value: 'complete', label: 'Complete graph' },
           { value: 'limited-500', label: 'First 500 nodes' },
           { value: 'limited-1000', label: 'First 1000 nodes' },
           { value: 'sample', label: 'Top hubs (smart sample)' },
-          { value: 'complete', label: 'Complete graph' },
+          { value: 'custom', label: 'Custom limit…' },
         ]}
         value={importMode}
         onChange={setImportMode}
       />
+
+      {importMode === 'custom' && (
+        <fieldset className="fieldset">
+          <legend className="fieldset-legend text-xs">Node limit</legend>
+          <input
+            type="number"
+            min={1}
+            placeholder="e.g. 2000"
+            value={customLimit}
+            onChange={(e) => setCustomLimit(e.target.value)}
+            className="input input-sm w-full"
+          />
+        </fieldset>
+      )}
 
       {/* KG Name Filter */}
       <FieldsetDropdown
@@ -92,10 +111,10 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
         <button
           type="button"
           className={clsx(
-            'btn btn-sm flex-1 shadow-none',
+            'btn btn-sm h-10 flex-1 rounded-2xl shadow-none transition-all',
             kgFilter
-              ? 'bg-transparent border border-primary/50 text-primary hover:bg-primary hover:text-primary-content'
-              : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
+              ? 'border border-primary/20 bg-primary text-primary-content hover:-translate-y-px hover:brightness-105 hover:shadow-lg hover:shadow-primary/20'
+              : 'bg-transparent border border-base-content/15 text-base-content/30 pointer-events-none',
           )}
           onClick={handleLoadKG}
           disabled={!kgFilter}
@@ -105,10 +124,10 @@ export function KGLoadSection({ onLoadKG }: KGLoadSectionProps) {
         <button
           type="button"
           className={clsx(
-            'btn btn-sm flex-1',
+            'btn btn-sm h-10 flex-1 rounded-2xl shadow-none transition-all',
             kgFilter || state.currentKGId
-              ? 'btn-outline border-error/50 text-error hover:bg-error hover:text-error-content'
-              : 'bg-transparent border border-base-content/20 text-base-content/30 pointer-events-none',
+              ? 'border border-error/30 bg-error/8 text-error hover:-translate-y-px hover:bg-error hover:text-error-content'
+              : 'bg-transparent border border-base-content/15 text-base-content/30 pointer-events-none',
           )}
           onClick={handleDelete}
           disabled={!kgFilter && !state.currentKGId}

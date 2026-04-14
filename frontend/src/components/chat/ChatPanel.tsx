@@ -61,6 +61,12 @@ interface AiMessageRowProps {
   dispatch: React.Dispatch<AppAction>;
 }
 
+function trustColor(val: number): string {
+  if (val >= 0.7) return 'badge-success';
+  if (val >= 0.4) return 'badge-warning';
+  return 'badge-error';
+}
+
 const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes, dispatch }: AiMessageRowProps) {
   if (!msg.sections) return null;
   const entityNames = msg.entityNames ?? new Set<string>();
@@ -78,10 +84,43 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
       }
     : undefined;
 
+  const trust = msg.trustSignals;
+  const hasTrust =
+    trust &&
+    (trust.structural_support !== undefined || trust.grounding_support !== undefined || trust.confidence !== undefined);
+
   return (
     <div key={msgKey} className="chat chat-start">
-      <div className="chat-bubble rounded-2xl text-sm">
+      <div className="chat-bubble rounded-2xl border border-base-content/10 bg-base-100/82 text-sm shadow-sm">
         <ResponseSections sections={msg.sections} />
+        {hasTrust && trust && (
+          <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-base-content/10">
+            {trust.structural_support !== undefined && (
+              <span
+                className={`badge badge-xs gap-1 ${trustColor(trust.structural_support)}`}
+                title="Graph-path support: fraction of answer entities reachable from question entities in the KG"
+              >
+                Structural {Math.round(trust.structural_support * 100)}%
+              </span>
+            )}
+            {trust.grounding_support !== undefined && (
+              <span
+                className={`badge badge-xs gap-1 ${trustColor(trust.grounding_support)}`}
+                title="Grounding: how well retrieved evidence supports the answer"
+              >
+                Grounding {Math.round(trust.grounding_support * 100)}%
+              </span>
+            )}
+            {trust.confidence !== undefined && (
+              <span
+                className={`badge badge-xs gap-1 ${trustColor(trust.confidence)}`}
+                title="Overall answer confidence"
+              >
+                Confidence {Math.round(trust.confidence * 100)}%
+              </span>
+            )}
+          </div>
+        )}
         <SourcesSection
           reasoningEdges={msg.reasoningEdges}
           sourceEntities={msg.sourceEntities}
@@ -106,6 +145,9 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const { state, dispatch } = useApp();
   const { messages, sending, addMessage, sendQuestion, clearChat, exportChat } = useChat();
   const chatBoxRef = useRef<HTMLDivElement>(null);
+  const modelLabel =
+    ragModelHook.models.find((model) => model.value === ragModelHook.selectedModel)?.label ||
+    ragModelHook.selectedModel;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers auto-scroll on new messages
   useEffect(() => {
@@ -150,6 +192,11 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
           const reasoningEdges = result.info?.entities?.reasoning_edges || [];
           const sourceEntities = result.info?.entities?.used_entities || [];
+          const trustSignals = {
+            structural_support: result.info?.structural_support,
+            grounding_support: result.info?.grounding_support,
+            confidence: result.info?.confidence,
+          };
 
           addMessage({
             type: 'ai',
@@ -159,6 +206,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             reasoningEdges,
             sourceEntities,
             entityNames: nodeNames,
+            trustSignals,
           });
         } catch (error) {
           const err = error as Error;
@@ -185,9 +233,29 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full bg-base-200">
+    <div className="flex h-full flex-col border-l border-base-content/10 bg-base-200/55 backdrop-blur-xl">
+      <div className="shrink-0 border-b border-base-content/10 bg-base-100/55 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[0.65rem] font-medium uppercase tracking-[0.22em] text-base-content/45">Chat</p>
+            <h2 className="mt-1 text-sm font-semibold text-base-content">Evidence-aware RAG assistant</h2>
+            <p className="mt-1 text-xs leading-5 text-base-content/58">
+              Ask for grounded answers, trace graph support, and inspect supporting evidence.
+            </p>
+          </div>
+          <div className="flex max-w-[14rem] flex-wrap justify-end gap-2 text-2xs">
+            <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
+              {state.currentKGName ? `KG · ${state.currentKGName}` : 'No KG loaded'}
+            </span>
+            <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
+              {ragModelHook.vendor.toUpperCase()} · {modelLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Messages area */}
-      <div ref={chatBoxRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2" aria-live="polite">
+      <div ref={chatBoxRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-3" aria-live="polite">
         {isEmpty ? (
           <ChatSuggestions onSelect={handleSend} />
         ) : (
@@ -220,7 +288,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             })}
             {sending && (
               <div className="chat chat-start">
-                <div className="chat-bubble rounded-2xl bg-base-300 text-sm flex items-center justify-center">
+                <div className="chat-bubble flex items-center justify-center rounded-2xl border border-base-content/10 bg-base-100/82 text-sm shadow-sm">
                   <span
                     className="loading loading-dots loading-xs text-base-content"
                     aria-label="AI is thinking"
@@ -231,7 +299,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             )}
             {messages.length > 0 && (
               <div className="flex justify-center py-2">
-                <div className="flex bg-base-300/30 rounded-lg p-0.5">
+                <div className="flex rounded-xl border border-base-content/10 bg-base-100/60 p-0.5 shadow-sm">
                   <button
                     type="button"
                     className="px-2.5 py-1 text-2xs text-base-content/50 hover:text-base-content/80 rounded transition-colors"
@@ -253,7 +321,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
         )}
       </div>
       {/* Chat input at bottom */}
-      <div className="shrink-0 px-3 pb-1.5 pt-1">
+      <div className="shrink-0 border-t border-base-content/10 bg-base-100/35 px-4 pb-2 pt-2 backdrop-blur-sm">
         <ChatInput onSend={handleSend} disabled={sending} ragModelHook={ragModelHook} />
         <div className="flex items-center justify-center gap-3 mt-1 text-2xs text-base-content/30">
           <span className="flex items-center gap-1">

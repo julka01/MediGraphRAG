@@ -24,7 +24,8 @@ export function useGraph({
   onNodeClick,
   applySearch,
 }: UseGraphOptions) {
-  const { graphData, highlightedNodes, currentFilters, searchTerm, physicsEnabled, showEdgeLabels, nodeSizeMetric } = appState;
+  const { graphData, highlightedNodes, currentFilters, searchTerm, physicsEnabled, showEdgeLabels, nodeSizeMetric } =
+    appState;
 
   // Refs for toggle state so initializeGraph reads latest values without re-creating
   const physicsRef = useRef(physicsEnabled);
@@ -212,8 +213,8 @@ export function useGraph({
         });
 
       // Count highlighted nodes that survived filtering
-      const visibleHighlightedCount = processedNodes.filter(
-        (n: { originalId: string | number }) => referencedOriginalIds.has(n.originalId),
+      const visibleHighlightedCount = processedNodes.filter((n: { originalId: string | number }) =>
+        referencedOriginalIds.has(n.originalId),
       ).length;
       dispatch({ type: 'SET_HIGHLIGHTED_COUNT', count: visibleHighlightedCount });
 
@@ -281,12 +282,9 @@ export function useGraph({
 
       const graphSize = processedNodes.length;
       const isLargeGraph = graphSize > 500;
-      const isVeryLargeGraph = graphSize > 1000;
 
       let physicsSettings: Record<string, unknown>;
-      if (isVeryLargeGraph) {
-        physicsSettings = { enabled: false, stabilization: false };
-      } else if (isLargeGraph) {
+      if (isLargeGraph) {
         physicsSettings = {
           enabled: physicsRef.current,
           stabilization: { enabled: true, iterations: 500, updateInterval: 25 },
@@ -361,7 +359,7 @@ export function useGraph({
           tooltipDelay: 200,
           zoomView: true,
           dragView: true,
-          dragNodes: !isVeryLargeGraph,
+          dragNodes: true,
           multiselect: false,
           navigationButtons: false,
           keyboard: { enabled: true, bindToWindow: false },

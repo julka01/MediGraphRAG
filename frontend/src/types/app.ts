@@ -146,6 +146,7 @@ export interface ChatMessage {
   reasoningEdges?: ReasoningEdge[];
   sourceEntities?: SourceEntity[];
   entityNames?: Set<string>;
+  trustSignals?: TrustSignals;
 }
 
 export interface ResponseSections {
@@ -195,11 +196,21 @@ export interface ChatPayload {
   kg_name?: string;
 }
 
+export interface TrustSignals {
+  structural_support?: number;
+  grounding_support?: number;
+  confidence?: number;
+}
+
 export interface ChatResponse {
   response?: string;
   message?: string;
   info?: {
     confidence_score?: number;
+    structural_support?: number;
+    grounding_support?: number;
+    confidence?: number;
+    kg_confidence?: number;
     entities?: {
       used_entities?: SourceEntity[];
       reasoning_edges?: ReasoningEdge[];
