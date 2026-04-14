@@ -16,9 +16,17 @@ interface ChatInputProps {
   onSend: (text: string) => boolean;
   disabled: boolean;
   ragModelHook: UseModelsReturn;
+  runtimeGuardrailEnabled: boolean;
+  onToggleRuntimeGuardrail: () => void;
 }
 
-export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled,
+  ragModelHook,
+  runtimeGuardrailEnabled,
+  onToggleRuntimeGuardrail,
+}: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = useCallback(() => {
@@ -81,6 +89,19 @@ export function ChatInput({ onSend, disabled, ragModelHook }: ChatInputProps) {
             onChange={(m) => ragModelHook.setSelectedModel(m)}
             placeholder={ragModelHook.loading ? 'Loading…' : 'No models'}
           />
+          <button
+            type="button"
+            onClick={onToggleRuntimeGuardrail}
+            className={`hidden rounded-full border px-2.5 py-1 text-2xs font-medium transition-colors md:inline-flex ${
+              runtimeGuardrailEnabled
+                ? 'border-success/25 bg-success/10 text-success hover:bg-success/14'
+                : 'border-warning/25 bg-warning/10 text-warning hover:bg-warning/14'
+            }`}
+            title="Toggle runtime guardrail for benchmark debugging"
+            aria-pressed={runtimeGuardrailEnabled}
+          >
+            Guardrail {runtimeGuardrailEnabled ? 'ON' : 'OFF'}
+          </button>
         </div>
         <button
           type="button"

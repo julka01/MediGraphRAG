@@ -44,6 +44,7 @@ from experiments.answer_formatting import (
     normalize_answer_to_contract,
 )
 from ontographrag.api.runtime_helpers import (
+    build_support_guardrail_verdict,
     build_readiness_report,
     configured_provider_names_from_env,
     filesystem_write_probe_ok,
@@ -51,6 +52,7 @@ from ontographrag.api.runtime_helpers import (
     parse_request_timeout_seconds,
 )
 from ontographrag.kg.builders.enhanced_kg_creator import UnifiedOntologyGuidedKGCreator
+from ontographrag.rag.answer_guardrails import RUNTIME_GUARDRAIL_ABSTENTION
 from ontographrag.rag.systems.enhanced_rag_system import EnhancedRAGSystem
 
 _REQUEST_TIMEOUT_SECONDS = parse_request_timeout_seconds(
@@ -1205,7 +1207,9 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                     docs,
                     kg_name=kg_name,
                     answer_instructions=answer_instructions,
-                    runtime_guardrail=runtime_guardrail,
+                    # Measure the raw candidate first; support-based abstention is
+                    # applied below so structural/grounding scores stay invariant.
+                    runtime_guardrail=False,
                     runtime_guardrail_mode=runtime_guardrail_mode,
                 ),
                 timeout=_REQUEST_TIMEOUT_SECONDS,
@@ -1233,7 +1237,7 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
         # entities reachable from question entities in the KG.  GPS = 1 − support,
         # so confidence = 1 − GPS = support.  Only computed when a KG is loaded.
         kg_confidence: Optional[float] = None
-        if kg_name and "response" in result and not guardrail_forces_abstention(result.get("guardrail")):
+        if kg_name and "response" in result:
             try:
                 from experiments.uncertainty_metrics import compute_graph_path_support
                 _gps = compute_graph_path_support(
@@ -1249,6 +1253,23 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                 kg_confidence = round(1.0 - _gps, 3) if _gps is not None else None
             except Exception as _conf_err:
                 logger.debug("GPS confidence computation skipped: %s", _conf_err)
+
+        grounding_support = result.get("context", {}).get("grounding_quality")
+        support_guardrail = build_support_guardrail_verdict(
+            enabled=bool(runtime_guardrail),
+            mode=str(runtime_guardrail_mode or ""),
+            structural_support=kg_confidence,
+            grounding_support=grounding_support,
+            confidence=result.get("confidence", 0.0),
+        )
+        result["guardrail"] = support_guardrail
+        if (
+            "response" in result
+            and guardrail_forces_abstention(support_guardrail)
+            and result.get("response") != RUNTIME_GUARDRAIL_ABSTENTION
+        ):
+            result["response_candidate"] = result.get("response")
+            result["response"] = RUNTIME_GUARDRAIL_ABSTENTION
 
         # Format response to match expected structure
         if "error" in result:
@@ -1296,7 +1317,8 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                 "metric_details": {
                     "question": question,
                     "contexts": [chunk["text"] for chunk in result.get("context", {}).get("chunks", [])],
-                    "answer": result["response"],
+                    "answer": result.get("response_candidate") or result["response"],
+                    "displayed_answer": result["response"],
                     "answer_raw": result.get("response_raw"),
                 },
                 "kg_only": True,
@@ -1306,7 +1328,7 @@ async def chat(request: Request, body: dict = Body(..., max_length=65536)):
                 "confidence": result.get("confidence", 0.0),
                 "kg_confidence": kg_confidence,   # Graph Path Support (GPS) structural confidence score
                 "structural_support": kg_confidence,
-                "grounding_support": result.get("context", {}).get("grounding_quality"),
+                "grounding_support": grounding_support,
                 "guardrail": result.get("guardrail", {}),
                 "dataset_name": dataset_name or None,
                 "task_type": task_type or None,

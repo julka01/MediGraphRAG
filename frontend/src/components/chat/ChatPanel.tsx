@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useChat } from '../../hooks/useChat';
 import type {
@@ -7,11 +7,14 @@ import type {
   ResponseSections as ResponseSectionsType,
   UseModelsReturn,
 } from '../../types/app';
+import { safeGet, safeSet } from '../../utils/storage';
 import { showError } from '../ui/Notifications';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { ChatSuggestions } from './ChatSuggestions';
 import { ResponseSections, SourcesSection } from './ResponseSections';
+
+const CHAT_GUARDRAIL_KEY = 'chat-runtime-guardrail';
 
 function parseResponse(text: string): ResponseSectionsType {
   const sections: ResponseSectionsType = {
@@ -67,6 +70,10 @@ function trustColor(val: number): string {
   return 'badge-error';
 }
 
+function hasMetric(val: number | null | undefined): val is number {
+  return typeof val === 'number' && Number.isFinite(val);
+}
+
 const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes, dispatch }: AiMessageRowProps) {
   if (!msg.sections) return null;
   const entityNames = msg.entityNames ?? new Set<string>();
@@ -87,7 +94,11 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
   const trust = msg.trustSignals;
   const hasTrust =
     trust &&
-    (trust.structural_support !== undefined || trust.grounding_support !== undefined || trust.confidence !== undefined);
+    (
+      hasMetric(trust.structural_support) ||
+      hasMetric(trust.grounding_support) ||
+      hasMetric(trust.confidence)
+    );
 
   return (
     <div key={msgKey} className="chat chat-start">
@@ -95,7 +106,7 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
         <ResponseSections sections={msg.sections} />
         {hasTrust && trust && (
           <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-base-content/10">
-            {trust.structural_support !== undefined && (
+            {hasMetric(trust.structural_support) && (
               <span
                 className={`badge badge-xs gap-1 ${trustColor(trust.structural_support)}`}
                 title="Graph-path support: fraction of answer entities reachable from question entities in the KG"
@@ -103,7 +114,7 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
                 Structural {Math.round(trust.structural_support * 100)}%
               </span>
             )}
-            {trust.grounding_support !== undefined && (
+            {hasMetric(trust.grounding_support) && (
               <span
                 className={`badge badge-xs gap-1 ${trustColor(trust.grounding_support)}`}
                 title="Grounding: how well retrieved evidence supports the answer"
@@ -111,7 +122,7 @@ const AiMessageRow = memo(function AiMessageRow({ msg, msgKey, highlightedNodes,
                 Grounding {Math.round(trust.grounding_support * 100)}%
               </span>
             )}
-            {trust.confidence !== undefined && (
+            {hasMetric(trust.confidence) && (
               <span
                 className={`badge badge-xs gap-1 ${trustColor(trust.confidence)}`}
                 title="Overall answer confidence"
@@ -145,6 +156,9 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
   const { state, dispatch } = useApp();
   const { messages, sending, addMessage, sendQuestion, clearChat, exportChat } = useChat();
   const chatBoxRef = useRef<HTMLDivElement>(null);
+  const [runtimeGuardrailEnabled, setRuntimeGuardrailEnabled] = useState(
+    () => safeGet(CHAT_GUARDRAIL_KEY, '1') !== '0',
+  );
   const modelLabel =
     ragModelHook.models.find((model) => model.value === ragModelHook.selectedModel)?.label ||
     ragModelHook.selectedModel;
@@ -160,6 +174,13 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
 
   const handleClearChat = useCallback(() => clearChat(), [clearChat]);
   const handleExportChat = useCallback(() => exportChat(state.currentKGName), [exportChat, state.currentKGName]);
+  const handleRuntimeGuardrailToggle = useCallback(() => {
+    setRuntimeGuardrailEnabled((previous) => {
+      const next = !previous;
+      safeSet(CHAT_GUARDRAIL_KEY, next ? '1' : '0');
+      return next;
+    });
+  }, []);
 
   const handleSend = useCallback(
     (question: string): boolean => {
@@ -174,6 +195,10 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
             state.currentKGName,
             ragModelHook.vendor,
             ragModelHook.selectedModel,
+            {
+              runtimeGuardrail: runtimeGuardrailEnabled,
+              runtimeGuardrailMode: 'retry_then_abstain',
+            },
           );
 
           const usedEntities = result.info?.entities?.used_entities || [];
@@ -225,6 +250,7 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       state.currentKGName,
       ragModelHook.vendor,
       ragModelHook.selectedModel,
+      runtimeGuardrailEnabled,
       dispatch,
       addMessage,
     ],
@@ -236,6 +262,15 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
     <div className="flex h-full flex-col border-l border-base-content/10 bg-base-200/55 backdrop-blur-xl">
       <div className="shrink-0 border-b border-base-content/10 bg-base-100/45 px-4 py-2 backdrop-blur-sm">
         <div className="flex flex-wrap justify-end gap-2 text-2xs">
+          <span
+            className={`rounded-full border px-2.5 py-1 ${
+              runtimeGuardrailEnabled
+                ? 'border-success/20 bg-success/10 text-success'
+                : 'border-warning/20 bg-warning/10 text-warning'
+            }`}
+          >
+            Guardrail {runtimeGuardrailEnabled ? 'ON' : 'OFF'}
+          </span>
           <span className="rounded-full border border-base-content/10 bg-base-100/70 px-2.5 py-1 text-base-content/65">
             {state.currentKGName ? `KG · ${state.currentKGName}` : 'No KG loaded'}
           </span>
@@ -313,7 +348,13 @@ export function ChatPanel({ ragModelHook }: ChatPanelProps) {
       </div>
       {/* Chat input at bottom */}
       <div className="shrink-0 border-t border-base-content/10 bg-base-100/35 px-4 pb-2 pt-2 backdrop-blur-sm">
-        <ChatInput onSend={handleSend} disabled={sending} ragModelHook={ragModelHook} />
+        <ChatInput
+          onSend={handleSend}
+          disabled={sending}
+          ragModelHook={ragModelHook}
+          runtimeGuardrailEnabled={runtimeGuardrailEnabled}
+          onToggleRuntimeGuardrail={handleRuntimeGuardrailToggle}
+        />
         <div className="flex items-center justify-center gap-3 mt-1 text-2xs text-base-content/30">
           <span className="flex items-center gap-1">
             <kbd className="kbd kbd-xs">&#x23CE;</kbd> send

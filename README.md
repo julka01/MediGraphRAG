@@ -9,6 +9,10 @@
 
 OntographRAG is an ontology-guided KG-RAG system for document intelligence. It builds Neo4j-backed knowledge graphs from raw text, retrieves over both graph structure and chunk vectors, and exposes answer-grounding and uncertainty signals for downstream use.
 
+## Example UI
+
+![OntoGraphRAG UI example](assets/readme/ontographrag-ui-example.png)
+
 The project is organized around **three interactive workflows plus one evaluation pipeline**:
 
 1. **Ingest**: turn documents or benchmark corpora into named knowledge graphs.

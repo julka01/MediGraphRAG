@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { api } from '../api';
-import type { ChatMessage, ChatPayload, ChatResponse, UseChatReturn } from '../types/app';
+import type { ChatMessage, ChatPayload, ChatRequestOptions, ChatResponse, UseChatReturn } from '../types/app';
 import { safeGet, safeSet } from '../utils/storage';
 
 const HISTORY_KEY = 'kg-chat-history';
@@ -35,13 +35,23 @@ export function useChat(): UseChatReturn {
   }, []);
 
   const sendQuestion = useCallback(
-    async (question: string, kgName: string | null, vendor: string, model: string): Promise<ChatResponse> => {
+    async (
+      question: string,
+      kgName: string | null,
+      vendor: string,
+      model: string,
+      options?: ChatRequestOptions,
+    ): Promise<ChatResponse> => {
       addMessage({ type: 'user', message: question, ts: Date.now() });
       setSending(true);
 
       try {
         const payload: ChatPayload = { question, provider_rag: vendor, model_rag: model };
         if (kgName) payload.kg_name = kgName;
+        if (options?.datasetName) payload.dataset_name = options.datasetName;
+        if (options?.taskType) payload.task_type = options.taskType;
+        if (options?.runtimeGuardrail !== undefined) payload.runtime_guardrail = options.runtimeGuardrail;
+        if (options?.runtimeGuardrailMode) payload.runtime_guardrail_mode = options.runtimeGuardrailMode;
 
         abortRef.current = new AbortController();
         const chatTimeout = setTimeout(() => abortRef.current?.abort(), 130000);

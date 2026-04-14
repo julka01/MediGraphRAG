@@ -196,12 +196,23 @@ export interface ChatPayload {
   provider_rag: string;
   model_rag: string;
   kg_name?: string;
+  dataset_name?: string;
+  task_type?: string;
+  runtime_guardrail?: boolean;
+  runtime_guardrail_mode?: 'retry_then_abstain' | 'abstain_only';
+}
+
+export interface ChatRequestOptions {
+  datasetName?: string;
+  taskType?: string;
+  runtimeGuardrail?: boolean;
+  runtimeGuardrailMode?: 'retry_then_abstain' | 'abstain_only';
 }
 
 export interface TrustSignals {
-  structural_support?: number;
-  grounding_support?: number;
-  confidence?: number;
+  structural_support?: number | null;
+  grounding_support?: number | null;
+  confidence?: number | null;
 }
 
 export interface ChatResponse {
@@ -209,10 +220,10 @@ export interface ChatResponse {
   message?: string;
   info?: {
     confidence_score?: number;
-    structural_support?: number;
-    grounding_support?: number;
-    confidence?: number;
-    kg_confidence?: number;
+    structural_support?: number | null;
+    grounding_support?: number | null;
+    confidence?: number | null;
+    kg_confidence?: number | null;
     entities?: {
       used_entities?: SourceEntity[];
       reasoning_edges?: ReasoningEdge[];
@@ -277,7 +288,13 @@ export interface UseChatReturn {
   messages: ChatMessage[];
   sending: boolean;
   addMessage: (msg: ChatMessage) => void;
-  sendQuestion: (question: string, kgName: string | null, vendor: string, model: string) => Promise<ChatResponse>;
+  sendQuestion: (
+    question: string,
+    kgName: string | null,
+    vendor: string,
+    model: string,
+    options?: ChatRequestOptions,
+  ) => Promise<ChatResponse>;
   clearChat: () => void;
   exportChat: (kgName: string | null) => void;
 }
