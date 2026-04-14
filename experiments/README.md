@@ -18,7 +18,7 @@ source .venv/bin/activate
 python experiments/experiment.py \
   --datasets hotpotqa \
   --num-samples 30 \
-  --subset-seed 0 \
+  --subset-seed 42 \
   --rebuild-kg \
   --evaluation-mode accuracy_only
 
@@ -26,7 +26,7 @@ python experiments/experiment.py \
 python experiments/experiment.py \
   --datasets hotpotqa 2wikimultihopqa musique pubmedqa multihoprag \
   --num-samples 100 \
-  --subset-seed 0 \
+  --subset-seed 42 \
   --rebuild-kg \
   --evaluation-mode full_metrics
 ```
@@ -47,14 +47,14 @@ Then run:
 python experiments/experiment.py \
   --datasets bioasq \
   --num-samples 100 \
-  --subset-seed 0 \
+  --subset-seed 42 \
   --rebuild-kg \
   --evaluation-mode full_metrics
 ```
 
 ## Current Flags
 
-These are the live flags supported by [experiment.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/experiment.py).
+These are the live flags supported by [experiment.py](experiment.py).
 
 | Flag | Default | What it does |
 |---|---:|---|
@@ -84,7 +84,7 @@ Important removals:
 
 ## Supported Datasets
 
-The loader currently supports these datasets via [dataset_adapters.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/dataset_adapters.py):
+The loader currently supports these datasets via [dataset_adapters.py](dataset_adapters.py):
 
 | Dataset | Status | Context role | Notes |
 |---|---|---|---|
@@ -229,10 +229,15 @@ results/selections/
 
 | File | Purpose |
 |---|---|
-| [experiment.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/experiment.py) | Main experiment runner |
-| [dataset_adapters.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/dataset_adapters.py) | Dataset normalization and corpus-role metadata |
-| [prepare_bioasq_corpus.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/prepare_bioasq_corpus.py) | Build shared PubMed abstract corpus for BioASQ |
-| [subset_selection.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/subset_selection.py) | Deterministic seeded question subsets |
-| [official_answer_metrics.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/official_answer_metrics.py) | Official-style answer EM/F1 |
-| [uncertainty_metrics.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/uncertainty_metrics.py) | Uncertainty metric implementations |
-| [visualize_results.py](/Users/sahibjulka/Documents/tool-2025-kg-rag/experiments/visualize_results.py) | Plotting utilities |
+| [experiment.py](experiment.py) | Main experiment runner |
+| [uncertainty_metrics.py](uncertainty_metrics.py) | All 15 uncertainty metric implementations |
+| [dataset_adapters.py](dataset_adapters.py) | Dataset normalization and corpus-role metadata |
+| [visualize_results.py](visualize_results.py) | Plotting and figure utilities |
+| [hop_stratified_analysis.py](hop_stratified_analysis.py) | Per-hop-count accuracy and uncertainty stratification |
+| [generate_auroc_heatmap.py](generate_auroc_heatmap.py) | AUROC/AUREC heatmaps across metrics and datasets |
+| [prepare_bioasq_corpus.py](prepare_bioasq_corpus.py) | Build shared PubMed abstract corpus for BioASQ |
+| [subset_selection.py](subset_selection.py) | Deterministic seeded question subsets |
+| [official_answer_metrics.py](official_answer_metrics.py) | Official-style answer EM/F1 |
+| [answer_formatting.py](answer_formatting.py) | Answer normalisation and judge prompts |
+| [summary_utils.py](summary_utils.py) | Run-summary aggregation helpers |
+| [kg_reuse.py](kg_reuse.py) | KG reuse/cache logic across runs |
