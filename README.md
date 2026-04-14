@@ -110,7 +110,7 @@ python experiments/prepare_bioasq_corpus.py \
 
 # 3. Run a cheap smoke test
 python experiments/experiment.py \
-  --datasets hotpotqa --num-samples 30 --subset-seed 0 --rebuild-kg --evaluation-mode accuracy_only
+  --datasets hotpotqa --num-samples 30 --subset-seed 42 --rebuild-kg --evaluation-mode accuracy_only
 
 # 4. Run a full metric pass (paper configuration: seed 42, n=100)
 python experiments/experiment.py \
@@ -156,7 +156,7 @@ Most GraphRAG tools (including [Microsoft's GraphRAG](https://github.com/microso
 .venv/bin/python -m ontographrag.cli ask "What are the main findings?" --kg-name demo-kg
 
 # Evaluate benchmark runs
-.venv/bin/python -m ontographrag.cli evaluate --datasets hotpotqa --num-samples 30 --subset-seed 0
+.venv/bin/python -m ontographrag.cli evaluate --datasets hotpotqa --num-samples 30 --subset-seed 42
 ```
 
 ---
@@ -319,6 +319,10 @@ OLLAMA_HOST=http://localhost:11434
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
 EMBEDDING_PROVIDER=sentence_transformers   # recommended runtime default; or openai
+
+# ── Weights & Biases (optional — experiment tracking) ────────────────────────
+WANDB_API_KEY=             # if set, experiment runs are logged to W&B automatically
+WANDB_PROJECT=ontographrag # default project name
 
 # ── Security (production) ────────────────────────────────────────────────────
 APP_API_KEY=               # set to enforce API key auth on all endpoints
@@ -531,12 +535,14 @@ curl http://localhost:8000/health/neo4j
 
 The `experiments/` directory runs the current benchmark pipeline for vanilla RAG vs KG-RAG across biomedical and multi-hop QA datasets. It now uses seeded deterministic subsets, dataset-scoped KGs, official-style answer `EM/F1` where supported, and the current 15-metric uncertainty suite. See [experiments/README.md](experiments/README.md) for the live flag list and dataset caveats.
 
+**Weights & Biases integration** — if `WANDB_API_KEY` is set in the environment, each run is automatically logged to W&B with per-question tables, per-metric AUROC/AUREC scores, and run metadata (dataset, model, seed, evaluation mode). No flags required; set the key and it activates. Results are also always written locally under `results/runs/<run_id>/` regardless of W&B.
+
 ```bash
 # 30-question smoke test
 python experiments/experiment.py \
   --datasets hotpotqa \
   --num-samples 30 \
-  --subset-seed 0 \
+  --subset-seed 42 \
   --rebuild-kg \
   --evaluation-mode accuracy_only
 
@@ -603,11 +609,6 @@ Run artifacts are written under `results/runs/<run_id>/` and checkpoints under `
 - **GPS (Graph Path Support)** — switched from full `[*1..N]` path enumeration (times out on dense graphs) to one query per answer entity with `LIMIT 1`, preserving the confidence filter that `shortestPath` cannot support. GPS now correctly returns non-zero values when answer entities are not reachable via high-confidence paths.
 - **SEU (Support Entailment Uncertainty)** — now computed even when generation failed: retrieved chunks still exist and are evaluated against the expected answer as hypothesis. This turns SEU into a signal for *why* the model abstained (context didn't entail the answer vs. other failure modes). ECU receives the same fix.
 - **SPS (Subgraph Perturbation Stability)** — entity caps tightened from 20 to 5 per query with 20 s timeout to prevent silent hangs.
-
-### Frontend
-- Replaced the monolithic `index.html` (5000-line vanilla JS) with a React + TypeScript frontend (`frontend/`) built with Vite.
-- Component architecture: `ChatPanel`, `GraphContainer`, `KGBuildSection`, `NodeDetailPanel`, and more — each independently testable.
-- Build step required: `cd frontend && npm install && npm run build`.
 
 ---
 
