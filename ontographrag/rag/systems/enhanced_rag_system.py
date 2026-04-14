@@ -613,14 +613,14 @@ Question: {question}"""),
                     "score": result["score"],
                     "document": result["document"],
                     "kg_name": result.get("kg_name"),
-                    "entities": result["entities"]
+                    "entities": result.get("entities") or []
                 }
                 context["chunks"].append(chunk_info)
                 context["documents"].add(result["document"])
                 context["total_score"] += result["score"]
 
                 # Collect unique entities
-                for entity in result["entities"]:
+                for entity in (result.get("entities") or []):
                     entity_id = entity["id"]
                     if entity_id not in context["entities"]:
                         context["entities"][entity_id] = {
@@ -943,7 +943,7 @@ Question: {question}"""),
                 return {
                     "documents": result["documents"],
                     "chunks": result["chunks"],
-                    "entities": result["entities"],
+                    "entities": result.get("entities") or [],
                     "relationships": result["relationships"],
                     "document_names": result["document_names"],
                     "has_embeddings": False
@@ -1101,14 +1101,14 @@ Question: {question}"""),
                     "score": result["score"],
                     "document": result["document"],
                     "kg_name": result.get("kg_name"),
-                    "entities": result["entities"]
+                    "entities": result.get("entities") or []
                 }
                 context["chunks"].append(chunk_info)
                 context["documents"].add(result["document"])
                 context["total_score"] += result["score"]
 
                 # Collect unique entities
-                for entity in result["entities"]:
+                for entity in (result.get("entities") or []):
                     entity_id = entity["id"]
                     if entity_id not in context["entities"]:
                         context["entities"][entity_id] = {

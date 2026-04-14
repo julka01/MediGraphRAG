@@ -1,3 +1,12 @@
+# Superpowers / agent artifacts
+.superpowers/
+.agents/skills/
+.firecrawl/
+.playwright-mcp/
+.sesskey
+skills-lock.json
+docs/superpowers/
+
 # Python
 __pycache__/
 *.pyc
@@ -10,6 +19,7 @@ build/
 
 # Virtual environments
 .env
+.envrc
 .venv
 venv/
 env/
@@ -58,6 +68,11 @@ KG_GENERATION_PIPELINE.md
 
 # ── Nested repos / vendored libraries ────────────────────────────────────────
 semantic_uncertainty/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 
 # ── Misc ─────────────────────────────────────────────────────────────────────
 node_modules/
